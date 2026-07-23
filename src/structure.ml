@@ -777,6 +777,35 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                     (reference, record_fields @ [ field ]) ))
                        | _ -> return None)
               in
+              (* Non-record nested modules are flattened in a functor-result
+                 record: [Option.t] becomes the sibling field [Option_t].
+                 Scraped result signatures can consequently mention the bare
+                 flattened constructor in value types.  Rebind it to the
+                 corresponding record projection before emitting the nested
+                 namespace; no local [Option_t] definition exists there. *)
+              let* namespace_type_substitutions =
+                match prefix with
+                | [] -> return []
+                | _ :: _ ->
+                    signature
+                    |> Monad.List.filter_map (function
+                         | Types.Sig_type (ident, _, _, _) ->
+                             let source_name = Ident.name ident in
+                             let* flattened_name =
+                               Name.of_strings false
+                                 (prefix @ [ source_name ])
+                             in
+                             let* field =
+                               PathName.of_path_and_name_with_convert
+                                 signature_path flattened_name
+                             in
+                             return
+                               (Some
+                                  ( [ flattened_name ],
+                                    MixedPath.Access
+                                      (reference, record_fields @ [ field ]) ))
+                         | _ -> return None)
+              in
               (* Manifest aliases describe equalities within this signature.
                  Propagating them into a nested module is unsound: an outer
                  [type t = int] must not turn an unrelated nested result such
@@ -784,7 +813,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
                  excluded (shadowed) fields do cross module boundaries because
                  nested fields may still refer to the excluded outer field. *)
               let nested_type_substitutions =
-                local_type_substitutions @ inherited_type_substitutions
+                namespace_type_substitutions
+                @ local_type_substitutions
+                @ inherited_type_substitutions
               in
               let type_substitutions =
                 manifest_type_substitutions @ nested_type_substitutions
