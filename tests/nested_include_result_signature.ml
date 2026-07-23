@@ -22,3 +22,21 @@ module Wrap (Element : ELEMENT) =
 struct
   include Make_stable (Element)
 end
+
+module type VALUE = sig
+  val value : int
+end
+
+module Box (Value : VALUE) = struct
+  let value = Value.value
+end
+
+module Pair (Value : VALUE) = struct
+  module Left = struct
+    module Repr = Box (Value)
+  end
+
+  module Right = struct
+    module Repr = Box (Value)
+  end
+end

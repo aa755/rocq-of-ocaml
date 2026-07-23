@@ -101,7 +101,7 @@ Module WithM.
   (** Inclusion of the module [M] *)
   Definition t := M.(Source.t).
   
-  Definition x_value : M.(Source.t) := M.(Source.x_value).
+  Definition x_value : t := M.(Source.x_value).
   
   Definition id {a : Set} : a -> a := M.(Source.id).
   

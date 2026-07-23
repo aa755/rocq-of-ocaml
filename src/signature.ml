@@ -187,6 +187,9 @@ let rec items_of_types_signature
           ("Extensible type '" ^ name ^ "' not handled")
     | Sig_module (ident, _, { md_type; _ }, _, _) -> (
         let* name = Name.of_ident false ident in
+        let* field_name =
+          Name.of_strings false (prefix @ [ Ident.name ident ])
+        in
         let* is_first_class =
           match signature_path with
           | Some parent_signature ->
@@ -291,7 +294,7 @@ let rec items_of_types_signature
             let target_typ_param_paths =
               Tree.flatten target_typ_params |> List.map fst
             in
-            let* typ_params =
+            let* typ_params_with_paths =
               Tree.flatten typ_params
               |> List.filter (fun (path, _) ->
                      List.exists
@@ -304,23 +307,62 @@ let rec items_of_types_signature
                      in
                      match arity_or_typ with
                      | Type.Arity _ ->
-                         return (name, Some (Type.Variable typ_name))
-                     | Typ typ -> return (name, Some typ))
+                         return
+                           (path, name, Some (Type.Variable typ_name))
+                     | Typ typ -> return (path, name, Some typ))
             in
-            let* let_in_type =
-              typ_params
-              |> Monad.List.fold_left
-                   (fun let_in_type (typ_name, typ) ->
+            let typ_params =
+              typ_params_with_paths
+              |> List.map (fun (_, name, typ) -> (name, typ))
+            in
+            let* local_typ_param_aliases =
+              typ_params_with_paths
+              |> Monad.List.filter_map (fun (path, _, typ) ->
+                     let* source =
+                       Monad.List.map (Name.of_string false) path
+                     in
                      match typ with
                      | Some (Type.Variable target) ->
                          return
-                           ( ( [ name; typ_name ],
+                           (Some
+                              (source, LocalConstructor target))
+                     | Some typ ->
+                         return
+                           (Some
+                              (source, ManifestConstructor typ))
+                     | None -> return None)
+            in
+            let manifest_aliases =
+              manifest_aliases
+              |> List.map (fun (source, target) ->
+                     let target =
+                       match target with
+                       | LocalConstructor _ -> target
+                       | ManifestConstructor typ ->
+                           ManifestConstructor
+                             (apply_let_in_type
+                                local_typ_param_aliases typ)
+                     in
+                     (source, target))
+            in
+            let* let_in_type =
+              typ_params_with_paths
+              |> Monad.List.fold_left
+                   (fun let_in_type (path, _, typ) ->
+                     let* source_path =
+                       Monad.List.map (Name.of_string false) path
+                     in
+                     let source = name :: source_path in
+                     match typ with
+                     | Some (Type.Variable target) ->
+                         return
+                           ( ( source,
                                LocalConstructor target )
                            :: let_in_type )
                      | Some typ ->
                          let typ = apply_let_in_type let_in_type typ in
                          return
-                           ( ( [ name; typ_name ],
+                           ( ( source,
                                ManifestConstructor typ )
                            :: let_in_type )
                      | None -> return let_in_type)
@@ -345,7 +387,7 @@ let rec items_of_types_signature
             in
             let result =
               ( Module
-                  ( name,
+                  ( field_name,
                     Type.Signature
                       (signature_path_name, record_typ_params) ),
                 let_in_type )

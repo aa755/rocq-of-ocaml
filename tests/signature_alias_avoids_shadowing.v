@@ -20,8 +20,7 @@ Module Extend.
   (** Inclusion of the module [M] *)
   Definition t `{_fargs : FArgs} (a : Set) := M.(BASE.t) a.
   
-  Definition _return `{_fargs : FArgs} {a : Set} : a -> M.(BASE.t) a :=
-    M.(BASE._return).
+  Definition _return `{_fargs : FArgs} {a : Set} : a -> t a := M.(BASE._return).
   
   Definition map `{_fargs : FArgs} {A B : Set} (f_value : A -> B) (x_value : A)
     : M.(BASE.t) B := (M.(BASE._return) (a := B)) (f_value x_value).
@@ -93,8 +92,8 @@ Module Nested.
     Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
       Extend_stable_include.(Extend_stable.Extend_result._return).
     
-    Definition map `{_fargs : FArgs} {A B : Set} : (A -> B) -> A -> M.(BASE.t) B
-      := Extend_stable_include.(Extend_stable.Extend_result.map).
+    Definition map `{_fargs : FArgs} {A B : Set} : (A -> B) -> A -> t B :=
+      Extend_stable_include.(Extend_stable.Extend_result.map).
     
     Module Make_result.
       Record signature `{_fargs : FArgs} : Set := {

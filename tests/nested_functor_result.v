@@ -274,7 +274,7 @@ Module Derived.
   (** Inclusion of the module [Value] *)
   Definition t `{_fargs : FArgs} := Value.(VALUE.t).
   
-  Definition value `{_fargs : FArgs} : Value.(VALUE.t) := Value.(VALUE.value).
+  Definition value `{_fargs : FArgs} : t := Value.(VALUE.value).
   
   Definition retained `{_fargs : FArgs} : list Value.(VALUE.t) :=
     Datatypes.cons value nil.
@@ -321,7 +321,7 @@ Module Shadowed_include.
   (** Inclusion of the module [Value] *)
   Definition t `{_fargs : FArgs} := Value.(VALUE.t).
   
-  Definition value `{_fargs : FArgs} : Value.(VALUE.t) := Value.(VALUE.value).
+  Definition value `{_fargs : FArgs} : t := Value.(VALUE.value).
   
   Module Shadowed_include_result.
     Record signature `{_fargs : FArgs} : Set := {

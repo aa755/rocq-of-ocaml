@@ -35,8 +35,8 @@ Module Outer.
     (** Inclusion of the module [M] *)
     Definition t `{_fargs : FArgs} (a : Set) := M.(Local.t) a.
     
-    Definition inject `{_fargs : FArgs} {a : Set} :
-      X.(Input.t) -> a -> M.(Local.t) a := M.(Local.inject).
+    Definition inject `{_fargs : FArgs} {a : Set} : X.(Input.t) -> a -> t a :=
+      M.(Local.inject).
     
     (* Make *)
     Definition functor `{_fargs : FArgs}

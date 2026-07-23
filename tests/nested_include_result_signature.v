@@ -101,3 +101,56 @@ Module Wrap.
 End Wrap.
 Definition Wrap {Element_t : Set} (Element : ELEMENT (t := Element_t)) :=
   @Wrap.functor Element_t (Wrap.Build_FArgs Element).
+
+Module VALUE.
+  Record signature : Set := {
+    value : int;
+  }.
+End VALUE.
+Definition VALUE := VALUE.signature.
+
+Module Box.
+  Class FArgs := {
+    Value : VALUE;
+  }.
+  
+  Definition value `{_fargs : FArgs} : int := Value.(VALUE.value).
+  
+  (* Box *)
+  Definition functor `{_fargs : FArgs} :VALUE :=
+    {|
+      VALUE.value := (value (_fargs := _fargs))
+    |}.
+End Box.
+Definition Box (Value : VALUE) := @Box.functor (Box.Build_FArgs Value).
+
+Module Pair.
+  Class FArgs := {
+    Value : VALUE;
+  }.
+  
+  Module Left.
+    Definition Repr `{_fargs : FArgs} := Box Value.
+  End Left.
+  
+  Module Right.
+    Definition Repr `{_fargs : FArgs} := Box Value.
+  End Right.
+  
+  Module Pair_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      Left_Repr : VALUE;
+      Right_Repr : VALUE;
+    }.
+  End Pair_result.
+  Definition Pair_result `{_fargs : FArgs} := @Pair_result.signature _.
+  Arguments Pair_result {_}.
+  
+  (* Pair *)
+  Definition functor `{_fargs : FArgs} :@Pair_result _fargs :=
+    ({|
+      Pair_result.Left_Repr (_fargs := _fargs) := Left.Repr;
+      Pair_result.Right_Repr (_fargs := _fargs) := Right.Repr
+    |} : @Pair_result _fargs).
+End Pair.
+Definition Pair (Value : VALUE) := @Pair.functor (Pair.Build_FArgs Value).
