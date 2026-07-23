@@ -523,11 +523,7 @@ let rec items_of_types_signature
                              ModuleTyp.get_signature_concrete_manifest
                                signature_path [ Ident.name type_ident ]
                            in
-                           let* target =
-                             match target_concrete_manifest with
-                             | Some manifest ->
-                                 Type.of_type_expr_without_free_vars manifest
-                             | None -> (
+                           let specialized_target () =
                                match
                                  concrete_manifest_declaration env manifest
                                with
@@ -546,7 +542,19 @@ let rec items_of_types_signature
                                  | Some target -> return target
                                  | None ->
                                      Type.of_type_expr_without_free_vars
-                                       manifest))
+                                       manifest)
+                           in
+                           let* target =
+                             (* A scraped [md_type] already contains the
+                                application-site specialization.  The generic
+                                result signature is needed only to materialize
+                                an applicative functor path. *)
+                             if is_functor_application_alias env manifest then
+                               match target_concrete_manifest with
+                               | Some manifest ->
+                                   Type.of_type_expr_without_free_vars manifest
+                               | None -> specialized_target ()
+                             else specialized_target ()
                            in
                            let target =
                              Type.FunTyps
