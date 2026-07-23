@@ -30,6 +30,8 @@ module Command = struct
     | GetFunctorResultSignature : Path.t -> Path.t option t
     | GetResultModuleField :
         Path.t * string -> Path.t option t
+    | GetResultNamespaceInclude :
+        Path.t * string -> string option t
     | GetAppliedFunctorChild :
         Path.t -> (Path.t * Path.t) option t
     | Raise : 'a * Error.Category.t * string -> 'a t
@@ -103,6 +105,12 @@ module Notations = struct
   let get_result_module_field (result_signature : Path.t)
       (field_name : string) : Path.t option t =
     Command (Command.GetResultModuleField (result_signature, field_name))
+
+  let get_result_namespace_include (result_signature : Path.t)
+      (namespace : string) : string option t =
+    Command
+      (Command.GetResultNamespaceInclude
+         (result_signature, namespace))
 
   let get_applied_functor_child (path : Path.t) :
       (Path.t * Path.t) option t =

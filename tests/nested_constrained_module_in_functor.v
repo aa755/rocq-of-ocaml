@@ -43,7 +43,7 @@ Module F.
   
   Module F_result.
     Record signature `{_fargs : FArgs} : Set := {
-      Impl : Impl.Impl_signature;
+      Impl : F.Impl.Impl_signature;
       t := int;
       value : int;
     }.

@@ -134,16 +134,33 @@ module Command = struct
     | GetValueName ident ->
         Result.success (ValueNames.find ident context.value_names)
     | GetModulePathAlias path ->
-        Result.success
-          (match
-             context.module_path_alias_overrides
-             |> List.find_map (fun (source, target) ->
-                    if Path.same path source then Some target else None)
-           with
+        let normalized_path = normalize_project_path context.env path in
+        let alias =
+          match
+            context.module_path_alias_overrides
+            |> List.find_map (fun (source, target) ->
+                   if
+                     Path.same path source
+                     || Path.same normalized_path
+                          (normalize_project_path context.env source)
+                   then Some target
+                   else None)
+          with
           | Some _ as target -> target
-          | None ->
-              ModulePathAliases.find path context.loc
-                context.module_path_aliases)
+          | None -> (
+              match
+                ModulePathAliases.find path context.loc
+                  context.module_path_aliases
+              with
+              | Some _ as target -> target
+              | None ->
+                  ModulePathAliases.find normalized_path context.loc
+                    context.module_path_aliases)
+        in
+        Result.success
+          (match alias with
+          | Some target when Path.same path target -> None
+          | Some _ | None -> alias)
     | GetSignatureHint path ->
         Result.success
           (match SignatureHints.find path context.signature_hints with
@@ -192,8 +209,19 @@ module Command = struct
                 context.project_hints)
     | GetResultModuleField (result_signature, field_name) ->
         Result.success
-          (SignatureHints.find_result_module_field result_signature
-             field_name context.signature_hints)
+          (match
+             SignatureHints.find_result_module_field result_signature
+               field_name context.signature_hints
+           with
+          | Some _ as result -> result
+          | None ->
+              ProjectHints.find_result_module_field
+                (normalize_project_path context.env result_signature)
+                field_name context.project_hints)
+    | GetResultNamespaceInclude (result_signature, namespace) ->
+        Result.success
+          (SignatureHints.find_result_namespace_include
+             result_signature namespace context.signature_hints)
     | GetAppliedFunctorChild path ->
         Result.success
           (SignatureHints.find_applied_functor_child path

@@ -11,6 +11,7 @@ type t = {
   module_applications : (Path.t * Path.t) list;
   module_aliases : (Path.t * Path.t) list;
   functor_results : (Path.t * Path.t) list;
+  result_module_fields : (Path.t * string * Path.t) list;
   module_types : (Path.t * Types.module_type) list;
 }
 
@@ -20,6 +21,7 @@ let empty =
     module_applications = [];
     module_aliases = [];
     functor_results = [];
+    result_module_fields = [];
     module_types = [];
   }
 
@@ -30,6 +32,8 @@ let merge left right =
       left.module_applications @ right.module_applications;
     module_aliases = left.module_aliases @ right.module_aliases;
     functor_results = left.functor_results @ right.functor_results;
+    result_module_fields =
+      left.result_module_fields @ right.result_module_fields;
     module_types = left.module_types @ right.module_types;
   }
 
@@ -57,6 +61,16 @@ let find_module_result path hints =
 
 let find_functor_result path hints =
   find_path path hints.functor_results
+
+let find_result_module_field result_signature field_name hints =
+  hints.result_module_fields
+  |> List.find_map
+       (fun (candidate_result, candidate_field, field_signature) ->
+         if
+           Path.same candidate_result result_signature
+           && String.equal candidate_field field_name
+         then Some field_signature
+         else None)
 
 let find_module_type path hints =
   find_path path hints.module_types
@@ -272,7 +286,44 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
               (canonical, result) :: !hints.functor_results;
             module_types =
               (result, body.mod_type) :: !hints.module_types;
-          }
+          };
+        (match module_expr_structure body with
+        | Some structure ->
+            structure.str_items
+            |> List.iter (fun (item : Typedtree.structure_item) ->
+                   match item.str_desc with
+                   | Tstr_module
+                       {
+                         mb_id = Some field_ident;
+                         mb_expr;
+                         _;
+                       } -> (
+                       match
+                         SignatureHints.module_expr_anonymous_annotation
+                           mb_expr
+                       with
+                       | Some module_type ->
+                           let field_name = Ident.name field_ident in
+                           let field_path =
+                             Path.Pdot (canonical, field_name)
+                           in
+                           let signature_path =
+                             Path.Pdot
+                               (field_path, field_name ^ "_signature")
+                           in
+                           hints :=
+                             {
+                               !hints with
+                               result_module_fields =
+                                 (result, field_name, signature_path)
+                                 :: !hints.result_module_fields;
+                               module_types =
+                                 (signature_path, module_type.mty_type)
+                                 :: !hints.module_types;
+                             }
+                       | None -> ())
+                   | _ -> ())
+        | None -> ())
     | None -> ()
   in
   let rec collect_structure owner (structure : Typedtree.structure) =
@@ -310,6 +361,24 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
           Path.Pdot (owner, Ident.name ident)
         in
         locals := (ident, canonical) :: !locals;
+        (match
+           SignatureHints.module_expr_anonymous_annotation
+             binding.mb_expr
+         with
+        | Some module_type ->
+            let signature_path =
+              Path.Pdot
+                ( canonical,
+                  Ident.name ident ^ "_signature" )
+            in
+            hints :=
+              {
+                !hints with
+                module_types =
+                  (signature_path, module_type.mty_type)
+                  :: !hints.module_types;
+              }
+        | None -> ());
         add_functor canonical binding;
         (match applied_functor_path binding.mb_expr with
         | Some source_functor ->

@@ -167,7 +167,7 @@ let get_signature_typ_params_arity (signature_path : Path.t) :
           let abstract_functor_applications =
             String.ends_with ~suffix:"_result" (Path.last signature_path)
           in
-          let mapper ident { Types.type_manifest; type_params; _ } =
+          let mapper _path ident { Types.type_manifest; type_params; _ } =
             match type_manifest with
             | None ->
                 return
@@ -177,13 +177,164 @@ let get_signature_typ_params_arity (signature_path : Path.t) :
             | Some manifest
               when abstract_functor_applications
                    && is_functor_application_alias manifest ->
-                return
-                  (Some
-                     (Tree.Item
-                        (Ident.name ident, List.length type_params)))
+                let is_constrained =
+                  match Types.get_desc manifest with
+                  | Types.Tconstr (path, _, _) -> (
+                      match Env.find_type path env with
+                      | { Types.type_manifest = Some _; _ } -> true
+                      | { Types.type_manifest = None; _ }
+                      | exception Not_found ->
+                          false)
+                  | _ -> false
+                in
+                if is_constrained then return None
+                else
+                  return
+                    (Some
+                       (Tree.Item
+                          (Ident.name ident, List.length type_params)))
             | Some _ -> return None
           in
           ModuleTypParams.get_module_typ_typ_params mapper module_type)
+
+let get_signature_type_declaration (signature_path : Path.t)
+    (type_path : string list) : Types.type_declaration option Monad.t =
+  let* env = get_env in
+  let rec find_in_module_type visited_paths module_type type_path =
+    match (module_type, type_path) with
+    | Types.Mty_signature signature, [ type_name ] ->
+        return
+          (signature
+          |> List.find_map (function
+               | Types.Sig_type (ident, declaration, _, _)
+                 when String.equal (Ident.name ident) type_name ->
+                   Some declaration
+               | _ -> None))
+    | Types.Mty_signature signature, module_name :: remaining ->
+        (match
+           signature
+           |> List.find_map (function
+                | Types.Sig_module (ident, _, declaration, _, _)
+                  when String.equal (Ident.name ident) module_name ->
+                    Some declaration.Types.md_type
+                | _ -> None)
+         with
+        | Some module_type ->
+            find_in_module_type visited_paths module_type remaining
+        | None -> return None)
+    | (Types.Mty_alias path | Types.Mty_ident path), _ ->
+        let path_name = Path.name path in
+        if List.mem path_name visited_paths then return None
+        else
+          let visited_paths = path_name :: visited_paths in
+          (match module_type with
+          | Types.Mty_alias path -> (
+              match Env.find_module path env with
+              | { Types.md_type; _ } ->
+                  find_in_module_type visited_paths md_type type_path
+              | exception Not_found ->
+                  let* hinted = get_module_type_hint path in
+                  (match hinted with
+                  | Some module_type ->
+                      find_in_module_type visited_paths module_type type_path
+                  | None -> return None))
+          | Types.Mty_ident path -> (
+              match Env.find_modtype path env with
+              | { Types.mtd_type = Some module_type; _ } ->
+                  find_in_module_type visited_paths module_type type_path
+              | { Types.mtd_type = None; _ }
+              | exception Not_found ->
+                  let* hinted = get_module_type_hint path in
+                  (match hinted with
+                  | Some module_type ->
+                      find_in_module_type visited_paths module_type type_path
+                  | None -> return None))
+          | _ -> return None)
+    | Types.Mty_functor _, _
+    | Types.Mty_for_hole, _
+    | _, [] ->
+        return None
+  in
+  let* module_type =
+    match Env.find_modtype signature_path env with
+    | { Types.mtd_type = Some module_type; _ } -> return (Some module_type)
+    | { Types.mtd_type = None; _ }
+    | exception Not_found ->
+        get_module_type_hint signature_path
+  in
+  match module_type with
+  | Some module_type -> find_in_module_type [] module_type type_path
+  | None -> return None
+
+let get_signature_concrete_manifest (signature_path : Path.t)
+    (type_path : string list) : Types.type_expr option Monad.t =
+  let* env = get_env in
+  let rec local_path_components path =
+    match path with
+    | Path.Pident ident -> Some [ Ident.name ident ]
+    | Path.Pdot (prefix, field) ->
+        Option.map
+          (fun prefix -> prefix @ [ field ])
+          (local_path_components prefix)
+    | Path.Pextra_ty (prefix, Path.Pext_ty) ->
+        local_path_components prefix
+    | Path.Pextra_ty (prefix, Path.Pcstr_ty field) ->
+        Option.map
+          (fun prefix -> prefix @ [ field ])
+          (local_path_components prefix)
+    | Path.Papply _ -> None
+  in
+  let rec resolve visited followed_declaration typ =
+    match Types.get_desc typ with
+    | Types.Tconstr (path, _, _) ->
+        let path_name = Path.name path in
+        if List.mem path_name visited then return None
+        else
+          let visited = path_name :: visited in
+          (match Env.find_type path env with
+          | { Types.type_manifest = Some manifest; _ } ->
+              resolve visited true manifest
+          | { Types.type_manifest = None; _ }
+          | exception Not_found -> (
+              match local_path_components path with
+              | Some local_path ->
+                  let* declaration =
+                    get_signature_type_declaration signature_path local_path
+                  in
+                  (match declaration with
+                  | Some { Types.type_manifest = Some manifest; _ } ->
+                      resolve visited true manifest
+                  | Some { Types.type_manifest = None; _ } ->
+                      return None
+                  | None ->
+                      if
+                        followed_declaration
+                        && not (path_contains_functor_application path)
+                      then return (Some typ)
+                      else return None)
+              | None ->
+                  if
+                    followed_declaration
+                    && not (path_contains_functor_application path)
+                  then return (Some typ)
+                  else return None))
+    | Types.Tlink typ
+    | Types.Tsubst (typ, _)
+    | Types.Tpoly (typ, _) ->
+        resolve visited followed_declaration typ
+    | _ ->
+        if followed_declaration then return (Some typ)
+        else return None
+  in
+  let* declaration =
+    get_signature_type_declaration signature_path type_path
+  in
+  match declaration with
+  | Some { Types.type_manifest = Some manifest; _ } ->
+      resolve [] true manifest
+  | Some { Types.type_manifest = None; _ }
+  | None ->
+      return None
 
 let rec get_module_typ_desc_path (module_typ_desc : Typedtree.module_type_desc)
     : Path.t option =
@@ -392,7 +543,7 @@ let rec of_types ?result_signature_path
           let* signature_path_name =
             PathName.of_path_with_convert false signature_path
           in
-          let mapper ident { Types.type_manifest; type_params; _ } =
+          let mapper _path ident { Types.type_manifest; type_params; _ } =
             let name = Ident.name ident in
             let* arity_or_typ =
               match type_manifest with

@@ -17,6 +17,7 @@ type t = {
     (Path.t * Typedtree.module_type list) list;
   functor_result_signatures : (Path.t * Path.t) list;
   result_module_fields : (Path.t * string * Path.t) list;
+  result_namespace_includes : (Path.t * string * string) list;
   applied_functor_children :
     (Path.t * Path.t * Path.t) list;
 }
@@ -30,6 +31,7 @@ let empty : t =
     functor_parameter_types = [];
     functor_result_signatures = [];
     result_module_fields = [];
+    result_namespace_includes = [];
     applied_functor_children = [];
   }
 
@@ -137,6 +139,17 @@ let find_result_module_field (result_signature : Path.t)
            Path.same candidate_result result_signature
            && String.equal candidate_field field_name
          then Some field_signature
+         else None)
+
+let find_result_namespace_include (result_signature : Path.t)
+    (namespace : string) (hints : t) : string option =
+  hints.result_namespace_includes
+  |> List.find_map
+       (fun (candidate_result, candidate_namespace, included_field) ->
+         if
+           Path.same candidate_result result_signature
+           && String.equal candidate_namespace namespace
+         then Some included_field
          else None)
 
 let find_applied_functor_child (path : Path.t) (hints : t) :
@@ -434,6 +447,7 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
   let direct_functor_children = ref [] in
   let direct_applied_children = ref [] in
   let direct_signature_children = ref [] in
+  let nested_namespace_includes = ref [] in
   let module_applied_children = ref [] in
   let module_aliases = ref [] in
   let collect_synthetic_results =
@@ -476,6 +490,57 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
               match module_expr_structure body with
               | None -> ()
               | Some structure ->
+                  let direct_applied_modules =
+                    structure.str_items
+                    |> List.filter_map
+                         (fun (item : Typedtree.structure_item) ->
+                           match item.str_desc with
+                           | Tstr_module
+                               {
+                                 mb_id = Some child_ident;
+                                 mb_expr;
+                                 _;
+                               }
+                             when
+                               Option.is_some
+                                 (applied_functor_path mb_expr) ->
+                               Some (Ident.name child_ident)
+                           | _ -> None)
+                  in
+                  let rec collect_namespace_includes prefix structure =
+                    structure.str_items
+                    |> List.iter
+                         (fun (item : Typedtree.structure_item) ->
+                           match item.str_desc with
+                           | Tstr_include { incl_mod; _ } -> (
+                               match aliased_module_path incl_mod with
+                               | Some included_module
+                                 when prefix <> []
+                                      && List.mem
+                                           (Path.last included_module)
+                                           direct_applied_modules ->
+                                   nested_namespace_includes :=
+                                     ( Path.Pident outer_ident,
+                                       String.concat "_" prefix,
+                                       Path.last included_module )
+                                     :: !nested_namespace_includes
+                               | Some _ | None -> ())
+                           | Tstr_module
+                               {
+                                 mb_id = Some child_ident;
+                                 mb_expr;
+                                 _;
+                               } -> (
+                               match module_expr_structure mb_expr with
+                               | Some child_structure ->
+                                   collect_namespace_includes
+                                     (prefix
+                                     @ [ Ident.name child_ident ])
+                                     child_structure
+                               | None -> ())
+                           | _ -> ())
+                  in
+                  collect_namespace_includes [] structure;
                   structure.str_items
                   |> List.iter (fun (item : Typedtree.structure_item) ->
                          (match item.str_desc with
@@ -512,17 +577,27 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                              match
                                module_expr_anonymous_annotation mb_expr
                              with
-                             | Some _ ->
+                             | Some module_type ->
                                  let child_path =
-                                   Path.Pident child_ident
+                                   Path.Pdot
+                                     ( Path.Pident outer_ident,
+                                       Ident.name child_ident )
                                  in
+                                 let signature_path =
+                                   Path.Pdot
+                                     ( child_path,
+                                       Ident.name child_ident
+                                       ^ "_signature" )
+                                 in
+                                 module_types :=
+                                   ( signature_path,
+                                     module_type.mty_type,
+                                     module_type.mty_loc )
+                                   :: !module_types;
                                  direct_signature_children :=
                                    ( Path.Pident outer_ident,
                                      Ident.name child_ident,
-                                     Path.Pdot
-                                       ( child_path,
-                                         Ident.name child_ident
-                                         ^ "_signature" ) )
+                                     signature_path )
                                    :: !direct_signature_children
                              | None -> ())
                          | _ -> ());
@@ -900,6 +975,26 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
              | ordering -> ordering)
          | ordering -> ordering)
   in
+  let result_namespace_includes =
+    !nested_namespace_includes
+    |> List.filter_map
+         (fun (outer_functor, namespace, included_field) ->
+           Option.map
+             (fun result_signature ->
+               (result_signature, namespace, included_field))
+             (find_functor_result outer_functor))
+    |> List.sort_uniq
+         (fun
+           (left_result, left_namespace, left_field)
+           (right_result, right_namespace, right_field)
+         ->
+           match Path.compare left_result right_result with
+           | 0 -> (
+               match String.compare left_namespace right_namespace with
+               | 0 -> String.compare left_field right_field
+               | ordering -> ordering)
+           | ordering -> ordering)
+  in
   let rec find_parameter_types visited path =
     if List.exists (Path.same path) visited then None
     else
@@ -968,6 +1063,7 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
         @ !functor_parameter_types_by_path);
     functor_result_signatures;
     result_module_fields;
+    result_namespace_includes;
     applied_functor_children =
       List.rev !applied_functor_children;
   }

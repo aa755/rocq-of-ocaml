@@ -187,6 +187,15 @@ module ModuleTypValues = struct
                  then return []
                  else
                  let* module_name = Name.of_ident false ident in
+                 let* module_access =
+                   match md_type with
+                   | Mty_alias path ->
+                       let* { PathName.path; base } =
+                         PathName.of_path_without_convert false path
+                       in
+                       return (path @ [ base ])
+                   | _ -> return (access @ [ module_name ])
+                 in
                  let* is_first_class =
                    IsFirstClassModule.is_module_typ_first_class md_type
                      (Some (Path.Pident ident))
@@ -204,7 +213,7 @@ module ModuleTypValues = struct
                        [
                          {
                            field;
-                           access = access @ [ module_name ];
+                           access = module_access;
                            nb_free_vars;
                          };
                        ]
@@ -224,7 +233,7 @@ module ModuleTypValues = struct
                        [
                          {
                            field;
-                           access = access @ [ module_name ];
+                           access = module_access;
                            nb_free_vars;
                          };
                        ]
@@ -233,7 +242,7 @@ module ModuleTypValues = struct
                      | Mty_signature signature ->
                          get_signature
                            (prefix @ [ Ident.name ident ])
-                           (access @ [ module_name ]) signature
+                           module_access signature
                      | _ ->
                          raise [] Unexpected
                            ("Nested module `" ^ Ident.name ident

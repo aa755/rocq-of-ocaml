@@ -47,7 +47,7 @@ Module Make.
   
   Module Make_result.
     Record signature `{_fargs : FArgs} {Impl_t : Set} : Set := {
-      Impl : Impl.Impl_signature (t := Impl_t);
+      Impl : Make.Impl.Impl_signature (t := Impl_t);
       t := Impl_t;
       make : int -> Impl_t;
       identity : Impl_t -> Impl_t;
