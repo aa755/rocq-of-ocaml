@@ -21,13 +21,35 @@ end
 module RenamingRule = struct
   type t = { source : string; target : string }
 
+  let remove_suffix (suffix : string) (value : string) : string option =
+    let suffix_length = String.length suffix in
+    let value_length = String.length value in
+    if
+      value_length >= suffix_length
+      && String.sub value (value_length - suffix_length) suffix_length = suffix
+    then Some (String.sub value 0 (value_length - suffix_length))
+    else None
+
+  let rewrite ({ source; target } : t) (path : string) : string option =
+    match remove_suffix ".*" source with
+    | Some source_prefix ->
+        let qualified_prefix = source_prefix ^ "." in
+        let prefix_length = String.length qualified_prefix in
+        if
+          String.length path > prefix_length
+          && String.sub path 0 prefix_length = qualified_prefix
+        then
+          Some
+            (target ^ "."
+            ^ String.sub path prefix_length (String.length path - prefix_length))
+        else None
+    | None -> if source = path then Some target else None
+
   let find (rules : t list) (source : string) : string option =
     rules
     |> (* We reverse the list so that the last entry is taken into account. *)
     List.rev
-    |> List.find_opt (fun { source = current_source; _ } ->
-           current_source = source)
-    |> Option.map (fun { target; _ } -> target)
+    |> List.find_map (fun rule -> rewrite rule source)
 end
 
 module VariantMapping = struct
@@ -61,6 +83,7 @@ type t = {
   require_mli : string list;
   variant_constructors : VariantMapping.t list;
   variant_types : VariantMapping.t list;
+  without_default_imports : bool;
   without_guard_checking : string list;
   without_positivity_checking : string list;
 }
@@ -95,6 +118,7 @@ let default (file_name : string) : t =
     require_mli = [];
     variant_constructors = [];
     variant_types = [];
+    without_default_imports = false;
     without_guard_checking = [];
     without_positivity_checking = [];
   }
@@ -116,8 +140,21 @@ let is_category_in_error_blacklist (configuration : t) (error_id : string) :
     bool =
   List.mem error_id configuration.error_category_blacklist
 
+let filename_matches (actual : string) (configured : string) : bool =
+  actual = configured
+  ||
+  let actual_length = String.length actual in
+  let configured_length = String.length configured in
+  configured_length < actual_length
+  && String.ends_with ~suffix:configured actual
+  && actual.[actual_length - configured_length - 1] = '/'
+
+let filename_is_listed (actual : string) (configured : string list) : bool =
+  List.exists (filename_matches actual) configured
+
 let is_filename_in_error_blacklist (configuration : t) : bool =
-  List.mem configuration.file_name configuration.error_filename_blacklist
+  filename_is_listed configuration.file_name
+    configuration.error_filename_blacklist
 
 let is_message_in_error_blacklist (configuration : t) (message : string) : bool
     =
@@ -249,10 +286,14 @@ let get_variant_typ (configuration : t) (name : string) : string option =
   |> Option.map (fun { VariantMapping.target; _ } -> target)
 
 let is_without_guard_checking (configuration : t) : bool =
-  List.mem configuration.file_name configuration.without_guard_checking
+  filename_is_listed configuration.file_name configuration.without_guard_checking
+
+let is_without_default_imports (configuration : t) : bool =
+  configuration.without_default_imports
 
 let is_without_positivity_checking (configuration : t) : bool =
-  List.mem configuration.file_name configuration.without_positivity_checking
+  filename_is_listed configuration.file_name
+    configuration.without_positivity_checking
 
 let get_bool (id : string) (json : Yojson.Basic.t) : bool =
   let error_message = "Expected a boolean in " ^ id in
@@ -458,6 +499,9 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                        { VariantMapping.source; target })
               in
               { configuration with variant_types = entry }
+          | "without_default_imports" ->
+              let entry = get_bool "without_default_imports" entry in
+              { configuration with without_default_imports = entry }
           | "without_guard_checking" ->
               let entry = get_string_list "without_guard_checking" entry in
               { configuration with without_guard_checking = entry }

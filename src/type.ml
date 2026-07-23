@@ -66,7 +66,7 @@ let rec tag_typ_constr_aux (existential_typs : Name.Set.t) (typ : t) : t Monad.t
       let is_existential =
         match mpath with
         | PathName { path = []; base } -> Name.Set.mem base existential_typs
-        | Access _ | PathName _ -> false
+        | Access _ | AppliedAccess _ | PathName _ -> false
       in
       if is_existential || is_tuple_tag then return typ
       else
@@ -164,7 +164,11 @@ module VariableKindAnalysis = struct
                            match typ_param with
                            | AdtParameters.AdtVariable.Parameter _ -> Set
                            | _ ->
-                               if Path.name path = "array" then Set else Phantom
+                               if
+                                 Path.name path = "array"
+                                 || Path.name path = "iarray"
+                               then Set
+                               else Phantom
                          in
                          (typ, kind))
                        typs typ_params)
@@ -295,11 +299,25 @@ and typ_args_of_typs (typs : t list) : Name.Set.t =
     (fun args typ -> Name.Set.union args (typ_args_of_typ typ))
     Name.Set.empty typs
 
-let subst_name (source : Name.t) (target : Name.t) (typ : t) : t =
+let subst_path (source : Name.t list) (target : Name.t) (typ : t) : t =
+  let names_are_equal (left : Name.t list) (right : Name.t list) : bool =
+    List.length left = List.length right
+    && List.for_all2 Name.equal left right
+  in
+  let mixed_path_names (path : MixedPath.t) : Name.t list =
+    match path with
+    | MixedPath.PathName { path; base } -> path @ [ base ]
+    | MixedPath.Access ({ path; base }, fields)
+    | MixedPath.AppliedAccess ({ path; base }, _, fields) ->
+        path @ [ base ] @ List.map (fun field -> field.PathName.base) fields
+  in
   let rec subst (typ : t) : t =
     let subst_after_names (names : Name.t list) (typ : t) : t =
       let should_substitute =
-        not (names |> List.exists (fun name -> Name.equal name source))
+        match source with
+        | [ source ] ->
+            not (names |> List.exists (fun name -> Name.equal name source))
+        | _ -> true
       in
       if should_substitute then subst typ else typ
     in
@@ -308,15 +326,15 @@ let subst_name (source : Name.t) (target : Name.t) (typ : t) : t =
       subst_after_names (List.map fst names) typ
     in
     match typ with
-    | Variable name -> if Name.equal name source then Variable target else typ
+    | Variable name ->
+        if names_are_equal [ name ] source then Variable target else typ
     | Arrow (typ1, typ2) -> Arrow (subst typ1, subst typ2)
     | Tuple typs -> Tuple (List.map subst typs)
     | Apply (constructor, typs) ->
-        let constructor_with_subst =
-          match constructor with
-          | PathName { path = []; base } when Name.equal base source ->
-              MixedPath.PathName { path = []; base = target }
-          | _ -> constructor
+      let constructor_with_subst =
+          if names_are_equal (mixed_path_names constructor) source then
+            MixedPath.PathName { path = []; base = target }
+          else constructor
         in
         let ts, bs = List.split typs in
         let ts = List.map subst ts in
@@ -337,6 +355,251 @@ let subst_name (source : Name.t) (target : Name.t) (typ : t) : t =
     | _ -> typ
   in
   subst typ
+
+let direct_constructor_path (typ : t) : MixedPath.t option =
+  let arguments_are_parameters parameters arguments =
+    List.length parameters = List.length arguments
+    && List.for_all2
+         (fun parameter (argument, _) ->
+           match argument with
+           | Variable name -> Name.equal parameter name
+           | _ -> false)
+         parameters arguments
+  in
+  match typ with
+  | Apply (path, []) -> Some path
+  | FunTyps (parameters, Apply (path, arguments))
+    when arguments_are_parameters parameters arguments ->
+      Some path
+  | _ -> None
+
+let subst_constructor_path (source : Name.t list) (target : MixedPath.t)
+    (typ : t) : t =
+  let names_are_equal left right =
+    List.length left = List.length right
+    && List.for_all2 Name.equal left right
+  in
+  let mixed_path_names = function
+    | MixedPath.PathName { path; base } -> path @ [ base ]
+    | MixedPath.Access ({ path; base }, fields)
+    | MixedPath.AppliedAccess ({ path; base }, _, fields) ->
+        path @ [ base ] @ List.map (fun field -> field.PathName.base) fields
+  in
+  let source_is_bound names =
+    match source with
+    | [ source_name ] ->
+        List.exists (fun name -> Name.equal source_name name) names
+    | _ -> false
+  in
+  let rec subst typ =
+    match typ with
+    | Variable _ | Kind _ | String _ | Error _ -> typ
+    | Arrow (left, right) -> Arrow (subst left, subst right)
+    | Eq (left, right) -> Eq (subst left, subst right)
+    | Tuple types -> Tuple (List.map subst types)
+    | Apply (constructor, arguments) ->
+        let constructor =
+          if names_are_equal (mixed_path_names constructor) source then target
+          else constructor
+        in
+        Apply
+          ( constructor,
+            List.map (fun (argument, tag) -> (subst argument, tag)) arguments )
+    | Signature (path, parameters) ->
+        Signature
+          (path, List.map (fun (name, typ) -> (name, Option.map subst typ)) parameters)
+    | ForallModule (name, parameter, result) ->
+        ForallModule (name, subst parameter, subst result)
+    | ExistTyps (parameters, body) ->
+        if source_is_bound (List.map fst parameters) then typ
+        else ExistTyps (parameters, subst body)
+    | ForallTyps (parameters, body) ->
+        if source_is_bound (List.map fst parameters) then typ
+        else ForallTyps (parameters, subst body)
+    | FunTyps (parameters, body) ->
+        if source_is_bound parameters then typ
+        else FunTyps (parameters, subst body)
+    | Let (name, value, body) ->
+        Let
+          ( name,
+            subst value,
+            if source_is_bound [ name ] then body else subst body )
+  in
+  subst typ
+
+(** Replace a constructor application as a whole.  This is used for abstract
+    associated types returned by nested functors: the temporary constructor
+    [F_t FArgs] denotes the concrete companion [F.t] at those arguments, so
+    retaining the temporary application's arguments would apply them twice. *)
+let subst_constructor_application (source : Name.t) (target : t) (typ : t) :
+    t =
+  let is_source = function
+    | MixedPath.PathName { path = []; base } -> Name.equal base source
+    | MixedPath.Access _ | MixedPath.AppliedAccess _
+    | MixedPath.PathName _ ->
+        false
+  in
+  let rec subst typ =
+    match typ with
+    | Variable name when Name.equal name source -> target
+    | Variable _ | Kind _ | String _ | Error _ -> typ
+    | Arrow (left, right) -> Arrow (subst left, subst right)
+    | Eq (left, right) -> Eq (subst left, subst right)
+    | Tuple types -> Tuple (List.map subst types)
+    | Apply (constructor, _) when is_source constructor -> target
+    | Apply (constructor, arguments) ->
+        Apply
+          ( constructor,
+            List.map (fun (argument, tag) -> (subst argument, tag)) arguments )
+    | Signature (path, parameters) ->
+        Signature
+          (path, List.map (fun (name, typ) -> (name, Option.map subst typ)) parameters)
+    | ForallModule (name, parameter, result) ->
+        ForallModule (name, subst parameter, subst result)
+    | ExistTyps (parameters, body) ->
+        if List.exists (fun (name, _) -> Name.equal name source) parameters then
+          typ
+        else ExistTyps (parameters, subst body)
+    | ForallTyps (parameters, body) ->
+        if List.exists (fun (name, _) -> Name.equal name source) parameters then
+          typ
+        else ForallTyps (parameters, subst body)
+    | FunTyps (parameters, body) ->
+        if List.exists (Name.equal source) parameters then typ
+        else FunTyps (parameters, subst body)
+    | Let (name, value, body) ->
+        Let
+          ( name,
+            subst value,
+            if Name.equal name source then body else subst body )
+  in
+  subst typ
+
+(** Replace applications of a local type constructor by its manifest
+    definition.  A parameterized definition is represented by [FunTyps] and
+    beta-reduced against the constructor arguments. *)
+let subst_constructor_definition (source : Name.t list) (target : t) (typ : t)
+    : t =
+  let names_are_equal left right =
+    List.length left = List.length right
+    && List.for_all2 Name.equal left right
+  in
+  let mixed_path_names = function
+    | MixedPath.PathName { path; base } -> path @ [ base ]
+    | MixedPath.Access ({ path; base }, fields)
+    | MixedPath.AppliedAccess ({ path; base }, _, fields) ->
+        path @ [ base ] @ List.map (fun field -> field.PathName.base) fields
+  in
+  let remove_bound substitutions names =
+    substitutions
+    |> List.filter (fun (name, _) ->
+           not (List.exists (Name.equal name) names))
+  in
+  let rec subst_variables substitutions typ =
+    let recurse = subst_variables substitutions in
+    match typ with
+    | Variable name -> (
+        match
+          List.find_opt
+            (fun (source, _) -> Name.equal source name)
+            substitutions
+        with
+        | Some (_, target) -> target
+        | None -> typ)
+    | Kind _ | String _ | Error _ -> typ
+    | Arrow (left, right) -> Arrow (recurse left, recurse right)
+    | Eq (left, right) -> Eq (recurse left, recurse right)
+    | Tuple types -> Tuple (List.map recurse types)
+    | Apply (constructor, arguments) ->
+        Apply
+          ( constructor,
+            List.map (fun (argument, tag) -> (recurse argument, tag)) arguments )
+    | Signature (path, parameters) ->
+        Signature
+          ( path,
+            List.map
+              (fun (name, typ) -> (name, Option.map recurse typ))
+              parameters )
+    | ForallModule (name, parameter, result) ->
+        ForallModule
+          ( name,
+            recurse parameter,
+            subst_variables (remove_bound substitutions [ name ]) result )
+    | ExistTyps (parameters, body) ->
+        ExistTyps
+          ( parameters,
+            subst_variables
+              (remove_bound substitutions (List.map fst parameters))
+              body )
+    | ForallTyps (parameters, body) ->
+        ForallTyps
+          ( parameters,
+            subst_variables
+              (remove_bound substitutions (List.map fst parameters))
+              body )
+    | FunTyps (parameters, body) ->
+        FunTyps
+          ( parameters,
+            subst_variables (remove_bound substitutions parameters) body )
+    | Let (name, value, body) ->
+        Let
+          ( name,
+            recurse value,
+            subst_variables (remove_bound substitutions [ name ]) body )
+  in
+  let source_is_bound names =
+    match source with
+    | [ source_name ] -> List.exists (Name.equal source_name) names
+    | _ -> false
+  in
+  let instantiate original arguments =
+    match target with
+    | FunTyps (parameters, body)
+      when List.length parameters = List.length arguments ->
+        subst_variables (List.combine parameters arguments) body
+    | _ when arguments = [] -> target
+    | _ -> original
+  in
+  let rec subst typ =
+    match typ with
+    | Variable _ | Kind _ | String _ | Error _ -> typ
+    | Arrow (left, right) -> Arrow (subst left, subst right)
+    | Eq (left, right) -> Eq (subst left, subst right)
+    | Tuple types -> Tuple (List.map subst types)
+    | Apply (constructor, arguments) ->
+        let arguments =
+          List.map (fun (argument, tag) -> (subst argument, tag)) arguments
+        in
+        if names_are_equal (mixed_path_names constructor) source then
+          instantiate typ (List.map fst arguments)
+        else Apply (constructor, arguments)
+    | Signature (path, parameters) ->
+        Signature
+          ( path,
+            List.map
+              (fun (name, typ) -> (name, Option.map subst typ))
+              parameters )
+    | ForallModule (name, parameter, result) ->
+        ForallModule (name, subst parameter, subst result)
+    | ExistTyps (parameters, body) ->
+        if source_is_bound (List.map fst parameters) then typ
+        else ExistTyps (parameters, subst body)
+    | ForallTyps (parameters, body) ->
+        if source_is_bound (List.map fst parameters) then typ
+        else ForallTyps (parameters, subst body)
+    | FunTyps (parameters, body) ->
+        if source_is_bound parameters then typ
+        else FunTyps (parameters, subst body)
+    | Let (name, value, body) ->
+        Let
+          ( name,
+            subst value,
+            if source_is_bound [ name ] then body else subst body )
+  in
+  subst typ
+
+let subst_name (source : Name.t) (target : Name.t) (typ : t) : t =
+  subst_path [ source ] target typ
 
 let apply_with_notations (mixed_path : MixedPath.t) (typs : t list)
     (tag_list : bool list) : t Monad.t =
@@ -394,7 +657,7 @@ let simplified_contructor_path (path : Path.t) (arity : int) :
     MixedPath.t Monad.t =
   let* mixed_path = MixedPath.of_path false path in
   match mixed_path with
-  | Access _ -> (
+  | Access _ | AppliedAccess _ -> (
       let* path = PathName.iterate_in_aliases path arity in
       try
         (* By calling this function we check that we do not have a path with
@@ -528,46 +791,89 @@ and existential_typs_of_typs (typs : Types.type_expr list) : Name.Set.t Monad.t
     Name.Set.empty typs
 
 (** Import an OCaml type. Add to the environment all the new free type variables. *)
-let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
+let rec path_contains_functor_application (path : Path.t) : bool =
+  match path with
+  | Path.Papply _ -> true
+  | Pdot (prefix, _) | Pextra_ty (prefix, _) ->
+      path_contains_functor_application prefix
+  | Pident _ -> false
+
+let constructor_path_contains_functor_application (typ : Types.type_expr) :
+    bool =
+  match Types.get_desc typ with
+  | Tconstr (path, _, _) -> path_contains_functor_application path
+  | _ -> false
+
+let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
+    (with_free_vars : bool)
     (typ_vars : Name.t Name.Map.t) (typ : Types.type_expr) :
     (t * Name.t Name.Map.t * VarEnv.t) Monad.t =
-  match Types.get_desc typ with
-  | Tvar x | Tunivar x ->
-      (match x with
-      | None ->
-          if with_free_vars then
-            let n = Name.Map.cardinal typ_vars in
-            return
-              ( Printf.sprintf "A%d" (Types.get_id typ),
-                String.make 1 (Char.chr (Char.code 'A' + n)) )
-          else
-            raise ("_", "_") NotSupported
-              "The placeholders `_` in types are not handled"
-      | Some x -> return (x, x))
-      >>= fun (source_name, generated_name) ->
-      let* source_name = Name.of_string false source_name in
-      let* generated_name = Name.of_string false generated_name in
-      let typ = if should_tag then Kind.Tag else Kind.Set in
-      let typ_vars, new_typ_vars, name =
-        if Name.Map.mem source_name typ_vars then
-          let name = Name.Map.find source_name typ_vars in
-          (typ_vars, [ (name, typ) ], name)
-        else
-          let typ_vars = Name.Map.add source_name generated_name typ_vars in
-          (typ_vars, [ (generated_name, typ) ], generated_name)
+  let* typ =
+    if expand_aliases then
+      let* env = get_env in
+      let expanded =
+        try Ctype.full_expand ~may_forget_scope:false env typ
+        with _ -> typ
       in
-      return (Variable name, typ_vars, new_typ_vars)
+      return
+        (if
+           (not (constructor_path_contains_functor_application typ))
+           && constructor_path_contains_functor_application expanded
+         then typ
+         else expanded)
+    else return typ
+  in
+  match Types.get_desc typ with
+  | Tvar x | Tunivar x -> (
+      let typ_kind = if should_tag then Kind.Tag else Kind.Set in
+      match x with
+      | Some source_name ->
+          let* source_name = Name.of_string false source_name in
+          let generated_name = source_name in
+          let typ_vars, new_typ_vars, name =
+            match Name.Map.find_opt source_name typ_vars with
+            | Some name -> (typ_vars, [ (name, typ_kind) ], name)
+            | None ->
+                ( Name.Map.add source_name generated_name typ_vars,
+                  [ (generated_name, typ_kind) ],
+                  generated_name )
+          in
+          return (Variable name, typ_vars, new_typ_vars)
+      | None ->
+          let* source_name =
+            Name.of_string false
+              (Printf.sprintf "A%d" (Types.get_id typ))
+          in
+          (match Name.Map.find_opt source_name typ_vars with
+          | Some name ->
+              return
+                (Variable name, typ_vars, [ (name, typ_kind) ])
+          | None when with_free_vars ->
+              let n = Name.Map.cardinal typ_vars in
+              let* generated_name =
+                Name.of_string false
+                  (String.make 1 (Char.chr (Char.code 'A' + n)))
+              in
+              return
+                ( Variable generated_name,
+                  Name.Map.add source_name generated_name typ_vars,
+                  [ (generated_name, typ_kind) ] )
+          | None ->
+              raise
+                (Variable (Name.of_string_raw "_"), typ_vars, [])
+                NotSupported
+                "An unnamed type variable escaped its polymorphic scope"))
   | Tarrow (_, typ_x, typ_y, _) ->
-      of_typ_expr ~should_tag with_free_vars typ_vars typ_x
+      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ_x
       >>= fun (typ_x, typ_vars, new_typ_vars_x) ->
-      of_typ_expr ~should_tag with_free_vars typ_vars typ_y
+      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ_y
       >>= fun (typ_y, typ_vars, new_typ_vars_y) ->
       let new_typ_vars = VarEnv.union new_typ_vars_x new_typ_vars_y in
       return (Arrow (typ_x, typ_y), typ_vars, new_typ_vars)
   | Ttuple typs ->
       let typs = List.map snd typs in
       let tag_list = tag_args_with should_tag typs in
-      of_typs_exprs ~tag_list with_free_vars typs typ_vars
+      of_typs_exprs ~expand_aliases ~tag_list with_free_vars typs typ_vars
       >>= fun (typs, typ_vars, new_typ_vars) ->
       return (Tuple typs, typ_vars, new_typ_vars)
   | Tconstr (path, typs, _) ->
@@ -594,7 +900,7 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
       if not is_tagged_variant then
         let tag_list = tag_no_args typs in
         let* typs, typ_vars, new_typs_vars =
-          of_typs_exprs with_free_vars typs typ_vars
+          of_typs_exprs ~expand_aliases with_free_vars typs typ_vars
         in
         let* typ = apply_with_notations mixed_path typs tag_list in
         return (typ, typ_vars, new_typs_vars)
@@ -610,7 +916,7 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
         let* tag_list = get_constr_arg_tags path in
         let* existential_typs = existential_typs_of_typs typs in
         let* typs, typ_vars, new_typs_vars =
-          of_typs_exprs ~tag_list with_free_vars typs typ_vars
+          of_typs_exprs ~expand_aliases ~tag_list with_free_vars typs typ_vars
         in
         let* typs = tag_typ_constr path existential_typs typs in
         let* typ = apply_with_notations mixed_path typs tag_list in
@@ -619,7 +925,7 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
       match !object_descr with
       | Some (path, _ :: typs) ->
           let tag_list = tag_args_with should_tag typs in
-          of_typs_exprs ~tag_list with_free_vars typs typ_vars
+          of_typs_exprs ~expand_aliases ~tag_list with_free_vars typs typ_vars
           >>= fun (typs, typ_vars, new_typ_vars) ->
           let are_tags = tag_no_args typs in
           MixedPath.of_path false path >>= fun mixed_path ->
@@ -632,9 +938,9 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
             (Error "unhandled_object_type", typ_vars, [])
             NotSupported "We do not handle this form of object types")
   | Tfield (_, _, typ1, typ2) ->
-      of_typ_expr ~should_tag with_free_vars typ_vars typ1
+      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ1
       >>= fun (typ1, typ_vars, new_typ_vars1) ->
-      of_typ_expr ~should_tag with_free_vars typ_vars typ2
+      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ2
       >>= fun (typ2, typ_vars, new_typ_vars2) ->
       raise
         ( Tuple [ typ1; typ2 ],
@@ -644,7 +950,7 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
   | Tnil ->
       raise (Error "nil", typ_vars, []) NotSupported "Nil type is not handled"
   | Tlink typ | Tsubst (typ, _) ->
-      of_typ_expr ~should_tag with_free_vars typ_vars typ
+      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ
   | Tvariant row_desc ->
       let row_fields = Types.row_fields row_desc in
       let* path_name = PathName.typ_of_variants (List.map fst row_fields) in
@@ -668,7 +974,7 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
                | Some _ -> Some (typ_arg, 0))
       in
       let* typ, typ_vars, new_typ_vars_typ =
-        of_typ_expr ~should_tag with_free_vars typ_vars typ
+        of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ
       in
       let new_typ_vars_typ =
         VarEnv.remove (List.map fst typ_args) new_typ_vars_typ
@@ -678,7 +984,8 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
       let* path_name = PathName.of_path_without_convert false path in
       Monad.List.fold_left
         (fun (typ_substitutions, typ_vars, new_typ_vars) (path, typ) ->
-          of_typ_expr ~should_tag:false with_free_vars typ_vars typ
+          of_typ_expr ~should_tag:false ~expand_aliases with_free_vars typ_vars
+            typ
           >>= fun (typ, typ_vars, new_typ_vars') ->
           return
             ( (path, typ) :: typ_substitutions,
@@ -720,7 +1027,8 @@ let rec of_typ_expr ?(should_tag = false) (with_free_vars : bool)
           typ_vars,
           new_typ_vars )
 
-and of_typs_exprs (with_free_vars : bool) (typs : Types.type_expr list)
+and of_typs_exprs ?(expand_aliases = false) (with_free_vars : bool)
+    (typs : Types.type_expr list)
     ?(tag_list = tag_no_args typs) (typ_vars : Name.t Name.Map.t) :
     (t list * Name.t Name.Map.t * VarEnv.t) Monad.t =
   if List.length tag_list <> List.length typs then
@@ -734,7 +1042,7 @@ and of_typs_exprs (with_free_vars : bool) (typs : Types.type_expr list)
     let tag_typs = List.combine typs tag_list in
     Monad.List.fold_left
       (fun (typs, typ_vars, new_typ_vars) (typ, should_tag) ->
-        of_typ_expr ~should_tag with_free_vars typ_vars typ
+        of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ
         >>= fun (typ, typ_vars, new_typ_vars') ->
         let new_typ_vars = VarEnv.union new_typ_vars new_typ_vars' in
         return (typ :: typs, typ_vars, new_typ_vars))

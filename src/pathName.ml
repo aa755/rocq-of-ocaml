@@ -97,8 +97,10 @@ let of_long_ident (is_value : bool) (long_ident : Longident.t) : t Monad.t =
 (** Split an [Ident.t] in case of flattened module names. *)
 let split_ident (is_value : bool) (ident : Ident.t) :
     (Name.t list * Name.t) Monad.t =
+  let* renamed = get_value_name ident in
+  let ident_name = Option.value renamed ~default:(Ident.name ident) in
   let ident_elements =
-    Str.split (Str.regexp_string "__") (Ident.name ident) |> List.rev
+    Str.split (Str.regexp_string "__") ident_name |> List.rev
   in
   match ident_elements with
   | base :: path ->
@@ -113,21 +115,29 @@ let split_ident (is_value : bool) (ident : Ident.t) :
 (** Import an OCaml [Path.t]. *)
 let of_path_without_convert (is_value : bool) (path : Path.t) : t Monad.t =
   let rec aux path : (Name.t list * Name.t) Monad.t =
-    match path with
-    | Path.Pident ident -> split_ident is_value ident
-    | Path.Pdot (path, field) ->
-        aux path >>= fun (path, base) ->
-        Name.of_string is_value field >>= fun field ->
-        return (base :: path, field)
-    | Path.Papply _ ->
-        let name = Path.name path in
-        raise ([], Name.Make name) Unexpected
-          ("Unexpected functor path application " ^ Path.name path)
-    | Path.Pextra_ty (path, Path.Pext_ty) -> aux path
-    | Path.Pextra_ty (path, Path.Pcstr_ty field) ->
-        aux path >>= fun (path, base) ->
-        Name.of_string is_value field >>= fun field ->
-        return (base :: path, field)
+    let* module_alias = get_module_path_alias path in
+    match module_alias with
+    | Some alias -> aux alias
+    | None -> (
+        match path with
+        | Path.Pident ident -> (
+            let* alias = get_included_path_alias ident in
+            match alias with
+            | Some alias -> aux alias
+            | None -> split_ident is_value ident)
+        | Path.Pdot (path, field) ->
+            aux path >>= fun (path, base) ->
+            Name.of_string is_value field >>= fun field ->
+            return (base :: path, field)
+        | Path.Papply _ ->
+            let name = Path.name path in
+            raise ([], Name.Make name) Unexpected
+              ("Unexpected functor path application " ^ Path.name path)
+        | Path.Pextra_ty (path, Path.Pext_ty) -> aux path
+        | Path.Pextra_ty (path, Path.Pcstr_ty field) ->
+            aux path >>= fun (path, base) ->
+            Name.of_string is_value field >>= fun field ->
+            return (base :: path, field))
   in
   aux path >>= fun (path, base) -> return (of_name (List.rev path) base)
 
@@ -143,10 +153,11 @@ let of_path_and_name_with_convert (path : Path.t) (name : Name.t) : t Monad.t =
     | Path.Pdot (path, s) ->
         aux path >>= fun (path, base) ->
         Name.of_string false s >>= fun s -> return (path @ [ s ], base)
-    | Path.Papply _ ->
-        let name = Path.name path in
-        raise ([], Name.Make name) Unexpected
-          ("Unexpected functor path application " ^ Path.name path)
+    | Path.Papply (functor_path, _) ->
+        (* A field name belongs to the static signature nested in the functor
+           module.  The application arguments parameterize the signature value
+           through [_fargs]; they are not part of the projection's name. *)
+        aux functor_path
     | Path.Pextra_ty (path, Path.Pext_ty) -> aux path
     | Path.Pextra_ty (path, Path.Pcstr_ty s) ->
         aux path >>= fun (path, base) ->
@@ -182,6 +193,7 @@ let rec iterate_in_aliases (path : Path.t) (nb_args : int) : Path.t Monad.t =
           else iterate_in_aliases path' nb_args
       | _ -> return path)
   | _ -> return path
+  | exception Not_found -> return path
 
 let of_constructor_description
     (constructor_description : Data_types.constructor_description) : t Monad.t =
@@ -253,12 +265,47 @@ let prefix_by_with (path_name : t) : t =
   let { path; base } = path_name in
   { path; base = Name.prefix_by_with base }
 
+let rec path_contains_functor_application (path : Path.t) : bool =
+  match path with
+  | Path.Papply _ -> true
+  | Path.Pdot (prefix, _) | Path.Pextra_ty (prefix, _) ->
+      path_contains_functor_application prefix
+  | Path.Pident _ -> false
+
 let compare_paths (path1 : Path.t) (path2 : Path.t) : int Monad.t =
-  let import_path (path : Path.t) : t Monad.t =
-    of_path_without_convert false path
+  let rec normalize_aliases (path : Path.t) : Path.t Monad.t =
+    let* alias = get_module_path_alias path in
+    match alias with
+    | Some alias -> normalize_aliases alias
+    | None -> (
+        match path with
+        | Path.Pident ident ->
+            let* alias = get_included_path_alias ident in
+            (match alias with
+            | Some alias -> normalize_aliases alias
+            | None -> return path)
+        | Path.Pdot (prefix, field) ->
+            let* prefix = normalize_aliases prefix in
+            return (Path.Pdot (prefix, field))
+        | Path.Papply (functor_path, argument_path) ->
+            let* functor_path = normalize_aliases functor_path in
+            let* argument_path = normalize_aliases argument_path in
+            return (Path.Papply (functor_path, argument_path))
+        | Path.Pextra_ty (prefix, extra) ->
+            let* prefix = normalize_aliases prefix in
+            return (Path.Pextra_ty (prefix, extra)))
   in
-  import_path path1 >>= fun path1 ->
-  import_path path2 >>= fun path2 -> return (compare path1 path2)
+  let* path1 = normalize_aliases path1 in
+  let* path2 = normalize_aliases path2 in
+  if Path.same path1 path2 then return 0
+  else if
+    path_contains_functor_application path1
+    || path_contains_functor_application path2
+  then return (String.compare (Path.name path1) (Path.name path2))
+  else
+    let* path1 = of_path_without_convert false path1 in
+    let* path2 = of_path_without_convert false path2 in
+    return (compare path1 path2)
 
 let to_coq (x : t) : SmartPrint.t = !^(to_string x)
 

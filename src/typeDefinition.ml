@@ -363,6 +363,10 @@ type t =
   | ExtensibleTyp of Name.t
   | Abstract of Name.t * Name.t list
 
+let generic_variant_type : Type.t =
+  Type.Apply
+    (MixedPath.of_name (Name.of_string_raw "Variant.t"), [])
+
 let filter_in_free_vars (typ_args : Name.t list) (free_vars : Name.Set.t) :
     Name.t list =
   typ_args
@@ -402,22 +406,8 @@ let of_ocaml_non_abstract_typs (typs : type_declaration list) : t Monad.t =
       AdtParameters.of_ocaml type_params >>= fun ind_vars ->
       let typ_args = AdtParameters.get_parameters ind_vars in
       match Types.get_desc typ with
-      | Tvariant row_desc ->
-          let row_fields = Types.row_fields row_desc in
-          Monad.List.map (AdtConstructors.of_ocaml_row ind_vars) row_fields
-          >>= fun single_constructors ->
-          AdtConstructors.of_ocaml ind_vars single_constructors
-          >>= fun (constructors, _) ->
-          raise
-            (Inductive
-               {
-                 constructor_records = [];
-                 notations = [];
-                 records = [];
-                 typs = [ (name, typ_args, constructors) ];
-               })
-            NotSupported
-            "Polymorphic variant types are defined as standard algebraic types"
+      | Tvariant _ ->
+          return (Synonym (name, [], generic_variant_type))
       | _ ->
           Type.of_type_expr_without_free_vars typ >>= fun typ ->
           let free_vars = Type.typ_args_of_typ typ in
@@ -463,22 +453,12 @@ let of_ocaml_non_abstract_typs (typs : type_declaration list) : t Monad.t =
                 match typ with
                 | { typ_type = { type_manifest = Some typ; _ }; _ } -> (
                     match Types.get_desc typ with
-                    | Tvariant row_desc ->
-                        let row_fields = Types.row_fields row_desc in
-                        Monad.List.map
-                          (AdtConstructors.of_ocaml_row typ_args)
-                          row_fields
-                        >>= fun single_constructors ->
-                        AdtConstructors.of_ocaml typ_args single_constructors
-                        >>= fun (constructors, _) ->
-                        raise
+                    | Tvariant _ ->
+                        return
                           ( constructor_records,
-                            notations,
+                            (name, [], generic_variant_type) :: notations,
                             records,
-                            (name, typ_args, constructors) :: typs )
-                          NotSupported
-                          "Polymorphic variant types are defined as standard \
-                           algebraic types"
+                            typs )
                     | _ ->
                         Type.of_typ_expr true Name.Map.empty typ
                         >>= fun (typ, _, typ_args) ->

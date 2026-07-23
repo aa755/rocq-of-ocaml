@@ -6,7 +6,9 @@ type t = int option
     variables in the functor parameters. *)
 
 let to_coq (fargs : t) : SmartPrint.t =
-  match fargs with Some _ -> !^"`{FArgs}" | None -> empty
+  match fargs with
+  | Some _ -> !^"`{_fargs : FArgs}"
+  | None -> empty
 
 (** Print underscores for the number of implicit parameters introduced by the
     [`{FArgs}] notation. *)

@@ -14,13 +14,35 @@ module Command = struct
     | GetDocumentation : string option t
     | GetEnv : Env.t t
     | GetEnvStack : Env.t list t
+    | GetIncludedPathAlias : Ident.t -> Path.t option t
+    | GetIncludedRecordAlias :
+        Ident.t -> IncludedRecordAliasTarget.t option t
+    | GetValueName : Ident.t -> string option t
+    | GetModulePathAlias : Path.t -> Path.t option t
+    | GetSignatureHint : Path.t -> Path.t option t
+    | GetModuleTypeHint : Path.t -> Types.module_type option t
+    | GetModuleTypeHints : (Path.t * Types.module_type) list t
+    | GetAnonymousSignatureHints : (Path.t * Types.module_type) list t
+    | GetAnonymousFunctorParameter :
+        Path.t * string -> Path.t option t
+    | GetFunctorParameterTypes :
+        Path.t -> Typedtree.module_type list option t
+    | GetFunctorResultSignature : Path.t -> Path.t option t
+    | GetResultModuleField :
+        Path.t * string -> Path.t option t
+    | GetAppliedFunctorChild :
+        Path.t -> (Path.t * Path.t) option t
     | Raise : 'a * Error.Category.t * string -> 'a t
     | Use : import -> unit t
     | UseUnsafeFixpoint : unit t
 end
 
 module Wrapper = struct
-  type t = EnvSet of Env.t | EnvStackPush | LocSet of Location.t
+  type t =
+    | EnvSet of Env.t
+    | EnvStackPush
+    | LocSet of Location.t
+    | SignatureHintSet of Path.t * Path.t
 end
 
 type 'a t =
@@ -39,12 +61,62 @@ module Notations = struct
   let get_documentation : string option t = Command Command.GetDocumentation
   let get_env : Env.t t = Command Command.GetEnv
   let get_env_stack : Env.t list t = Command Command.GetEnvStack
+  let get_included_path_alias (ident : Ident.t) : Path.t option t =
+    Command (Command.GetIncludedPathAlias ident)
+
+  let get_included_record_alias (ident : Ident.t) :
+      IncludedRecordAliasTarget.t option t =
+    Command (Command.GetIncludedRecordAlias ident)
+
+  let get_value_name (ident : Ident.t) : string option t =
+    Command (Command.GetValueName ident)
+
+  let get_module_path_alias (path : Path.t) : Path.t option t =
+    Command (Command.GetModulePathAlias path)
+
+  let get_signature_hint (path : Path.t) : Path.t option t =
+    Command (Command.GetSignatureHint path)
+
+  let get_module_type_hint (path : Path.t) : Types.module_type option t =
+    Command (Command.GetModuleTypeHint path)
+
+  let get_module_type_hints : (Path.t * Types.module_type) list t =
+    Command Command.GetModuleTypeHints
+
+  let get_anonymous_signature_hints : (Path.t * Types.module_type) list t =
+    Command Command.GetAnonymousSignatureHints
+
+  let get_anonymous_functor_parameter (functor_path : Path.t)
+      (parameter_name : string) : Path.t option t =
+    Command
+      (Command.GetAnonymousFunctorParameter (functor_path, parameter_name))
+
+  let get_functor_parameter_types (functor_path : Path.t) :
+      Typedtree.module_type list option t =
+    Command (Command.GetFunctorParameterTypes functor_path)
+
+  let get_functor_result_signature (functor_path : Path.t) :
+      Path.t option t =
+    Command (Command.GetFunctorResultSignature functor_path)
+
+  let get_result_module_field (result_signature : Path.t)
+      (field_name : string) : Path.t option t =
+    Command (Command.GetResultModuleField (result_signature, field_name))
+
+  let get_applied_functor_child (path : Path.t) :
+      (Path.t * Path.t) option t =
+    Command (Command.GetAppliedFunctorChild path)
+
   let set_env (env : Env.t) (x : 'a t) : 'a t = Wrapper (Wrapper.EnvSet env, x)
 
   let set_loc (loc : Location.t) (x : 'a t) : 'a t =
     Wrapper (Wrapper.LocSet loc, x)
 
   let push_env (x : 'a t) : 'a t = Wrapper (Wrapper.EnvStackPush, x)
+
+  let set_signature_hint (module_path : Path.t) (signature_path : Path.t)
+      (x : 'a t) : 'a t =
+    Wrapper (Wrapper.SignatureHintSet (module_path, signature_path), x)
 
   let raise (value : 'a) (category : Error.Category.t) (message : string) : 'a t
       =

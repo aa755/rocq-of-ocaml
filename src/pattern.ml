@@ -17,6 +17,10 @@ type t =
       (** A list of fields from a record with their expected patterns. *)
   | Or of t * t
 
+type dynamic_variant =
+  | VariantCase of string * t * Type.t * t option
+  | VariantDefault of t
+
 let rec has_unpack_marker : type pattern_kind. pattern_kind general_pattern -> bool
     =
  fun p ->
@@ -156,6 +160,56 @@ let rec of_extensible_pattern :
   | Tpat_any -> return None
   | Tpat_value pat -> of_extensible_pattern (pat :> value general_pattern)
   | _ -> error
+
+let rec of_dynamic_variant_patterns :
+    type k. k general_pattern -> dynamic_variant list Monad.t =
+ fun p ->
+  set_loc p.pat_loc
+    (match p.pat_desc with
+    | Tpat_variant (label, payload, _) -> (
+        match payload with
+        | None ->
+            return [ VariantCase (label, Tuple [], Type.Tuple [], None) ]
+        | Some payload ->
+            let* typ =
+              Type.of_type_expr_without_free_vars payload.pat_type
+            in
+            let* pattern = of_pattern payload in
+            (match pattern with
+            | Some pattern ->
+                return [ VariantCase (label, pattern, typ, None) ]
+            | None ->
+                raise
+                  [ VariantCase (label, Any, typ, None) ]
+                  Unexpected
+                  "A polymorphic-variant payload pattern disappeared"))
+    | Tpat_alias (pattern, name, _, _, _) ->
+        let* name = Name.of_ident true name in
+        let* patterns = of_dynamic_variant_patterns pattern in
+        return
+          (patterns
+          |> List.map (function
+               | VariantCase (label, payload, typ, None) ->
+                   VariantCase
+                     (label, payload, typ, Some (Variable name))
+               | VariantCase (label, payload, typ, Some whole) ->
+                   VariantCase
+                     (label, payload, typ, Some (Alias (whole, name)))
+               | VariantDefault whole ->
+                   VariantDefault (Alias (whole, name))))
+    | Tpat_or (left, right, _) ->
+        let* left = of_dynamic_variant_patterns left in
+        let* right = of_dynamic_variant_patterns right in
+        return (left @ right)
+    | Tpat_value pattern ->
+        of_dynamic_variant_patterns (pattern :> value general_pattern)
+    | _ ->
+        let* pattern = of_pattern p in
+        (match pattern with
+        | Some pattern -> return [ VariantDefault pattern ]
+        | None ->
+            raise [ VariantDefault Any ] Unexpected
+              "A polymorphic-variant default pattern disappeared"))
 
 (** Get the free variables appearing in a pattern. *)
 let rec get_free_vars (p : t) : Name.Set.t =

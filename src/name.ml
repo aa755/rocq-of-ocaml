@@ -44,6 +44,12 @@ let escape_operator_character (c : char) : string =
   | '~' -> "tilde"
   | '.' -> "point"
   | ':' -> "colon"
+  | '(' -> "lparen"
+  | ')' -> "rparen"
+  | '[' -> "lbracket"
+  | ']' -> "rbracket"
+  | '{' -> "lbrace"
+  | '}' -> "rbrace"
   | _ -> String.make 1 c
 
 let escape_operator (s : string) : string =
@@ -113,10 +119,12 @@ let substitute_first_dollar (s : string) : string =
   else s
 
 let convert (is_value : bool) (s : string) : string Monad.t =
-  let s = substitute_first_dollar s in
-  let s_escaped_operator = escape_operator s in
-  if s_escaped_operator <> s then return ("op_" ^ s_escaped_operator)
-  else escape_reserved_word is_value s
+  if s = "()" || s = "[]" then return s
+  else
+    let s = substitute_first_dollar s in
+    let s_escaped_operator = escape_operator s in
+    if s_escaped_operator <> s then return ("op_" ^ s_escaped_operator)
+    else escape_reserved_word is_value s
 
 (** Lift a [string] to an identifier. *)
 let of_string (is_value : bool) (s : string) : t Monad.t =
@@ -127,7 +135,8 @@ let of_string_raw (s : string) : t = Make s
 
 (** Import an OCaml identifier. *)
 let of_ident (is_value : bool) (i : Ident.t) : t Monad.t =
-  of_string is_value (Ident.name i)
+  let* renamed = get_value_name i in
+  of_string is_value (Option.value renamed ~default:(Ident.name i))
 
 let of_optional_ident (is_value : bool) (i : Ident.t option) : t Monad.t =
   match i with None -> return Nameless | Some i -> of_ident is_value i

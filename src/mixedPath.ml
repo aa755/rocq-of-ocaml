@@ -15,7 +15,11 @@ let path_to_string_list p =
   aux [] p
 
 (** [Access] corresponds to projections from first-class modules. *)
-type t = Access of PathName.t * PathName.t list | PathName of PathName.t
+type t =
+  | Access of PathName.t * PathName.t list
+  | AppliedAccess of
+      PathName.t * (string * string) list * PathName.t list
+  | PathName of PathName.t
 
 (** Shortcut to introduce new local variables for example. *)
 let of_name (name : Name.t) : t = PathName (PathName.of_name [] name)
@@ -26,7 +30,7 @@ let prim_proj_fst : t = PathName PathName.prim_proj_fst
 let prim_proj_snd : t = PathName PathName.prim_proj_snd
 
 let is_constr_tag : t -> bool = function
-  | Access _ -> false
+  | Access _ | AppliedAccess _ -> false
   | PathName { base; _ } -> Name.equal base Name.constr_tag
 
 let get_pathName_base : t -> Name.t = function
@@ -37,13 +41,20 @@ let get_signature_path (path : Path.t) : Path.t option Monad.t =
   let* env = get_env in
   match Env.find_module path env with
   | module_declaration -> (
-      let { Types.md_type; _ } = module_declaration in
+      let { Types.md_type; md_attributes; _ } = module_declaration in
       let* is_first_class =
         IsFirstClassModule.is_module_typ_first_class md_type (Some path)
       in
       match is_first_class with
       | IsFirstClassModule.Found signature_path -> return (Some signature_path)
-      | IsFirstClassModule.Not_found _ -> return None)
+      | IsFirstClassModule.Not_found _
+        when List.exists
+               (fun attribute ->
+                 attribute.Parsetree.attr_name.txt = "rocq_plain_module")
+               md_attributes ->
+          return None
+      | IsFirstClassModule.Not_found _ ->
+          get_signature_hint path)
   | exception _ -> return None
 
 module SignedPath = struct
@@ -60,8 +71,19 @@ module RawDecomposedPath = struct
   let rec get_rev (path : Path.t) : t Monad.t =
     let* signed_path = SignedPath.get path in
     match path with
-    | Papply _ -> failwith "Unexpected functor path application"
-    | Pident _ -> return (signed_path, [])
+    | Papply _ -> (
+        let* alias = get_module_path_alias path in
+        match alias with
+        | Some alias -> get_rev alias
+        | None ->
+            raise (signed_path, []) Unexpected
+              ("No local module binding found for applicative functor path "
+              ^ Path.name path))
+    | Pident ident -> (
+        let* alias = get_included_path_alias ident in
+        match alias with
+        | Some alias -> get_rev alias
+        | None -> return (signed_path, []))
     | Pdot (path', field) ->
         let* start_path, fields = get_rev path' in
         return (start_path, (signed_path, field) :: fields)
@@ -165,7 +187,14 @@ let is_module_path_local (path : Path.t) : bool Monad.t =
 let rec get_local_base_path (is_value : bool) (path : Path.t) :
     PathName.t option Monad.t =
   match path with
-  | Papply _ -> failwith "Unexpected functor path application"
+  | Papply _ -> (
+      let* alias = get_module_path_alias path in
+      match alias with
+      | Some alias -> get_local_base_path is_value alias
+      | None ->
+          raise None Unexpected
+            ("No local module binding found for applicative functor path "
+            ^ Path.name path))
   | Pextra_ty (path, Pext_ty) -> get_local_base_path is_value path
   | Pextra_ty _ -> return None
   | Pident _ -> return None
@@ -177,9 +206,82 @@ let rec get_local_base_path (is_value : bool) (path : Path.t) :
         return (Some (PathName.of_name [] name))
       else return None
 
+(** Replace applicative module paths with the local bindings that hold their
+    translated results.  An application can occur below a type or value field,
+    for example [Set.Make(T).t], so aliases must be resolved recursively before
+    the path is decomposed into module projections. *)
+let rec resolve_module_path_aliases (path : Path.t) : Path.t Monad.t =
+  let* alias = get_module_path_alias path in
+  match alias with
+  | Some alias -> resolve_module_path_aliases alias
+  | None -> (
+      match path with
+      | Pident _ -> return path
+      | Pdot (prefix, field) ->
+          let* prefix = resolve_module_path_aliases prefix in
+          return (Path.Pdot (prefix, field))
+      | Papply (functor_path, argument_path) ->
+          let* functor_path = resolve_module_path_aliases functor_path in
+          let* argument_path = resolve_module_path_aliases argument_path in
+          return (Path.Papply (functor_path, argument_path))
+      | Pextra_ty (prefix, extra) ->
+          let* prefix = resolve_module_path_aliases prefix in
+          return (Path.Pextra_ty (prefix, extra)))
+
+let path_has_global_head (path : Path.t) : bool =
+  let ident = Path.head path in
+  Ident.global ident || Ident.is_predef ident
+
+let of_included_record_alias (is_value : bool)
+    ({
+       IncludedRecordAliasTarget.functor_path;
+       signature_path;
+       fields;
+     } :
+      IncludedRecordAliasTarget.t)
+    (trailing_fields : string list) : t Monad.t =
+  let* functor_name =
+    PathName.of_path_with_convert false functor_path
+  in
+  let* functor_name = PathName.to_name false functor_name in
+  let include_name = Name.suffix_by_include functor_name in
+  let base = PathName.of_name [] include_name in
+  let* field_name =
+    Name.of_strings is_value (fields @ trailing_fields)
+  in
+  let* field =
+    PathName.of_path_and_name_with_convert signature_path field_name
+  in
+  return (Access (base, [ field ]))
+
+let rec included_record_access (is_value : bool) (path : Path.t)
+    (trailing_fields : string list) : t option Monad.t =
+  match path with
+  | Pident ident ->
+      let* alias = get_included_record_alias ident in
+      (match alias with
+      | None -> return None
+      | Some alias ->
+          let* access =
+            of_included_record_alias is_value alias trailing_fields
+          in
+          return (Some access))
+  | Pdot (parent, field) ->
+      included_record_access is_value parent (field :: trailing_fields)
+  | Pextra_ty (parent, Pext_ty) ->
+      included_record_access is_value parent trailing_fields
+  | Pextra_ty (parent, Pcstr_ty field) ->
+      included_record_access is_value parent (field :: trailing_fields)
+  | Papply _ -> return None
+
 (** The current environment must include the potential first-class module
     signature definition of the corresponding projection in the [path]. *)
 let of_path (is_value : bool) (path : Path.t) : t Monad.t =
+  let* included_access = included_record_access is_value path [] in
+  match included_access with
+  | Some access -> return access
+  | None ->
+  let* path = resolve_module_path_aliases path in
   let* decomposed_path = DecomposedPath.get path in
   let flattened_decomposed_path =
     FlattenedDecomposedPath.get decomposed_path None
@@ -196,7 +298,11 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
           let* path_name =
             PathName.of_path_without_convert is_value base_path
           in
-          let* conversion = PathName.try_convert path_name in
+          let* conversion =
+            if path_has_global_head base_path then
+              PathName.try_convert path_name
+            else return None
+          in
           match conversion with
           | None -> return (PathName path_name)
           | Some path_name -> return (PathName path_name))
@@ -218,7 +324,7 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
 
 let is_native_type (path : t) : bool =
   match path with
-  | Access _ -> false
+  | Access _ | AppliedAccess _ -> false
   | PathName { base; _ } ->
       List.mem (Name.to_string base) Name.native_type_constructors
 
@@ -226,6 +332,21 @@ let to_string (mixed_path : t) : string =
   match mixed_path with
   | Access (path, fields) ->
       let path = PathName.to_string path in
+      let fields =
+        fields |> List.map (fun field -> "(" ^ PathName.to_string field ^ ")")
+      in
+      String.concat "." (path :: fields)
+  | AppliedAccess (path, implicits, fields) ->
+      let implicits =
+        implicits
+        |> List.map (fun (name, value) ->
+               "(" ^ name ^ " := " ^ value ^ ")")
+      in
+      let path =
+        "("
+        ^ String.concat " " (PathName.to_string path :: implicits)
+        ^ ")"
+      in
       let fields =
         fields |> List.map (fun field -> "(" ^ PathName.to_string field ^ ")")
       in
@@ -240,6 +361,8 @@ let to_string_no_modules (mixed_path : t) : string =
         fields |> List.map (fun field -> "(" ^ PathName.to_string field ^ ")")
       in
       String.concat "." (path :: fields)
+  | AppliedAccess (path, implicits, fields) ->
+      to_string (AppliedAccess (path, implicits, fields))
   | PathName path_name -> PathName.to_string_base path_name
 
 let to_coq (mixed_path : t) : SmartPrint.t = !^(to_string mixed_path)

@@ -73,6 +73,9 @@ let are_equal (shape1 : t) (shape2 : t) : bool =
   | Some precise1, Some precise2 -> Name.Map.equal ( = ) precise1 precise2
   | _ -> true
 
+let have_same_names (shape1 : t) (shape2 : t) : bool =
+  Name.Set.equal shape1.high_level shape2.high_level
+
 let is_empty (shape : t) : bool = Name.Set.is_empty shape.high_level
 
 let pretty_print (shape : t) : SmartPrint.t =

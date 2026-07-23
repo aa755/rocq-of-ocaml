@@ -26,6 +26,7 @@ let exp (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
   let { MonadEval.Result.errors; imports; value; _ } =
     MonadEval.eval (Ast.of_typedtree typedtree typedtree_errors) context
   in
+  let imports = MonadEval.Import.merge [] imports in
   let error_message =
     Error.display_errors json_mode source_file_name source_file_content errors
   in
@@ -93,6 +94,7 @@ let main () =
   let file_name = ref None in
   let json_mode = ref false in
   let configuration_file_name = ref None in
+  let project_cmt_directory = ref None in
   let output_file_name = ref None in
   let options =
     [
@@ -102,6 +104,9 @@ let main () =
       ( "-output",
         Arg.String (fun value -> output_file_name := Some value),
         "file   the name of the .v file to output" );
+      ( "-project-cmt-dir",
+        Arg.String (fun value -> project_cmt_directory := Some value),
+        "dir    load cross-file module hints from project CMT files" );
       ( "-json-mode",
         Arg.Set json_mode,
         "    produce the list of error messages in a JSON file" );
@@ -117,6 +122,11 @@ let main () =
 
       let configuration =
         Configuration.of_optional_file_name file_name !configuration_file_name
+      in
+      let project_hints =
+        match !project_cmt_directory with
+        | None -> ProjectHints.empty
+        | Some directory -> ProjectHints.of_directory directory
       in
 
       let merlin_config =
@@ -149,10 +159,22 @@ let main () =
           let typedtree_errors = Mtyper.get_errors typing in
           let initial_loc = Ast.get_initial_loc typedtree in
           let initial_env = Mtyper.get_env typing in
+          let module_path_aliases =
+            ModulePathAliases.of_typedtree typedtree
+          in
+          let signature_hints = SignatureHints.of_typedtree typedtree in
+          let included_path_aliases =
+            IncludedPathAliases.of_typedtree typedtree
+          in
+          let included_record_aliases =
+            IncludedRecordAliases.of_typedtree typedtree signature_hints
+          in
+          let value_names = ValueNames.of_typedtree typedtree in
 
           let context =
             MonadEval.Context.init comments configuration initial_env
-              initial_loc
+              initial_loc included_path_aliases included_record_aliases
+              module_path_aliases signature_hints project_hints value_names
           in
 
           let output =
