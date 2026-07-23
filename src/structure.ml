@@ -649,6 +649,49 @@ let rec of_structure (structure : structure) : t list Monad.t =
                         (fun field -> field.PathName.base)
                         fields
               in
+              (* A functor result may expose a type as a direct alias of an
+                 applicative result, for example
+                 [type 'a t = 'a Map.Make(Ord).t].  Give that full constructor
+                 path a local name before translating either the manifest or
+                 value types.  Module aliases alone are insufficient when an
+                 outer functor re-exports a type from an inner application. *)
+              let* manifest_path_aliases =
+                signature
+                |> Monad.List.filter_map (function
+                     | Types.Sig_type
+                         ( ident,
+                           {
+                             type_manifest = Some manifest;
+                             type_params;
+                             _;
+                           },
+                           _,
+                           _ ) -> (
+                         match Types.get_desc manifest with
+                         | Tconstr (source, arguments, _)
+                           when
+                             Type.path_contains_functor_application source
+                             && List.length type_params =
+                               List.length arguments
+                             &&
+                             (try
+                                Ctype.equal env false type_params arguments;
+                                true
+                              with _ -> false) ->
+                             let* target_name =
+                               Name.of_strings false
+                                 (prefix @ [ Ident.name ident ])
+                             in
+                             let target =
+                               Path.Pident
+                                 (Ident.create_local
+                                    (Name.to_string target_name))
+                             in
+                             return (Some (source, target))
+                         | _ -> return None)
+                     | _ -> return None)
+              in
+              let translate_signature =
               let* manifest_type_substitutions =
                 signature
                 |> Monad.List.filter_map (function
@@ -860,6 +903,11 @@ let rec of_structure (structure : structure) : t list Monad.t =
                        | Types.Sig_class _
                        | Types.Sig_class_type _ ->
                            return [])
+              in
+              List.fold_right
+                (fun (source, target) translation ->
+                  set_module_path_alias source target translation)
+                manifest_path_aliases translate_signature
             in
             let* items =
               items_of_signature [] mod_type_path [] [] exclude_list signature
