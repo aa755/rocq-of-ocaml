@@ -51,6 +51,28 @@ Definition array (A : Set) : Set := list A.
 
 Parameter axiom : forall {A : Set}, A.
 
+(** A uniquely inhabited typeclass used only as Rocq's syntactic structural
+    parameter when translated OCaml recursion has no inductive argument.
+    Calls do not expose it: typeclass inference always supplies the global
+    instance. *)
+Inductive GeneralRecursionGuard : Set :=
+| general_recursion_guard : GeneralRecursionGuard.
+
+Existing Class GeneralRecursionGuard.
+
+Global Instance default_general_recursion_guard : GeneralRecursionGuard :=
+  general_recursion_guard.
+
+(** OCaml accepts recursive modules when their initialization dependencies are
+    safe.  Gallina has no corresponding module-level fixed point, so translated
+    recursive modules use the same trusted guard-check bypass as general OCaml
+    value recursion.  Keeping the fixed point reducible is important: a tuple
+    of modules whose fields are functions can still compute by lazy reduction. *)
+#[bypass_check(guard)]
+Fixpoint recursive_module_fix {A : Set} (f : A -> A)
+    `{guard : GeneralRecursionGuard} {struct guard} : A :=
+  f (recursive_module_fix f).
+
 Parameter assert : forall (A : Set), bool -> A.
 
 Axiom cast : forall {A : Set} (B : Set), A -> B.
@@ -182,6 +204,54 @@ End Z.
 (** OCaml functions are converted to their Rocq's counter parts when it is
     possible. *)
 Module Stdlib.
+  (** OCaml exception-raising operations are partial in the pure Gallina
+      embedding.  Well-defined executions never observe these values. *)
+  Definition failwith {a : Set} (_ : string) : a := axiom.
+
+  Definition invalid_arg {a : Set} (_ : string) : a := axiom.
+
+  Definition raise {a : Set} (_ : extensible_type) : a := axiom.
+
+  (** OCaml implements these operations by inspecting runtime
+      representations.  Parametric Gallina code cannot reproduce that
+      behavior for an arbitrary [Set], so translations that use the
+      polymorphic primitives expose them as an explicit trusted boundary. *)
+  Parameter polymorphic_compare : forall {a : Set}, a -> a -> int.
+
+  Parameter polymorphic_equal : forall {a : Set}, a -> a -> bool.
+
+  Parameter physical_equal : forall {a : Set}, a -> a -> bool.
+
+  (** OCaml's [Lazy], [Atomic], and reference APIs rely on mutable runtime
+      cells.  Gallina has no corresponding effect in this embedding.  The
+      erased carrier for [Lazy.t] and its polymorphic operations therefore
+      form an explicit trusted boundary for translated code that observes
+      sharing or mutation.  Monad VM itself does not use these primitives;
+      they are needed by the complete OCaml [Seq] API that it re-exports. *)
+  Module Lazy.
+    Parameter t : Set.
+
+    Parameter from_fun : forall {a : Set}, (unit -> a) -> t.
+
+    Parameter force : forall {a : Set}, t -> a.
+  End Lazy.
+
+  Module Atomic.
+    Definition make {a : Set} (value : a) : a := value.
+
+    Definition exchange {a : Set} (current replacement : a) : a :=
+      let _ := replacement in
+      current.
+  End Atomic.
+
+  Definition ref_value {a : Set} (value : a) : a := value.
+
+  Definition op_exclamation {a : Set} (cell : a) : a := cell.
+
+  Definition op_coloneq {a : Set} (_cell replacement : a) : unit :=
+    let _ := replacement in
+    tt.
+
   (** * Comparisons *)
   Definition lt {A : Type} {R} `{OrderDec A R} (x y : A) : bool :=
     match compare x y with
@@ -286,6 +356,8 @@ Module Stdlib.
 End Stdlib.
 
 Module Char.
+  Global Instance eq_dec : EqDec (eq_setoid ascii) := ascii_dec.
+
   Module Lt.
     Definition t (c1 c2 : ascii) : Prop :=
       N.lt (N_of_ascii c1) (N_of_ascii c2).
@@ -570,9 +642,8 @@ Module CamlinternalFormatBasics.
 
   Definition padding := 'padding.
 
-  Definition No_padding {a : Set} : padding a a := No_padding_gadt.
-  Definition Lit_padding {a : Set} : padty -> int -> padding a a :=
-    Lit_padding_gadt.
+  Definition No_padding : padding_gadt := No_padding_gadt.
+  Definition Lit_padding : padty -> int -> padding_gadt := Lit_padding_gadt.
   Definition Arg_padding {a : Set} : padty -> padding (int -> a) a :=
     Arg_padding_gadt.
 
@@ -589,7 +660,7 @@ Module CamlinternalFormatBasics.
 
   Definition precision := 'precision.
 
-  Definition No_precision {a : Set} : precision a a := No_precision_gadt.
+  Definition No_precision : precision_gadt := No_precision_gadt.
   Definition Lit_precision {a : Set} : int -> precision a a := Lit_precision_gadt.
   Definition Arg_precision {a : Set} : precision (int -> a) a :=
     Arg_precision_gadt.
@@ -819,24 +890,26 @@ Module CamlinternalFormatBasics.
     fmt a b c d e f -> fmt (ascii -> a) b c d e f := Char_gadt.
   Definition Caml_char {a b c d e f : Set} :
     fmt a b c d e f -> fmt (ascii -> a) b c d e f := Caml_char_gadt.
-  Definition String {a b c d e f x : Set} :
-    padding x (string -> a) -> fmt a b c d e f -> fmt x b c d e f := String_gadt
-    (a := a) (x := x).
+  Definition String
+      (padding_value : padding_gadt) (rest : fmt_gadt) : fmt_gadt :=
+    @String_gadt unit unit padding_value rest.
   Definition Caml_string {a b c d e f x : Set} :
     padding x (string -> a) -> fmt a b c d e f -> fmt x b c d e f :=
     Caml_string_gadt (a := a) (x := x).
-  Definition Int {a b c d e f x y : Set} :
-    int_conv -> padding x y -> precision y (int -> a) -> fmt a b c d e f ->
-    fmt x b c d e f := Int_gadt (a := a) (x := x) (y := y).
+  Definition Int
+      (conversion : int_conv) (padding_value : padding_gadt)
+      (precision_value : precision_gadt) (rest : fmt_gadt) : fmt_gadt :=
+    @Int_gadt unit unit unit conversion padding_value precision_value rest.
   Definition Int32 {a b c d e f x y : Set} :
     int_conv -> padding x y -> precision y (int32 -> a) -> fmt a b c d e f ->
     fmt x b c d e f := Int32_gadt (a := a) (x := x) (y := y).
   Definition Nativeint {a b c d e f x y : Set} :
     int_conv -> padding x y -> precision y (nativeint -> a) -> fmt a b c d e f ->
     fmt x b c d e f := Nativeint_gadt (a := a) (x := x) (y := y).
-  Definition Int64 {a b c d e f x y : Set} :
-    int_conv -> padding x y -> precision y (int64 -> a) -> fmt a b c d e f ->
-    fmt x b c d e f := Int64_gadt (a := a) (x := x) (y := y).
+  Definition Int64
+      (conversion : int_conv) (padding_value : padding_gadt)
+      (precision_value : precision_gadt) (rest : fmt_gadt) : fmt_gadt :=
+    @Int64_gadt unit unit unit conversion padding_value precision_value rest.
   Definition Float {a b c d e f x y : Set} :
     float_conv -> padding x y -> precision y (float -> a) -> fmt a b c d e f ->
     fmt x b c d e f := Float_gadt (a := a) (x := x) (y := y).
@@ -845,10 +918,10 @@ Module CamlinternalFormatBasics.
     (a := a) (x := x).
   Definition Flush {a b c d e f : Set} : fmt a b c d e f -> fmt a b c d e f :=
     Flush_gadt.
-  Definition String_literal {a b c d e f : Set} :
-    string -> fmt a b c d e f -> fmt a b c d e f := String_literal_gadt.
-  Definition Char_literal {a b c d e f : Set} :
-    ascii -> fmt a b c d e f -> fmt a b c d e f := Char_literal_gadt.
+  Definition String_literal : string -> fmt_gadt -> fmt_gadt :=
+    String_literal_gadt.
+  Definition Char_literal : ascii -> fmt_gadt -> fmt_gadt :=
+    Char_literal_gadt.
   Definition Format_arg {a b c d e f g h i j k l : Set} :
     pad_option -> fmtty g h i j k l -> fmt a b c d e f ->
     fmt (format6 g h i j k l -> a) b c d e f := Format_arg_gadt (g := g) (h := h)
@@ -884,8 +957,7 @@ Module CamlinternalFormatBasics.
   Definition Custom {a b c d e f x y : Set} :
     custom_arity a x y -> (unit -> x) -> fmt a b c d e f -> fmt y b c d e f :=
     Custom_gadt (a := a) (x := x) (y := y).
-  Definition End_of_format {b c e f : Set} : fmt f b c e e f :=
-    End_of_format_gadt.
+  Definition End_of_format : fmt_gadt := End_of_format_gadt.
   Definition Ignored_char {a b c d : Set} : ignored a b c d d a :=
     Ignored_char_gadt.
   Definition Ignored_caml_char {a b c d : Set} : ignored a b c d d a :=
@@ -921,9 +993,9 @@ Module CamlinternalFormatBasics.
     counter -> ignored a b c d d a := Ignored_scan_get_counter_gadt.
   Definition Ignored_scan_next_char {a b c d : Set} : ignored a b c d d a :=
     Ignored_scan_next_char_gadt.
-  Definition Format {a b c d e f : Set} :
-    fmt a b c d e f -> string -> format6 a b c d e f := Format_gadt (a := a)
-    (b := b) (c := c) (d := d) (e := e) (f := f).
+  Definition Format (format_value : fmt_gadt) (source : string) :
+      format6_gadt :=
+    @Format_gadt unit unit unit unit unit unit format_value source.
 
   Parameter concat_fmtty : forall
     {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 g1 g2 j1 j2 : Set},
