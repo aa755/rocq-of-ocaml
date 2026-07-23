@@ -850,7 +850,8 @@ let rec items_of_types_signature
               match md_type with
               | Mty_alias path -> (
                   match Env.find_module path env with
-                  | { Types.md_type; _ } -> md_type
+                  | { Types.md_type; _ } ->
+                      Env.scrape_alias env md_type
                   | exception Not_found ->
                       Env.scrape_alias env md_type)
               | _ -> Env.scrape_alias env md_type
