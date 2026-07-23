@@ -649,12 +649,26 @@ let rec of_structure (structure : structure) : t list Monad.t =
                         (fun field -> field.PathName.base)
                         fields
               in
-              (* A functor result may expose a type as a direct alias of an
-                 applicative result, for example
-                 [type 'a t = 'a Map.Make(Ord).t].  Give that full constructor
-                 path a local name before translating either the manifest or
-                 value types.  Module aliases alone are insufficient when an
-                 outer functor re-exports a type from an inner application. *)
+              let source_is_shadowed_by_signature_type source =
+                match source with
+                | Path.Pident source_ident ->
+                    signature
+                    |> List.exists (function
+                         | Types.Sig_type (local_ident, _, _, _) ->
+                             String.equal
+                               (Ident.name source_ident)
+                               (Ident.name local_ident)
+                             && not (Ident.same source_ident local_ident)
+                         | _ -> false)
+                | Path.Pdot _ | Path.Papply _ | Path.Pextra_ty _ -> false
+              in
+              (* Give constructor aliases an exact compiler path before
+                 translating the manifest and value types when their printed
+                 names are otherwise ambiguous.  This is needed both for
+                 applicative results such as [Map.Make(Ord).t] and when an
+                 outer [t] is shadowed by a nested signature's own [t].
+                 Delaying either case until [Type.t] loses the compiler
+                 identity and can rewrite the wrong constructor. *)
               let* manifest_path_aliases =
                 signature
                 |> Monad.List.filter_map (function
@@ -670,7 +684,8 @@ let rec of_structure (structure : structure) : t list Monad.t =
                          match Types.get_desc manifest with
                          | Tconstr (source, arguments, _)
                            when
-                             Type.path_contains_functor_application source
+                             (Type.path_contains_functor_application source
+                             || source_is_shadowed_by_signature_type source)
                              && List.length type_params =
                                List.length arguments
                              &&
@@ -762,10 +777,17 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                     (reference, record_fields @ [ field ]) ))
                        | _ -> return None)
               in
+              (* Manifest aliases describe equalities within this signature.
+                 Propagating them into a nested module is unsound: an outer
+                 [type t = int] must not turn an unrelated nested result such
+                 as [cardinal : set -> int] into [set -> t].  Substitutions for
+                 excluded (shadowed) fields do cross module boundaries because
+                 nested fields may still refer to the excluded outer field. *)
+              let nested_type_substitutions =
+                local_type_substitutions @ inherited_type_substitutions
+              in
               let type_substitutions =
-                manifest_type_substitutions
-                @ local_type_substitutions
-                @ inherited_type_substitutions
+                manifest_type_substitutions @ nested_type_substitutions
               in
               let qualify_shadowed_types typ =
                 List.fold_left
@@ -867,7 +889,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                      let* nested_items =
                                        items_of_signature record_fields
                                          nested_signature_path []
-                                         type_substitutions []
+                                         nested_type_substitutions []
                                          nested_signature
                                      in
                                      let alias =
@@ -885,7 +907,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                        items_of_signature record_fields
                                          signature_path
                                          (prefix @ [ source_name ])
-                                         type_substitutions
+                                         nested_type_substitutions
                                          [] nested_signature
                                      in
                                      return (nested_items, None)
