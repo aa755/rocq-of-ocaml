@@ -12,3 +12,9 @@ let example =
   |> Int_map.add 1 "one"
 
 let lookup_one = Int_map.find_opt 1 example
+
+module Extended (Ord : Stdlib.Map.OrderedType) = struct
+  include Stdlib.Map.Make (Ord)
+
+  let lookup key map = find_opt key map
+end

@@ -42,6 +42,7 @@ module Context = struct
     included_record_aliases : IncludedRecordAliases.t;
     loc : Location.t;
     module_path_aliases : ModulePathAliases.t;
+    module_path_alias_overrides : (Path.t * Path.t) list;
     signature_hints : SignatureHints.t;
     project_hints : ProjectHints.t;
     value_names : ValueNames.t;
@@ -64,6 +65,7 @@ module Context = struct
       included_record_aliases;
       loc = initial_loc;
       module_path_aliases;
+      module_path_alias_overrides = [];
       signature_hints;
       project_hints;
       value_names;
@@ -133,7 +135,15 @@ module Command = struct
         Result.success (ValueNames.find ident context.value_names)
     | GetModulePathAlias path ->
         Result.success
-          (ModulePathAliases.find path context.loc context.module_path_aliases)
+          (match
+             context.module_path_alias_overrides
+             |> List.find_map (fun (source, target) ->
+                    if Path.same path source then Some target else None)
+           with
+          | Some _ as target -> target
+          | None ->
+              ModulePathAliases.find path context.loc
+                context.module_path_aliases)
     | GetSignatureHint path ->
         Result.success
           (match SignatureHints.find path context.signature_hints with
@@ -229,6 +239,13 @@ module Wrapper = struct
         interpret { context with env_stack = context.env :: context.env_stack }
     | LocSet loc ->
       interpret { context with loc }
+    | ModulePathAliasSet (source, target) ->
+        interpret
+          {
+            context with
+            module_path_alias_overrides =
+              (source, target) :: context.module_path_alias_overrides;
+          }
     | SignatureHintSet (module_path, signature_path) ->
         interpret
           {

@@ -307,6 +307,17 @@ let rec applied_functor_root_path (module_expr : Typedtree.module_expr) :
   | Tmod_typed_hole ->
       None
 
+let applicative_include_alias (module_expr : Typedtree.module_expr) :
+    (Path.t * Path.t) option Monad.t =
+  match ModulePathAliases.module_expr_path module_expr with
+  | Some (Path.Papply _ as source_path) ->
+      let* include_name = Exp.get_include_name module_expr in
+      let target_path =
+        Path.Pident (Ident.create_local (Name.to_string include_name))
+      in
+      return (Some (source_path, target_path))
+  | _ -> return None
+
 let has_raw_attribute (name : string) (attributes : Parsetree.attributes) :
     bool =
   List.exists
@@ -1071,9 +1082,6 @@ let rec of_structure (structure : structure) : t list Monad.t =
                       exclude_list)
             | Tstr_include { incl_attributes; incl_mod; _ } ->
                 let* include_name = Exp.get_include_name incl_mod in
-                let* module_definition =
-                  of_module include_name ([], [], []) incl_mod false
-                in
                 let reference = PathName.of_name [] include_name in
                 let* attributes = Attribute.of_attributes incl_attributes in
                 let exclude_list =
@@ -1083,35 +1091,48 @@ let rec of_structure (structure : structure) : t list Monad.t =
                 let module_path =
                   ModulePathAliases.module_expr_path incl_mod
                 in
-                let* fallback_signature_path =
-                  match applied_functor_root_path incl_mod with
-                  | Some functor_path ->
-                      let* known_result =
-                        get_functor_result_signature functor_path
-                      in
-                      (match known_result with
-                      | Some _ as result -> return result
-                      | None ->
-                          return
-                            (Some
-                               (Path.Pdot
-                                  ( functor_path,
-                                    Path.last functor_path ^ "_result" ))))
-                  | None -> (
-                      match module_path with
-                      | Some (Path.Papply (functor_path, _)) ->
-                          return
-                            (Some
-                               (Path.Pdot
-                                  ( functor_path,
-                                    Path.last functor_path ^ "_result" )))
-                      | _ -> return None)
+                let translate_include =
+                  let* module_definition =
+                    of_module include_name ([], [], []) incl_mod false
+                  in
+                  let* fallback_signature_path =
+                    match applied_functor_root_path incl_mod with
+                    | Some functor_path ->
+                        let* known_result =
+                          get_functor_result_signature functor_path
+                        in
+                        (match known_result with
+                        | Some _ as result -> return result
+                        | None ->
+                            return
+                              (Some
+                                 (Path.Pdot
+                                    ( functor_path,
+                                      Path.last functor_path ^ "_result" ))))
+                    | None -> (
+                        match module_path with
+                        | Some (Path.Papply (functor_path, _)) ->
+                            return
+                              (Some
+                                 (Path.Pdot
+                                    ( functor_path,
+                                      Path.last functor_path ^ "_result" )))
+                        | _ -> return None)
+                  in
+                  let* include_items =
+                    get_include_items module_path fallback_signature_path
+                      reference incl_mod.mod_type exclude_list
+                  in
+                  return (module_definition :: include_items)
                 in
-                let* include_items =
-                  get_include_items module_path fallback_signature_path
-                    reference incl_mod.mod_type exclude_list
+                let* include_alias =
+                  applicative_include_alias incl_mod
                 in
-                return (module_definition :: include_items)
+                (match include_alias with
+                | Some (source_path, target_path) ->
+                    set_module_path_alias source_path target_path
+                      translate_include
+                | None -> translate_include)
             (* We ignore attribute fields. *)
             | Tstr_attribute _ -> return [])))
   in
@@ -1133,17 +1154,43 @@ and of_module ?binding_path (name : Name.t)
     (functor_parameters : functor_parameters)
     (module_expr : module_expr) (has_plain_module_attribute : bool) : t Monad.t
     =
-  let path =
-    match binding_path with
-    | Some _ as path -> path
-    | None -> (
-        match module_expr.mod_desc with
-        | Tmod_ident (path, _)
-        | Tmod_constraint
-            ({ mod_desc = Tmod_ident (path, _); _ }, _, _, _) ->
-            Some path
-        | _ -> None)
+  let include_aliases : (Path.t * Path.t) list Monad.t =
+    let rec final_structure (module_expr : module_expr) =
+      match module_expr.mod_desc with
+      | Tmod_structure structure -> Some structure
+      | Tmod_functor (_, body)
+      | Tmod_constraint (body, _, _, _) ->
+          final_structure body
+      | Tmod_ident _
+      | Tmod_apply _
+      | Tmod_apply_unit _
+      | Tmod_unpack _
+      | Tmod_typed_hole ->
+          None
+    in
+    match final_structure module_expr with
+    | None -> return []
+    | Some structure ->
+        structure.str_items
+        |> Monad.List.filter_map
+             (fun item ->
+               match item.str_desc with
+               | Tstr_include { incl_mod; _ } ->
+                   applicative_include_alias incl_mod
+               | _ -> return None)
   in
+  let translate_module () =
+    let path =
+      match binding_path with
+      | Some _ as path -> path
+      | None -> (
+          match module_expr.mod_desc with
+          | Tmod_ident (path, _)
+          | Tmod_constraint
+              ({ mod_desc = Tmod_ident (path, _); _ }, _, _, _) ->
+              Some path
+          | _ -> None)
+    in
   let* is_first_class =
     IsFirstClassModule.is_module_typ_first_class module_expr.mod_type path
   in
@@ -1272,6 +1319,12 @@ and of_module ?binding_path (name : Name.t)
   | Some _, _ ->
       raise module_definition Unexpected
         "A synthesized functor result signature requires a module body"
+  in
+  let* include_aliases = set_env module_expr.mod_env include_aliases in
+  List.fold_right
+    (fun (source, target) body ->
+      set_module_path_alias source target body)
+    include_aliases (translate_module ())
 
 and of_module_expr ?binding_path (name : Name.t)
     (functor_parameters : functor_parameters)
@@ -1461,6 +1514,7 @@ and of_module_expr ?binding_path (name : Name.t)
                   | None ->
                       let* translated_module_type =
                         ModuleTyp.of_types
+                          ~abstract_functor_applications:true
                           ~result_signature_path:module_type_path
                           module_type
                       in

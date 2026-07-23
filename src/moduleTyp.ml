@@ -315,19 +315,22 @@ and of_ocaml (module_typ : Typedtree.module_type) : t Monad.t =
   set_env module_typ.mty_env
     (set_loc module_typ.mty_loc (of_ocaml_desc module_typ.mty_desc))
 
-let rec of_types ?result_signature_path ?(parameter_types = [])
+let rec of_types ?result_signature_path
+    ?(abstract_functor_applications = false) ?(parameter_types = [])
     (module_typ : Types.module_type) : t Monad.t =
   match module_typ with
   | Mty_alias path ->
       let* env = get_env in
       (match Env.find_module path env with
       | { Types.md_type; _ } ->
-          of_types ?result_signature_path ~parameter_types md_type
+          of_types ?result_signature_path ~abstract_functor_applications
+            ~parameter_types md_type
       | exception Not_found ->
           let* hinted_module_type = get_module_type_hint path in
           (match hinted_module_type with
           | Some hinted_module_type ->
-              of_types ?result_signature_path ~parameter_types
+              of_types ?result_signature_path ~abstract_functor_applications
+                ~parameter_types
                 hinted_module_type
           | None ->
               raise ([], Module.Error "module_alias") Unexpected
@@ -347,7 +350,8 @@ let rec of_types ?result_signature_path ?(parameter_types = [])
       let* params_of_param, param =
         match parameter_type with
         | Some parameter_type -> of_ocaml parameter_type
-        | None -> of_types source_param
+        | None ->
+            of_types ~abstract_functor_applications source_param
       in
       let* env = get_env in
       let result_env =
@@ -359,7 +363,7 @@ let rec of_types ?result_signature_path ?(parameter_types = [])
       in
       let* params, result =
         set_env result_env
-          (of_types ?result_signature_path
+          (of_types ?result_signature_path ~abstract_functor_applications
              ~parameter_types:remaining_parameter_types source_result)
       in
       let* param =
@@ -393,6 +397,10 @@ let rec of_types ?result_signature_path ?(parameter_types = [])
             let* arity_or_typ =
               match type_manifest with
               | None -> return (Type.Arity (List.length type_params))
+              | Some manifest
+                when abstract_functor_applications
+                     && is_functor_application_alias manifest ->
+                  return (Type.Arity (List.length type_params))
               | Some manifest ->
                   let* typ_args =
                     type_params

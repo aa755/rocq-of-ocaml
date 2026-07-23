@@ -42,6 +42,7 @@ module Wrapper = struct
     | EnvSet of Env.t
     | EnvStackPush
     | LocSet of Location.t
+    | ModulePathAliasSet of Path.t * Path.t
     | SignatureHintSet of Path.t * Path.t
 end
 
@@ -113,6 +114,10 @@ module Notations = struct
     Wrapper (Wrapper.LocSet loc, x)
 
   let push_env (x : 'a t) : 'a t = Wrapper (Wrapper.EnvStackPush, x)
+
+  let set_module_path_alias (source : Path.t) (target : Path.t)
+      (x : 'a t) : 'a t =
+    Wrapper (Wrapper.ModulePathAliasSet (source, target), x)
 
   let set_signature_hint (module_path : Path.t) (signature_path : Path.t)
       (x : 'a t) : 'a t =
