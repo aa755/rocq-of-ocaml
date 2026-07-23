@@ -98,8 +98,8 @@ let rules =
     ("Stdlib.op_plus", "Z.add");
     ("Stdlib.op_minus", "Z.sub");
     ("Stdlib.op_star", "Z.mul");
-    ("Stdlib.op_div", "Z.div");
-    ("Stdlib._mod", "Z.modulo");
+    ("Stdlib.op_div", "Z.quot");
+    ("Stdlib._mod", "Z.rem");
     ("Stdlib.abs", "Z.abs");
     (* Bitwise operations *)
     ("Stdlib.land", "Z.land");
@@ -179,8 +179,43 @@ let rules =
     ("Stdlib.Seq.t", "RocqOfOCaml.OCamlSeq.t");
     (* String *)
     ("Stdlib.String.length", "RocqOfOCaml.OCamlString.length");
-    (* Zarith string conversion and formatting are not part of Rocq's [Z]
-       module. *)
+    (* Zarith operations whose names, interfaces, or semantics differ from
+       Rocq's [Z] library. *)
+    ("Z.geq", "Z.geb");
+    ("Z.leq", "Z.leb");
+    ("Z.compare", "RocqOfOCaml.OCamlZ.compare");
+    ("Z.equal", "Z.eqb");
+    ("Z.logand", "Z.land");
+    ("Z.logor", "Z.lor");
+    ("Z.logxor", "Z.lxor");
+    ("Z.lognot", "Z.lnot");
+    ("Z.shift_left", "Z.shiftl");
+    ("Z.shift_right", "Z.shiftr");
+    ("Z.op_plus", "Z.add");
+    ("Z.op_minus", "Z.sub");
+    ("Z.op_star", "Z.mul");
+    ("Z.op_div", "Z.quot");
+    ("Z.op_starstar", "Z.pow");
+    ("Z.op_tildedollar", "RocqOfOCaml.OCamlZ.op_tildedollar");
+    ("Z.div_rem", "Z.quotrem");
+    ("Z.of_int", "RocqOfOCaml.OCamlZ.of_int");
+    ("Z.of_int32", "RocqOfOCaml.OCamlZ.of_int32");
+    ("Z.of_int64", "RocqOfOCaml.OCamlZ.of_int64");
+    ("Z.of_int32_unsigned", "RocqOfOCaml.OCamlZ.of_int32_unsigned");
+    ("Z.of_int64_unsigned", "RocqOfOCaml.OCamlZ.of_int64_unsigned");
+    ("Z.to_int", "RocqOfOCaml.OCamlZ.to_int");
+    ("Z.to_int32", "RocqOfOCaml.OCamlZ.to_int32");
+    ("Z.to_int64", "RocqOfOCaml.OCamlZ.to_int64");
+    ("Z.to_int32_unsigned", "RocqOfOCaml.OCamlZ.to_int32_unsigned");
+    ("Z.to_int64_unsigned", "RocqOfOCaml.OCamlZ.to_int64_unsigned");
+    ("Z.fits_int", "RocqOfOCaml.OCamlZ.fits_int");
+    ("Z.numbits", "RocqOfOCaml.OCamlZ.numbits");
+    ("Z.extract", "RocqOfOCaml.OCamlZ.extract");
+    ("Z.signed_extract", "RocqOfOCaml.OCamlZ.signed_extract");
+    ("Z.to_bits", "RocqOfOCaml.OCamlZ.to_bits");
+    ("Z.of_bits", "RocqOfOCaml.OCamlZ.of_bits");
+    ("Z.powm", "RocqOfOCaml.OCamlZ.powm");
+    ("Z.hash", "RocqOfOCaml.OCamlZ.hash");
     ("Z.to_string", "RocqOfOCaml.OCamlZ.to_string");
     ("Z.of_string", "RocqOfOCaml.OCamlZ.of_string");
     ("Z.format", "RocqOfOCaml.OCamlZ.format");

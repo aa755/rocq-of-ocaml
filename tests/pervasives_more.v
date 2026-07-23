@@ -53,9 +53,9 @@ Definition n_minus : int := Z.sub 1 2.
 
 Definition n_times : int := Z.mul 1 2.
 
-Definition n_div : int := Z.div 1 2.
+Definition n_div : int := Z.quot 1 2.
 
-Definition n_mod : int := Z.modulo 1 2.
+Definition n_mod : int := Z.rem 1 2.
 
 Definition n_abs : int := Z.abs 1.
 
