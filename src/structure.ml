@@ -709,8 +709,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
               let translate_signature =
               let* manifest_type_substitutions =
                 signature
+                |> List.mapi (fun index item -> (index, item))
                 |> Monad.List.filter_map (function
-                     | Types.Sig_type
+                     | index, Types.Sig_type
                          ( ident,
                            {
                              type_manifest = Some manifest;
@@ -751,7 +752,8 @@ let rec of_structure (structure : structure) : t list Monad.t =
                              else
                                return
                                  (Some
-                                    (mixed_path_names source, target))
+                                    ( index,
+                                      (mixed_path_names source, target) ))
                          | None -> return None)
                      | _ -> return None)
               in
@@ -817,17 +819,24 @@ let rec of_structure (structure : structure) : t list Monad.t =
                 @ local_type_substitutions
                 @ inherited_type_substitutions
               in
-              let type_substitutions =
-                manifest_type_substitutions @ nested_type_substitutions
-              in
-              let qualify_shadowed_types typ =
+              let qualify_shadowed_types item_index typ =
+                let manifest_type_substitutions =
+                  manifest_type_substitutions
+                  |> List.filter_map
+                       (fun (declaration_index, substitution) ->
+                         if declaration_index < item_index then
+                           Some substitution
+                         else None)
+                in
                 List.fold_left
                   (fun typ (source, target) ->
                     Type.subst_constructor_path source target typ)
-                  typ type_substitutions
+                  typ
+                  (manifest_type_substitutions @ nested_type_substitutions)
               in
               signature
-              |> Monad.List.concat_map (fun signature_item ->
+              |> List.mapi (fun index item -> (index, item))
+              |> Monad.List.concat_map (fun (item_index, signature_item) ->
                      let ident = Types.signature_item_id signature_item in
                      let source_name = Ident.name ident in
                      if List.mem source_name exclude then return []
@@ -846,7 +855,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
                            let* typ, _, new_typ_vars =
                              Type.of_typ_expr true Name.Map.empty val_type
                            in
-                           let typ = qualify_shadowed_types typ in
+                           let typ = qualify_shadowed_types item_index typ in
                            return
                              [
                                ModuleIncludeItem
