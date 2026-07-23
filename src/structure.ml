@@ -633,6 +633,63 @@ let rec of_structure (structure : structure) : t list Monad.t =
                   (Name.t list * MixedPath.t) list)
                 (exclude : string list) (signature : Types.signature) :
                 t list Monad.t =
+              let mixed_path_names = function
+                | MixedPath.PathName { path; base } -> path @ [ base ]
+                | MixedPath.Access ({ path; base }, fields)
+                | MixedPath.AppliedAccess ({ path; base }, _, fields) ->
+                    path @ [ base ]
+                    @ List.map
+                        (fun field -> field.PathName.base)
+                        fields
+              in
+              let* manifest_type_substitutions =
+                signature
+                |> Monad.List.filter_map (function
+                     | Types.Sig_type
+                         ( ident,
+                           {
+                             type_manifest = Some manifest;
+                             type_params;
+                             _;
+                           },
+                           _,
+                           _ ) ->
+                         let source_name = Ident.name ident in
+                         let* parameters =
+                           Monad.List.map Type.of_type_expr_variable
+                             type_params
+                         in
+                         let* manifest =
+                           Type.of_type_expr_without_free_vars manifest
+                         in
+                         let manifest =
+                           match parameters with
+                           | [] -> manifest
+                           | _ :: _ -> Type.FunTyps (parameters, manifest)
+                         in
+                         (match Type.direct_constructor_path manifest with
+                         | Some source ->
+                             let* target_name =
+                               Name.of_strings false
+                                 (prefix @ [ source_name ])
+                             in
+                             let target =
+                               MixedPath.PathName
+                                 (PathName.of_name [] target_name)
+                             in
+                             if
+                               String.equal
+                                 (MixedPath.to_string source)
+                                 (MixedPath.to_string target)
+                             then
+                               return None
+                             else
+                               return
+                                 (Some
+                                    (mixed_path_names source, target))
+                         | None -> return None)
+                     | _ -> return None)
+              in
               let* local_type_substitutions =
                 signature
                 |> Monad.List.filter_map (fun signature_item ->
@@ -656,7 +713,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
                        | _ -> return None)
               in
               let type_substitutions =
-                local_type_substitutions @ inherited_type_substitutions
+                manifest_type_substitutions
+                @ local_type_substitutions
+                @ inherited_type_substitutions
               in
               let qualify_shadowed_types typ =
                 List.fold_left
