@@ -2,6 +2,7 @@
 # Run the tests in 'tests/'
 require 'fileutils'
 require 'open3'
+require 'tmpdir'
 
 class Test
   attr_reader :source_file
@@ -87,6 +88,86 @@ Recursive Extraction Library #{base_name}.
     end
     system("(#{extraction_cmd}) >/dev/null")
     return $?.exitstatus == 0
+  end
+end
+
+class ProjectResultModuleFieldTest < Test
+  def initialize
+    @directory = 'tests/project_result_module_field'
+    super(File.join(@directory, 'Consumer.ml'))
+  end
+
+  def rocq_of_ocaml_cmd
+    ['rocq-of-ocaml', '-project-cmt-dir', '<temporary CMT directory>', @source_file]
+  end
+
+  def capture_translation(command, directory)
+    output, error, status = Open3.capture3(*command, chdir: directory)
+    unless status.success?
+      warn "Command failed: #{command.join(' ')}"
+      warn error unless error.empty?
+      return nil
+    end
+    output.force_encoding('utf-8').lines.drop(1).join
+  end
+
+  def check
+    executable = File.expand_path('_build/default/src/rocqOfOCaml.exe')
+    snapshots = {}
+    Dir.mktmpdir('rocq-of-ocaml-project-test') do |directory|
+      ['Provider.ml', 'Project.ml', 'Consumer.ml', 'Consumer.json'].each do |name|
+        FileUtils.cp(File.join(@directory, name), directory)
+      end
+      compile_commands = [
+        ['ocamlc', '-bin-annot', '-c', 'Provider.ml'],
+        ['ocamlc', '-bin-annot', '-I', '.', '-c', 'Project.ml'],
+        ['ocamlc', '-bin-annot', '-I', '.', '-c', 'Consumer.ml']
+      ]
+      return false unless compile_commands.all? do |command|
+        system(*command, chdir: directory, out: File::NULL, err: File::NULL)
+      end
+      snapshots['Provider.v'] =
+        capture_translation(
+          [executable, '-output', '/dev/stdout', 'Provider.ml'],
+          directory
+        )
+      snapshots['Consumer.v'] =
+        capture_translation(
+          [
+            executable,
+            '-config', 'Consumer.json',
+            '-project-cmt-dir', '.',
+            '-output', '/dev/stdout',
+            'Consumer.ml'
+          ],
+          directory
+        )
+    end
+    return false if snapshots.values.any?(&:nil?)
+    if ENV['UPDATE_SNAPSHOTS'] == '1'
+      snapshots.each do |name, contents|
+        File.write(File.join(@directory, name), contents)
+      end
+    end
+    snapshots.all? do |name, contents|
+      contents == File.read(File.join(@directory, name), encoding: 'utf-8')
+    end
+  end
+
+  def rocq_cmd
+    "rocq c Provider.v, then Consumer.v, with #{@directory} mapped to TestProject"
+  end
+
+  def rocq
+    common = [
+      '-Q', 'proofs', 'RocqOfOCaml',
+      '-Q', @directory, 'TestProject',
+      '-impredicative-set'
+    ]
+    system('rocq', 'c', *common, File.join(@directory, 'Provider.v'),
+      out: File::NULL, err: File::NULL) &&
+      system('rocq', 'c', *common, File.join(@directory, 'Consumer.v'),
+        out: File::NULL, err: File::NULL)
   end
 end
 
@@ -253,7 +334,7 @@ end
 test_files = Dir.glob('tests/*.ml*').select do |file_name|
   not file_name.include?("disabled")
 end
-tests = Tests.new(test_files)
+tests = Tests.new(test_files + [ProjectResultModuleFieldTest.new])
 tests.check
 puts
 tests.rocq
