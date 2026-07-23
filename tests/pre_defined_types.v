@@ -6,9 +6,12 @@ Definition u_value : unit := tt.
 
 Definition l1 {A : Set} : list A := nil.
 
-Definition l2 : list int := [ 1 ].
+Definition l2 : list int := Datatypes.cons 1 nil.
 
-Definition l3 : list int := [ 1; 5; 7; 32; 15 ].
+Definition l3 : list int :=
+  Datatypes.cons 1
+    (Datatypes.cons 5
+      (Datatypes.cons 7 (Datatypes.cons 32 (Datatypes.cons 15 nil)))).
 
 Definition o1 {A : Set} : option A := None.
 

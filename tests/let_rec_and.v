@@ -5,13 +5,13 @@ Require Import RocqOfOCaml.Settings.
 Fixpoint odd_length {A : Set} (l_value : list A) : bool :=
   match l_value with
   | [] => false
-  | cons _ l_value => negb (even_length l_value)
+  | Datatypes.cons _ l_value => negb (even_length l_value)
   end
 
 with even_length {A : Set} (l_value : list A) : bool :=
   match l_value with
   | [] => true
-  | cons _ l_value => negb (odd_length l_value)
+  | Datatypes.cons _ l_value => negb (odd_length l_value)
   end.
 
 Definition local_let_and_variables (x_value : int) : int :=

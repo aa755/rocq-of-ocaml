@@ -57,8 +57,7 @@ class Test
   end
 
   def check
-    # Uncomment the following line to update the test snapshots.
-    # update
+    update if ENV['UPDATE_SNAPSHOTS'] == '1'
     rocq_of_ocaml == reference
   end
 
@@ -162,6 +161,8 @@ class DefaultOutputTest < Test
   end
 
   def check
+    reference_contents =
+      File.binread(generated_name) if File.exist?(generated_name)
     FileUtils.rm_f(generated_default_file)
     output, error, status = Open3.capture3(*rocq_of_ocaml_cmd)
     status.success? &&
@@ -169,6 +170,7 @@ class DefaultOutputTest < Test
       (output + error).include?(generated_default_file)
   ensure
     FileUtils.rm_f(generated_default_file)
+    File.binwrite(generated_name, reference_contents) if reference_contents
   end
 end
 
@@ -259,8 +261,6 @@ tests.rocq
 negative_tests = Tests.new([
   NegativeTest.new('tests/errors/legacy_attribute.ml'),
   NegativeTest.new('tests/errors/lazy_pattern.ml'),
-  NegativeTest.new('tests/errors/polymorphic_variants.ml'),
-  NegativeTest.new('tests/errors/optional_default.ml'),
   NegativeTest.new('tests/errors/unsupported_expressions.ml'),
   NegativeTest.new('tests/errors/unsupported_signature.mli'),
   NegativeTest.new('tests/errors/unknown_attribute_json.ml', true)

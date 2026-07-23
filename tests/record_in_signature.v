@@ -31,12 +31,12 @@ Module M.
   Definition v_value : t string := {| t.x := 0; t.y := 1; t.label := "hi"; |}.
   
   (* M *)
-  Definition module :=
+  Definition module :Sig (t := t) :=
     {|
       Sig.v_value := v_value
     |}.
 End M.
-Definition M : Sig (t := _) := M.module.
+Definition M := M.module.
 
 Definition v_value : M.(Sig.t) string := M.(Sig.v_value).
 

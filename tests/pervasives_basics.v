@@ -18,12 +18,14 @@ Definition n5 : int := Z.add (Z.shiftl 156 4) (Z.shiftr 12 1).
 
 Definition s_value : string := String.append "ghj" "klm".
 
-Definition c_value : int := RocqOfOCaml.Stdlib.int_of_char "c" % char.
+Definition c_value : int := RocqOfOCaml.Basics.Stdlib.int_of_char "c" % char.
 
-Definition x_value : unit := RocqOfOCaml.Stdlib.ignore 23.
+Definition x_value : unit := RocqOfOCaml.Basics.Stdlib.ignore 23.
 
 Definition p_value : int := Z.add (fst (1, 2)) (snd (3, 4)).
 
-Definition l_value : list int := RocqOfOCaml.Stdlib.app [ 1; 2 ] [ 3 ].
+Definition l_value : list int :=
+  RocqOfOCaml.Basics.Stdlib.app (Datatypes.cons 1 (Datatypes.cons 2 nil))
+    (Datatypes.cons 3 nil).
 
 Definition y_value : int := (fun (n_value : int) => Z.add n_value 1) 12.

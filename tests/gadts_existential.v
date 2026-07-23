@@ -92,7 +92,7 @@ Fixpoint match_with_used_unused_existentials {a : Set}
   let '_ := function_parameter in
   match fuel with
   | [] => 0
-  | cons _ l_value =>
+  | Datatypes.cons _ l_value =>
     match t_value with
     | Ty_bool => 12
     | Ty_pair t1 t2 =>

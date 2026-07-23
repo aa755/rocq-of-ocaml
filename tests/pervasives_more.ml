@@ -2,6 +2,8 @@
 let b_eq = 1 = 2
 let b_neq1 = true <> false
 let b_neq2 = () <> ()
+
+let generic_equal x y = x = y
 let b_lt = 1 < 2
 let b_gt = 1 > 2
 let b_le = true <= false

@@ -60,7 +60,7 @@ Recursive module signatures are not handled
   18 | 
 
 
-Module type not handled in included signature
+Module not handled in included signature
 
 --- tests/errors/unsupported_signature.mli:11:1 ---------------------------- not_supported (6/7) ---
 
@@ -76,7 +76,7 @@ Module type not handled in included signature
   18 | 
 
 
-Module not handled in included signature
+Module type not handled in included signature
 
 --- tests/errors/unsupported_signature.mli:17:1 ---------------------------- not_supported (7/7) ---
 

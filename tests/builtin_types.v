@@ -23,7 +23,8 @@ Definition u_value : unit := tt.
 
 Definition l1 {A : Set} : list A := nil.
 
-Definition l2 : list int := [ 0; 1; 2; 3 ].
+Definition l2 : list int :=
+  Datatypes.cons 0 (Datatypes.cons 1 (Datatypes.cons 2 (Datatypes.cons 3 nil))).
 
 Definition o_value : option int :=
   if b1 then

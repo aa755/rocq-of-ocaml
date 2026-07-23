@@ -9,5 +9,5 @@ Inductive t : Set :=
 Fixpoint t_of_list {a : Set} (l_value : list a) : t :=
   match l_value with
   | [] => Empty
-  | cons _ l_value => Node (t_of_list l_value)
+  | Datatypes.cons _ l_value => Node (t_of_list l_value)
   end.

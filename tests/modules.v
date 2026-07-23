@@ -19,7 +19,7 @@ Module List2.
   Fixpoint of_list {A : Set} (function_parameter : list A) : t A :=
     match function_parameter with
     | [] => Nil
-    | cons x_value xs => Cons x_value (of_list xs)
+    | Datatypes.cons x_value xs => Cons x_value (of_list xs)
     end.
   
   Module Inside.
@@ -29,7 +29,11 @@ End List2.
 
 Definition n_value {A : Set} (function_parameter : A) : int :=
   let '_ := function_parameter in
-  List2.sum (List2.of_list [ 5; 7; 6; List2.Inside.x_value ]).
+  List2.sum
+    (List2.of_list
+      (Datatypes.cons 5
+        (Datatypes.cons 7
+          (Datatypes.cons 6 (Datatypes.cons List2.Inside.x_value nil))))).
 
 Module Syn := List2.Inside.
 

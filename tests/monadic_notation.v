@@ -14,7 +14,7 @@ Definition op_letstar {a b : Set} (x_value : option a) (f_value : a -> option b)
 Definition get_head {A : Set} (l_value : list A) : option A :=
   match l_value with
   | [] => None
-  | cons x_value _ => Some x_value
+  | Datatypes.cons x_value _ => Some x_value
   end.
 
 Definition insert_monadic_notations_here : unit := tt.

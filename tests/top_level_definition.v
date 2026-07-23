@@ -5,10 +5,10 @@ Require Import RocqOfOCaml.Settings.
 (** Init function; without side-effects in Rocq *)
 Definition init_module : unit :=
   let '_ := Z.add 1 1 in
-  let '_ := RocqOfOCaml.Stdlib.ignore 2 in
+  let '_ := RocqOfOCaml.Basics.Stdlib.ignore 2 in
   tt.
 
 Module M.
   (** Init function; without side-effects in Rocq *)
-  Definition init_module : unit := RocqOfOCaml.Stdlib.ignore (Z.add 1 1).
+  Definition init_module : unit := RocqOfOCaml.Basics.Stdlib.ignore (Z.add 1 1).
 End M.

@@ -24,6 +24,7 @@
   "require_mli": ["Configuration"],
   "variant_constructors": [["A", "VariantA"]],
   "variant_types": [["A", "variant_type"]],
+  "without_default_imports": false,
   "without_guard_checking": ["tests/configuration.ml"],
   "without_positivity_checking": ["tests/configuration.ml"]
 }

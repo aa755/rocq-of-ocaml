@@ -1,4 +1,4 @@
---- tests/errors/unsupported_expressions.ml:4:3 ----------------------------- side_effect (1/16) ---
+--- tests/errors/unsupported_expressions.ml:4:3 ----------------------------- side_effect (1/13) ---
 
   2 | 
   3 | let set_field (record : mutable_record) =
@@ -10,19 +10,7 @@
 
 Set record field not handled.
 
---- tests/errors/unsupported_expressions.ml:7:3 --------------------------- not_supported (2/16) ---
-
-   5 | 
-   6 | let array_value =
->  7 |   [| 1; 2; 3 |]
-   8 | 
-   9 | let while_loop () =
-  10 |   let counter = ref 0 in
-
-
-Arrays not handled.
-
---- tests/errors/unsupported_expressions.ml:11:3 ---------------------------- side_effect (3/16) ---
+--- tests/errors/unsupported_expressions.ml:11:3 ---------------------------- side_effect (2/13) ---
 
    9 | let while_loop () =
   10 |   let counter = ref 0 in
@@ -36,7 +24,7 @@ Arrays not handled.
 
 While loops not handled.
 
---- tests/errors/unsupported_expressions.ml:16:3 ---------------------------- side_effect (4/16) ---
+--- tests/errors/unsupported_expressions.ml:16:3 ---------------------------- side_effect (3/13) ---
 
   14 | 
   15 | let for_loop () =
@@ -50,7 +38,7 @@ While loops not handled.
 
 For loops not handled.
 
---- tests/errors/unsupported_expressions.ml:20:1 -------------------------- not_supported (5/16) ---
+--- tests/errors/unsupported_expressions.ml:20:1 -------------------------- not_supported (4/13) ---
 
   18 |   done
   19 | 
@@ -67,7 +55,7 @@ For loops not handled.
 
 Structure item `class` not handled.
 
---- tests/errors/unsupported_expressions.ml:27:5 -------------------------- not_supported (6/16) ---
+--- tests/errors/unsupported_expressions.ml:27:5 -------------------------- not_supported (5/13) ---
 
   25 |   end
   26 | 
@@ -79,7 +67,19 @@ Structure item `class` not handled.
 
 We do not handle this form of object types
 
---- tests/errors/unsupported_expressions.ml:28:3 -------------------------- not_supported (7/16) ---
+--- tests/errors/unsupported_expressions.ml:27:5 -------------------------- not_supported (6/13) ---
+
+  25 |   end
+  26 | 
+> 27 | let object_value =
+  28 |   object
+  29 |     method get = 1
+  30 |   end
+
+
+We do not handle this form of object types
+
+--- tests/errors/unsupported_expressions.ml:28:3 -------------------------- not_supported (7/13) ---
 
   26 | 
   27 | let object_value =
@@ -93,7 +93,7 @@ We do not handle this form of object types
 
 Creation of objects is not handled
 
---- tests/errors/unsupported_expressions.ml:33:3 -------------------------- not_supported (8/16) ---
+--- tests/errors/unsupported_expressions.ml:33:3 -------------------------- not_supported (8/13) ---
 
   31 | 
   32 | let send_value =
@@ -105,7 +105,7 @@ Creation of objects is not handled
 
 Sending method message is not handled
 
---- tests/errors/unsupported_expressions.ml:36:3 -------------------------- not_supported (9/16) ---
+--- tests/errors/unsupported_expressions.ml:36:3 -------------------------- not_supported (9/13) ---
 
   34 | 
   35 | let new_object =
@@ -117,7 +117,7 @@ Sending method message is not handled
 
 Creation of new objects is not handled
 
---- tests/errors/unsupported_expressions.ml:39:3 --------------------------- side_effect (10/16) ---
+--- tests/errors/unsupported_expressions.ml:39:3 --------------------------- side_effect (10/13) ---
 
   37 | 
   38 | let lazy_value =
@@ -129,66 +129,19 @@ Creation of new objects is not handled
 
 Lazy expressions are not handled
 
---- tests/errors/unsupported_expressions.ml:42:3 --------------------------- side_effect (11/16) ---
+--- tests/errors/unsupported_expressions.ml:50:5 ---------------------------- unexpected (11/13) ---
 
-  40 | 
-  41 | let assertion =
-> 42 |   assert true
-  43 | 
-  44 | let try_with value =
-  45 |   try value with
-
-
-Assert instruction is not handled.
-
---- tests/errors/unsupported_expressions.ml:45:3 --------------------------- side_effect (12/16) ---
-
-  43 | 
-  44 | let try_with value =
-> 45 |   try value with
-> 46 |   | Failure _ -> 0
-  47 | 
   48 | let try_with_name value =
   49 |   try value with
-
-
-Use a trivial matching for the `with` clause, like:
-
-    try ... with exn -> ...
-
-You can do a second matching on `exn` in the error handler if needed.
-
---- tests/errors/unsupported_expressions.ml:49:3 --------------------------- side_effect (13/16) ---
-
-  47 | 
-  48 | let try_with_name value =
-> 49 |   try value with
 > 50 |   | exn -> 0
   51 | 
   52 | let try_with_any value =
   53 |   try value with
 
 
-Try-with are not handled
+Unexpected kind of pattern (expected extensible type or an any pattern)
 
-Alternative: use sum types ("option", "result", ...) to represent an error case.
-
---- tests/errors/unsupported_expressions.ml:53:3 --------------------------- side_effect (14/16) ---
-
-  51 | 
-  52 | let try_with_any value =
-> 53 |   try value with
-> 54 |   | _ -> 0
-  55 | 
-  56 | let local_exception () =
-  57 |   let exception Local in
-
-
-Try-with are not handled
-
-Alternative: use sum types ("option", "result", ...) to represent an error case.
-
---- tests/errors/unsupported_expressions.ml:57:3 --------------------------- side_effect (15/16) ---
+--- tests/errors/unsupported_expressions.ml:57:3 --------------------------- side_effect (12/13) ---
 
   55 | 
   56 | let local_exception () =
@@ -201,7 +154,7 @@ Alternative: use sum types ("option", "result", ...) to represent an error case.
 
 Let of exception is not handled
 
---- tests/errors/unsupported_expressions.ml:64:10 ------------------------ not_supported (16/16) ---
+--- tests/errors/unsupported_expressions.ml:64:10 ------------------------ not_supported (13/13) ---
 
   62 | let impossible (value : empty) =
   63 |   match value with
@@ -213,7 +166,7 @@ Let of exception is not handled
 
 Unreachable expressions are not supported
 
---- Errors -------------------------------------------------------------------------[ 16 errors ]---
+--- Errors -------------------------------------------------------------------------[ 13 errors ]---
 
 ❌ File '/dev/stdout' generated with some errors
 (** File generated by rocq-of-ocaml *)
@@ -233,13 +186,11 @@ Definition set_field (record : mutable_record) : unit :=
   (* ❌ Set record field not handled. *)
   set_record_field record "field" 1.
 
-Definition array_value : array int :=
-  (* ❌ Arrays not handled. *)
-  [ 1; 2; 3 ].
+Definition array_value : array int := [ 1; 2; 3 ].
 
 Definition while_loop (function_parameter : unit) : unit :=
   let '_ := function_parameter in
-  let counter := Stdlib.ref_value 0 in
+  let counter := RocqOfOCaml.Basics.Stdlib.ref_value 0 in
   (* ❌ While loops not handled. *)
   while.
 
@@ -267,21 +218,37 @@ Definition lazy_value : lazy_t :=
   (* ❌ Lazy expressions are not handled *)
   lazy 1.
 
-Definition assertion : unit :=
-  (* ❌ Assert instruction is not handled. *)
-  assert unit true.
+Definition assertion : unit := assert unit true.
 
 Definition try_with (value : int) : int :=
-  (* ❌ Use a trivial matching for the `with` clause, like: *)
-  typ_with_with_non_trivial_matching.
+  try_with (fun _ => value)
+    (fun _exception_value =>
+      match _exception_value with
+      | Build_extensible tag _ payload =>
+        if String.eqb tag "Failure" then
+          let '_ := cast string payload in
+          0
+        else
+          RocqOfOCaml.Basics.Stdlib.raise (Build_extensible tag _ payload)
+      end).
 
 Definition try_with_name (value : int) : int :=
-  (* ❌ Try-with are not handled *)
-  try_with (fun _ => value) (fun exn_value => 0).
+  try_with (fun _ => value)
+    (fun _exception_value =>
+      match _exception_value with
+      | Build_extensible tag _ payload =>
+        if String.eqb tag "unexpected_kind_of_pattern" then
+          let '_ := cast unit payload in
+          0
+        else
+          RocqOfOCaml.Basics.Stdlib.raise (Build_extensible tag _ payload)
+      end).
 
 Definition try_with_any (value : int) : int :=
-  (* ❌ Try-with are not handled *)
-  try_with (fun _ => value) (fun _ => 0).
+  try_with (fun _ => value)
+    (fun _exception_value =>
+      let '_ := _exception_value in
+      0).
 
 Definition local_exception {A : Set} (function_parameter : unit) : A :=
   let '_ := function_parameter in

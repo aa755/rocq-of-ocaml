@@ -25,7 +25,7 @@ Arguments D2 {_}.
 Fixpoint of_list {A : Set} (l_value : list A) : t2 A :=
   match l_value with
   | [] => D1
-  | cons x_value xs => D2 x_value (of_list xs)
+  | Datatypes.cons x_value xs => D2 x_value (of_list xs)
   end.
 
 Fixpoint sum (l_value : t2 int) : int :=
@@ -36,7 +36,7 @@ Fixpoint sum (l_value : t2 int) : int :=
 
 Definition s_value {A : Set} (function_parameter : A) : int :=
   let '_ := function_parameter in
-  sum (of_list [ 5; 7; 3 ]).
+  sum (of_list (Datatypes.cons 5 (Datatypes.cons 7 (Datatypes.cons 3 nil)))).
 
 Parameter t3 : Set.
 

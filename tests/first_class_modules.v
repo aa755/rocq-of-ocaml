@@ -146,12 +146,11 @@ Definition set_update {a : Set} (v_value : a) (b_value : bool) (Box : set a)
     let OPS := Box.(Boxed_set.OPS) in
     let boxed :=
       if b_value then
-        Box.(Boxed_set.OPS).(S.SET.add) v_value Box.(Boxed_set.boxed)
+        OPS.(S.SET.add) v_value Box.(Boxed_set.boxed)
       else
-        Box.(Boxed_set.OPS).(S.SET.remove) v_value Box.(Boxed_set.boxed) in
+        OPS.(S.SET.remove) v_value Box.(Boxed_set.boxed) in
     let size :=
-      let mem := Box.(Boxed_set.OPS).(S.SET.mem) v_value Box.(Boxed_set.boxed)
-        in
+      let mem := OPS.(S.SET.mem) v_value Box.(Boxed_set.boxed) in
       if mem then
         if b_value then
           Box.(Boxed_set.size)

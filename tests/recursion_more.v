@@ -5,16 +5,17 @@ Require Import RocqOfOCaml.Settings.
 Fixpoint f_map {A B : Set} (f_value : A -> B) (l_value : list A) : list B :=
   match l_value with
   | [] => nil
-  | cons x_value l_value => cons (f_value x_value) (f_map f_value l_value)
+  | Datatypes.cons x_value l_value =>
+    Datatypes.cons (f_value x_value) (f_map f_value l_value)
   end.
 
 Definition n_value : int :=
   let fix sum (l_value : list int) : int :=
     match l_value with
     | [] => 0
-    | cons x_value l_value => Z.add x_value (sum l_value)
+    | Datatypes.cons x_value l_value => Z.add x_value (sum l_value)
     end in
-  sum [ 1; 2; 3 ].
+  sum (Datatypes.cons 1 (Datatypes.cons 2 (Datatypes.cons 3 nil))).
 
 Reserved Notation "'double".
 
@@ -22,7 +23,8 @@ Fixpoint double_list (l_value : list int) : list int :=
   let double := 'double in
   match l_value with
   | [] => l_value
-  | cons n_value l_value => cons (double n_value) (double_list l_value)
+  | Datatypes.cons n_value l_value =>
+    Datatypes.cons (double n_value) (double_list l_value)
   end
 
 where "'double" := (fun (n_value : int) => Z.mul 2 n_value).
@@ -57,7 +59,7 @@ and "'sums" :=
     let zero := 'zero in
     match ts with
     | [] => zero tt
-    | cons t_value ts => Z.add (sum t_value) (sums ts)
+    | Datatypes.cons t_value ts => Z.add (sum t_value) (sums ts)
     end).
 
 Definition zero := 'zero.
@@ -79,11 +81,12 @@ where "'counts" :=
   (fun (A : Set) => fix counts (ts : list (tree (list A))) {struct ts} : int :=
     match ts with
     | [] => 0
-    | cons t_value ts => Z.add (count t_value) (counts ts)
+    | Datatypes.cons t_value ts => Z.add (count t_value) (counts ts)
     end)
 
 and "'length" :=
-  (fun (A : Set) => fun (l_value : list A) => RocqOfOCaml.List.length l_value).
+  (fun (A : Set) => fun (l_value : list A) =>
+    RocqOfOCaml.OCamlList.length l_value).
 
 Definition counts {A : Set} := 'counts A.
 Definition length {A : Set} := 'length A.

@@ -218,7 +218,7 @@ Module RecordWithInnerPolymorphism.
   Definition f_value {A : Set} (l_value : list A) : list A :=
     match l_value with
     | [] => l_value
-    | cons _ l' => l'
+    | Datatypes.cons _ l' => l'
     end.
   
   Definition r_value : t := {| t.f _ := f_value; |}.

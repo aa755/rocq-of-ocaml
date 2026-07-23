@@ -8,19 +8,22 @@ Definition b_neq1 : bool := nequiv_decb true false.
 
 Definition b_neq2 : bool := nequiv_decb tt tt.
 
-Definition b_lt : bool := RocqOfOCaml.Stdlib.lt 1 2.
+Definition generic_equal {A : Set} (x_value : A) (y_value : A) : bool :=
+  RocqOfOCaml.Basics.Stdlib.polymorphic_equal x_value y_value.
 
-Definition b_gt : bool := RocqOfOCaml.Stdlib.gt 1 2.
+Definition b_lt : bool := RocqOfOCaml.Basics.Stdlib.lt 1 2.
 
-Definition b_le : bool := RocqOfOCaml.Stdlib.le true false.
+Definition b_gt : bool := RocqOfOCaml.Basics.Stdlib.gt 1 2.
 
-Definition b_ge : bool := RocqOfOCaml.Stdlib.ge tt tt.
+Definition b_le : bool := RocqOfOCaml.Basics.Stdlib.le true false.
 
-Definition comp : int := RocqOfOCaml.Stdlib.compare 1 2.
+Definition b_ge : bool := RocqOfOCaml.Basics.Stdlib.ge tt tt.
 
-Definition n_min : int := RocqOfOCaml.Stdlib.min 1 2.
+Definition comp : int := RocqOfOCaml.Basics.Stdlib.compare 1 2.
 
-Definition n_max : int := RocqOfOCaml.Stdlib.max 1 2.
+Definition n_min : int := RocqOfOCaml.Basics.Stdlib.min 1 2.
+
+Definition n_max : int := RocqOfOCaml.Basics.Stdlib.max 1 2.
 
 Definition b_not : bool := negb false.
 
@@ -68,20 +71,22 @@ Definition n_lsr : int := Z.shiftr 12 13.
 
 Definition ss : string := String.append "begin" "end".
 
-Definition n_char : int := RocqOfOCaml.Stdlib.int_of_char "c" % char.
+Definition n_char : int := RocqOfOCaml.Basics.Stdlib.int_of_char "c" % char.
 
-Definition i_value : unit := RocqOfOCaml.Stdlib.ignore 12.
+Definition i_value : unit := RocqOfOCaml.Basics.Stdlib.ignore 12.
 
-Definition s_bool : string := RocqOfOCaml.Stdlib.string_of_bool false.
+Definition s_bool : string := RocqOfOCaml.Basics.Stdlib.string_of_bool false.
 
-Definition bool_s : bool := RocqOfOCaml.Stdlib.bool_of_string "false".
+Definition bool_s : bool := RocqOfOCaml.Basics.Stdlib.bool_of_string "false".
 
-Definition s_n : string := RocqOfOCaml.Stdlib.string_of_int 12.
+Definition s_n : string := RocqOfOCaml.Basics.Stdlib.string_of_int 12.
 
-Definition n_s : int := RocqOfOCaml.Stdlib.int_of_string "12".
+Definition n_s : int := RocqOfOCaml.Basics.Stdlib.int_of_string "12".
 
 Definition n1 : int := fst (12, 13).
 
 Definition n2 : int := snd (12, 13).
 
-Definition ll : list int := RocqOfOCaml.Stdlib.app [ 1; 2 ] [ 3; 4 ].
+Definition ll : list int :=
+  RocqOfOCaml.Basics.Stdlib.app (Datatypes.cons 1 (Datatypes.cons 2 nil))
+    (Datatypes.cons 3 (Datatypes.cons 4 nil)).

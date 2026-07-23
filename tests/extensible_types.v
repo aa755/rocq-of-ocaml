@@ -39,17 +39,21 @@ Definition match_ex (x_value : ex) : int :=
   | Build_extensible tag _ payload =>
     if String.eqb tag "Empty" then
       0
-    else if String.eqb tag "Int" then
-      let n_value := cast int payload in
-      n_value
-    else if String.eqb tag "String" then
-      let '(m_value, b_value) := cast (string * bool) payload in
-      if b_value then
-        RocqOfOCaml.String.length m_value
+    else
+      if String.eqb tag "Int" then
+        let n_value := cast int payload in
+        n_value
       else
-        0
-    else if String.eqb tag "Re" then
-      let '{| Re.v := v_value; Re.n := n_value |} := cast Re payload in
-      Z.add n_value (RocqOfOCaml.String.length v_value)
-    else (-1)
+        if String.eqb tag "String" then
+          let '(m_value, b_value) := cast (string * bool) payload in
+          if b_value then
+            RocqOfOCaml.OCamlString.length m_value
+          else
+            0
+        else
+          if String.eqb tag "Re" then
+            let '{| Re.v := v_value; Re.n := n_value |} := cast Re payload in
+            Z.add n_value (RocqOfOCaml.OCamlString.length v_value)
+          else
+            (-1)
   end.

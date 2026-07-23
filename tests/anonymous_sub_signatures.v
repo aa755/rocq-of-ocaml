@@ -71,16 +71,16 @@ Module F.
   }.
   Arguments Build_FArgs {_ _ _ _}.
   
-  Definition foo `{FArgs} : Set :=
+  Definition foo `{_fargs : FArgs} : Set :=
     V.(Validator.Commitment_t) * V.(Validator.Commitment_NestedLevel_t).
   
-  Definition bar `{FArgs} : string :=
+  Definition bar `{_fargs : FArgs} : string :=
     V.(Validator.Commitment_Foo).(WithBar.bar).
   
   (* F *)
-  Definition functor `{FArgs} :=
+  Definition functor `{_fargs : FArgs} :WithBar :=
     {|
-      WithBar.bar := bar
+      WithBar.bar := (bar (_fargs := _fargs))
     |}.
 End F.
 Definition F
@@ -88,6 +88,6 @@ Definition F
   (V :
     Validator (Ciphertext_t := V_Ciphertext_t) (Commitment_t := V_Commitment_t)
       (Commitment_NestedLevel_t := V_Commitment_NestedLevel_t) (CV_t := V_CV_t))
-  : WithBar :=
-  let '_ := F.Build_FArgs V in
-  F.functor.
+  :=
+  @F.functor V_Ciphertext_t V_Commitment_t V_Commitment_NestedLevel_t V_CV_t
+    (F.Build_FArgs V).

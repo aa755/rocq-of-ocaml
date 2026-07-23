@@ -17,7 +17,7 @@ Module M_infer.
   Definition v_value : int := 12.
   
   (* M_infer *)
-  Definition module :=
+  Definition module :S (t := int) :=
     {|
       S.v_value := v_value
     |}.
@@ -30,12 +30,12 @@ Module M_definition.
   Definition v_value : int := 12.
   
   (* M_definition *)
-  Definition module :=
+  Definition module :S (t := int) :=
     {|
       S.v_value := v_value
     |}.
 End M_definition.
-Definition M_definition : S (t := int) := M_definition.module.
+Definition M_definition := M_definition.module.
 
 Module M_abstract.
   Definition t : Set := int.
@@ -43,12 +43,12 @@ Module M_abstract.
   Definition v_value : int := 12.
   
   (* M_abstract *)
-  Definition module :=
+  Definition module :S (t := t) :=
     {|
       S.v_value := v_value
     |}.
 End M_abstract.
-Definition M_abstract : S (t := _) := M_abstract.module.
+Definition M_abstract := M_abstract.module.
 
 Module F_definition.
   Class FArgs {M1_t M2_t : Set} := {
@@ -57,22 +57,20 @@ Module F_definition.
   }.
   Arguments Build_FArgs {_ _}.
   
-  Definition t `{FArgs} : Set := M1.(S.t) * M2.(S.t) * string.
+  Definition t `{_fargs : FArgs} : Set := M1.(S.t) * M2.(S.t) * string.
   
-  Definition v_value `{FArgs} : M1.(S.t) * M2.(S.t) * string :=
+  Definition v_value `{_fargs : FArgs} : M1.(S.t) * M2.(S.t) * string :=
     (M1.(S.v_value), M2.(S.v_value), "foo").
   
   (* F_definition *)
-  Definition functor `{FArgs} :=
+  Definition functor `{_fargs : FArgs} :S (t := M1.(S.t) * M2.(S.t) * string) :=
     {|
-      S.v_value := v_value
+      S.v_value := (v_value (_fargs := _fargs))
     |}.
 End F_definition.
 Definition F_definition {M1_t M2_t : Set}
-  (M1 : S (t := M1_t)) (M2 : S (t := M2_t))
-  : S (t := M1.(S.t) * M2.(S.t) * string) :=
-  let '_ := F_definition.Build_FArgs M1 M2 in
-  F_definition.functor.
+  (M1 : S (t := M1_t)) (M2 : S (t := M2_t)) :=
+  @F_definition.functor M1_t M2_t (F_definition.Build_FArgs M1 M2).
 
 Module F_abstract.
   Class FArgs {M1_t M2_t : Set} := {
@@ -81,21 +79,20 @@ Module F_abstract.
   }.
   Arguments Build_FArgs {_ _}.
   
-  Definition t `{FArgs} : Set := M1.(S.t) * M2.(S.t) * string.
+  Definition t `{_fargs : FArgs} : Set := M1.(S.t) * M2.(S.t) * string.
   
-  Definition v_value `{FArgs} : M1.(S.t) * M2.(S.t) * string :=
+  Definition v_value `{_fargs : FArgs} : M1.(S.t) * M2.(S.t) * string :=
     (M1.(S.v_value), M2.(S.v_value), "foo").
   
   (* F_abstract *)
-  Definition functor `{FArgs} :=
+  Definition functor `{_fargs : FArgs} :S (t := t) :=
     {|
-      S.v_value := v_value
+      S.v_value := (v_value (_fargs := _fargs))
     |}.
 End F_abstract.
 Definition F_abstract {M1_t M2_t : Set}
-  (M1 : S (t := M1_t)) (M2 : S (t := M2_t)) : S (t := _) :=
-  let '_ := F_abstract.Build_FArgs M1 M2 in
-  F_abstract.functor.
+  (M1 : S (t := M1_t)) (M2 : S (t := M2_t)) :=
+  @F_abstract.functor M1_t M2_t (F_abstract.Build_FArgs M1 M2).
 
 Module S_with_functor.
   Record signature : Set := {
@@ -111,27 +108,26 @@ Module M_with_functor.
     }.
     Arguments Build_FArgs {_}.
     
-    Definition t `{FArgs} : Set := M.(S.t) * int.
+    Definition t `{_fargs : FArgs} : Set := M.(S.t) * int.
     
-    Definition v_value `{FArgs} : M.(S.t) * int := (M.(S.v_value), 12).
+    Definition v_value `{_fargs : FArgs} : M.(S.t) * int := (M.(S.v_value), 12).
     
     (* F *)
-    Definition functor `{FArgs} :=
+    Definition functor `{_fargs : FArgs} :S (t := M.(S.t) * int) :=
       {|
-        S.v_value := v_value
+        S.v_value := (v_value (_fargs := _fargs))
       |}.
   End F.
   Definition F {M_t : Set} (M : S (t := M_t)) :=
-    let '_ := F.Build_FArgs M in
-    F.functor.
+    @F.functor M_t (F.Build_FArgs M).
   
   (* M_with_functor *)
-  Definition module :=
+  Definition module :S_with_functor :=
     {|
       S_with_functor.F _ := F
     |}.
 End M_with_functor.
-Definition M_with_functor : S_with_functor := M_with_functor.module.
+Definition M_with_functor := M_with_functor.module.
 
 Module S_without_abstract.
   Record signature : Set := {
@@ -144,7 +140,7 @@ Module M_without_abstract.
   Definition s_value : string := "foo".
   
   (* M_without_abstract *)
-  Definition module :=
+  Definition module :S_without_abstract :=
     {|
       S_without_abstract.s_value := s_value
     |}.

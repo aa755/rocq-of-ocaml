@@ -3,9 +3,9 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Definition n_value : int :=
-  match ([ 1; 2 ], false) with
-  | (cons x_value (cons _ []), true) => x_value
-  | (cons _ (cons y_value []), false) => y_value
+  match ((Datatypes.cons 1 (Datatypes.cons 2 nil)), false) with
+  | (Datatypes.cons x_value (Datatypes.cons _ []), true) => x_value
+  | (Datatypes.cons _ (Datatypes.cons y_value []), false) => y_value
   | _ => 0
   end.
 
@@ -19,7 +19,7 @@ Definition m_value (x_value : t) : int :=
       (let '_ := x_value in
       equiv_decb 1 2),
       match x_value with
-      | Bar n_value => RocqOfOCaml.Stdlib.gt n_value 12
+      | Bar n_value => RocqOfOCaml.Basics.Stdlib.gt n_value 12
       | _ => false
       end,
       match x_value with
