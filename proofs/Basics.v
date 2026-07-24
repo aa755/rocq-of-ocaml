@@ -220,6 +220,9 @@ Module Stdlib.
 
   Parameter polymorphic_equal : forall {a : Set}, a -> a -> bool.
 
+  Definition polymorphic_not_equal {a : Set} (x y : a) : bool :=
+    negb (polymorphic_equal x y).
+
   Parameter physical_equal : forall {a : Set}, a -> a -> bool.
 
   (** OCaml's [Lazy], [Atomic], and reference APIs rely on mutable runtime
@@ -354,6 +357,28 @@ Module Stdlib.
   (** * Operations on format strings *)
   (* TODO *)
 End Stdlib.
+
+(** Computational equality instances used when translating OCaml's
+    polymorphic equality at types whose Gallina representation supports it. *)
+Module Equality.
+  Global Instance string_eq_dec : EqDec (eq_setoid string) :=
+    String.string_dec.
+
+  Global Instance list_eq_dec {A : Type}
+      (A_eq_dec : EqDec (eq_setoid A))
+      : EqDec (eq_setoid (list A)) :=
+    List.list_eq_dec (@equiv_dec A (eq_setoid A) A_eq_dec).
+
+  Global Instance option_eq_dec {A : Type}
+      (A_eq_dec : EqDec (eq_setoid A))
+      : EqDec (eq_setoid (option A)).
+  Proof.
+    intros x y.
+    change ({x = y} + {x <> y}).
+    decide equality.
+    apply (@equiv_dec A (eq_setoid A) A_eq_dec).
+  Defined.
+End Equality.
 
 Module Char.
   Global Instance eq_dec : EqDec (eq_setoid ascii) := ascii_dec.

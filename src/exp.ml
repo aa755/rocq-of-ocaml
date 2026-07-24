@@ -133,6 +133,42 @@ let rec open_ocaml_arrow_type (env : Env.t) (typ : Types.type_expr) (n : int) :
         | None -> None)
     | _ -> None
 
+(** Whether rocq-of-ocaml's compatibility library provides a computational
+    [EqDec] instance for the translation of this OCaml type.
+
+    OCaml [(=)] is a polymorphic runtime primitive.  We use Rocq's executable
+    [equiv_decb] only for the closed fragment where the compatibility library
+    supplies decision procedures.  Other instantiations must retain the
+    explicit [Stdlib.polymorphic_equal] boundary instead of leaving unresolved
+    typeclass obligations in generated code. *)
+let rec has_rocq_eq_dec (env : Env.t) (typ : Types.type_expr) : bool =
+  let typ =
+    try Ctype.full_expand ~may_forget_scope:false env typ with _ -> typ
+  in
+  match Types.get_desc typ with
+  | Tconstr (path, arguments, _) -> (
+      match Path.last path with
+      | ( "int" | "int32" | "int64" | "nativeint" | "float" | "bool"
+        | "unit" | "char" | "string" ) ->
+          true
+      | "list" | "option" | "array" | "iarray" ->
+          List.for_all (has_rocq_eq_dec env) arguments
+      | _ -> false)
+  | Ttuple elements ->
+      List.for_all
+        (fun (_, element) -> has_rocq_eq_dec env element)
+        elements
+  | Tlink typ | Tsubst (typ, _) | Tpoly (typ, _) ->
+      has_rocq_eq_dec env typ
+  | Tvar _ | Tunivar _ | Tarrow _ | Tobject _ | Tfield _ | Tnil
+  | Tvariant _ | Tpackage _ ->
+      false
+
+let equality_argument_has_rocq_eq_dec (e : expression) : bool =
+  match open_ocaml_arrow_type e.exp_env e.exp_type 2 with
+  | Some (argument :: _, _) -> has_rocq_eq_dec e.exp_env argument
+  | Some ([], _) | None -> false
+
 let error_message (e : t) (category : Error.Category.t) (message : string) :
     t Monad.t =
   raise (ErrorMessage (e, message)) category message
@@ -807,13 +843,20 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               let x =
                 if
                   String.equal (MixedPath.to_string x) "equiv_decb"
-                  && Ctype.free_variables ~env:e.exp_env e.exp_type
-                     <> []
+                  && not (equality_argument_has_rocq_eq_dec e)
                 then
                   MixedPath.PathName
                     (PathName.__make
                        [ "RocqOfOCaml"; "Basics"; "Stdlib" ]
                        "polymorphic_equal")
+                else if
+                  String.equal (MixedPath.to_string x) "nequiv_decb"
+                  && not (equality_argument_has_rocq_eq_dec e)
+                then
+                  MixedPath.PathName
+                    (PathName.__make
+                       [ "RocqOfOCaml"; "Basics"; "Stdlib" ]
+                       "polymorphic_not_equal")
                 else x
               in
               return (Variable (x, implicits))
