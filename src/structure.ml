@@ -506,6 +506,13 @@ let signature_item_named (name : string) (signature : Types.signature) :
   |> List.find_opt (fun item ->
          String.equal (Ident.name (Types.signature_item_id item)) name)
 
+let rec path_head_ident (path : Path.t) : Ident.t =
+  match path with
+  | Path.Pident ident -> ident
+  | Path.Pdot (parent, _) | Path.Pextra_ty (parent, _) ->
+      path_head_ident parent
+  | Path.Papply (functor_path, _) -> path_head_ident functor_path
+
 (** Match a generic functor-result type with its specialized application type.
     The returned overrides identify only specialized constructor nodes whose
     generic counterparts denote one of [origin_type_paths]. *)
@@ -927,7 +934,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                           true
                                         with _ -> false)
                                        &&
-                                       let head = Path.head source in
+                                       let head = path_head_ident source in
                                        (not (Ident.global head))
                                        && not (Ident.is_predef head) ->
                                        [ source ]
