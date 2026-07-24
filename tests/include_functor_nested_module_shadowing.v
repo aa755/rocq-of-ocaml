@@ -37,7 +37,8 @@ Module F.
   (* F *)
   Definition functor `{_fargs : FArgs} :@F_result X_t _fargs :=
     ({|
-      F_result.Map_empty (X_t := X_t) (_fargs := _fargs) _ := Map.empty
+      F_result.Map_empty (X_t := X_t) (_fargs := _fargs) _ :=
+        (Map.empty (_fargs := _fargs))
     |} : @F_result X_t _fargs).
 End F.
 Definition F {X_t : Set} (X : F_X_signature (t := X_t)) :=

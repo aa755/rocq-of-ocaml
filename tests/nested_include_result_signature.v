@@ -149,8 +149,9 @@ Module Pair.
   (* Pair *)
   Definition functor `{_fargs : FArgs} :@Pair_result _fargs :=
     ({|
-      Pair_result.Left_Repr (_fargs := _fargs) := Left.Repr;
-      Pair_result.Right_Repr (_fargs := _fargs) := Right.Repr
+      Pair_result.Left_Repr (_fargs := _fargs) := (Left.Repr (_fargs := _fargs));
+      Pair_result.Right_Repr (_fargs := _fargs) :=
+        (Right.Repr (_fargs := _fargs))
     |} : @Pair_result _fargs).
 End Pair.
 Definition Pair (Value : VALUE) := @Pair.functor (Pair.Build_FArgs Value).

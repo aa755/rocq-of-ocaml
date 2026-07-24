@@ -225,6 +225,49 @@ type t =
   | Error of string
   | ErrorMessage of string * t
 
+let value_defines (name : Name.t) ({ Value.definition; _ } : Value.t) : bool =
+  definition.Exp.Definition.cases
+  |> List.exists (fun (header, _) ->
+         Name.equal header.Exp.Header.name name)
+
+(** Whether the definition reached by a local access is printed with the
+    enclosing functor's [_fargs] parameter. *)
+let local_access_uses_fargs (definitions : t list) (access : Name.t list) :
+    bool =
+  let rec search definitions access =
+    match access with
+    | [] -> false
+    | name :: fields ->
+        let rec search_definitions = function
+          | [] -> false
+          | Documentation (_, definitions) :: remaining
+          | ErrorMessage (_, Documentation (_, definitions)) :: remaining ->
+              if search definitions access then true
+              else search_definitions remaining
+          | ErrorMessage (_, definition) :: remaining ->
+              if search [ definition ] access then true
+              else search_definitions remaining
+          | Value value :: _
+            when fields = [] && value_defines name value ->
+              true
+          | ModuleIncludeItem (_, field, _, _, _) :: _
+            when fields = [] && Name.equal name field ->
+              true
+          | ModuleExpression (module_name, _, _, _) :: _
+            when Name.equal name module_name ->
+              true
+          | Module (module_name, _, definitions, expression) :: _
+            when Name.equal name module_name ->
+              if fields = [] then Option.is_some expression
+              else search definitions fields
+          | _ :: remaining -> search_definitions remaining
+        in
+        search_definitions definitions
+  in
+  match access with
+  | [ _ ] -> true
+  | _ -> search definitions access
+
 let error_message (structure : t) (category : Error.Category.t)
     (message : string) : t list Monad.t =
   raise [ ErrorMessage (message, structure) ] category message
@@ -513,13 +556,24 @@ let rec path_head_ident (path : Path.t) : Ident.t =
       path_head_ident parent
   | Path.Papply (functor_path, _) -> path_head_ident functor_path
 
+(** Recover a stable, qualified constructor path when the type checker retained
+    only a local identifier introduced by an include. *)
+let normalize_type_path (env : Env.t) (path : Path.t) : Path.t =
+  try
+    match path with
+    | Path.Pdot (module_path, field) ->
+        Path.Pdot
+          (Env.normalize_module_path None env module_path, field)
+    | _ -> Env.normalize_type_path None env path
+  with _ -> path
+
 (** Match a generic functor-result type with its specialized application type.
-    The returned overrides identify only specialized constructor nodes whose
+    The returned candidates identify only specialized constructor nodes whose
     generic counterparts denote one of [origin_type_paths]. *)
-let constructor_overrides_from_origin
+let constructor_override_candidates_from_origin
     (origin_type_paths : (Path.t * MixedPath.t) list)
     (origin_typ : Types.type_expr) (specialized_typ : Types.type_expr) :
-    (int * MixedPath.t) list =
+    (int * Path.t * MixedPath.t) list =
   let seen = Hashtbl.create 17 in
   let immediate_children typ =
     let children = ref [] in
@@ -540,7 +594,7 @@ let constructor_overrides_from_origin
         match
           (Types.get_desc origin_typ, Types.get_desc specialized_typ)
         with
-        | Tconstr (origin_path, _, _), Tconstr _ -> (
+        | Tconstr (origin_path, _, _), Tconstr (specialized_path, _, _) -> (
             match
               List.find_map
                 (fun (candidate, target) ->
@@ -548,7 +602,8 @@ let constructor_overrides_from_origin
                 origin_type_paths
             with
             | Some target ->
-                (Types.get_id specialized_typ, target) :: overrides
+                (Types.get_id specialized_typ, specialized_path, target)
+                :: overrides
             | None -> overrides)
         | _ -> overrides
       in
@@ -561,7 +616,8 @@ let constructor_overrides_from_origin
   collect [] origin_typ specialized_typ
 
 (** Import an OCaml structure. *)
-let rec of_structure (structure : structure) : t list Monad.t =
+let rec of_structure ?(has_functor_parameters = false)
+    (structure : structure) : t list Monad.t =
   let get_record_include_items
       (alias : IncludedRecordAliasTarget.t)
       (mod_type : Types.module_type) (exclude_list : string list) :
@@ -916,8 +972,14 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                  signature_path flattened_name
                              in
                              let target =
-                               MixedPath.Access
-                                 (reference, record_fields @ [ field ])
+                               if has_functor_parameters then
+                                 MixedPath.AppliedAccess
+                                   ( reference,
+                                     [ ("_fargs", "_fargs") ],
+                                     record_fields @ [ field ] )
+                               else
+                                 MixedPath.Access
+                                   (reference, record_fields @ [ field ])
                              in
                              let manifest_paths =
                                match type_manifest with
@@ -984,15 +1046,39 @@ let rec of_structure (structure : structure) : t list Monad.t =
                              PathName.of_path_and_name_with_convert
                                signature_path flattened_name
                            in
-                           let constructor_overrides =
+                           let* constructor_overrides =
                              match origin_item source_name with
                              | Some
                                  (Types.Sig_value
                                    (_, { val_type = origin_type; _ }, _)) ->
-                                 constructor_overrides_from_origin
+                                 constructor_override_candidates_from_origin
                                    inherited_origin_type_paths origin_type
                                    val_type
-                             | _ -> []
+                                 |> Monad.List.map
+                                      (fun
+                                        ( node_id,
+                                          specialized_path,
+                                          fallback )
+                                      ->
+                                        let normalized_path =
+                                          normalize_type_path env
+                                            specialized_path
+                                        in
+                                        match specialized_path with
+                                        | Path.Pident ident
+                                          when
+                                            (not (Ident.global ident))
+                                            && not (Ident.is_predef ident)
+                                            && Path.same normalized_path
+                                                 specialized_path ->
+                                            return (node_id, fallback)
+                                        | _ ->
+                                            let* target =
+                                              MixedPath.of_path false
+                                                normalized_path
+                                            in
+                                            return (node_id, target))
+                             | _ -> return []
                            in
                            let* typ, _, new_typ_vars =
                              Type.of_typ_expr ~constructor_overrides true
@@ -1335,8 +1421,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
                   return (Attribute.has_plain_module attributes)
                 in
                 let* module_definition =
-                  of_module ?binding_path name ([], [], []) mb_expr
-                    has_plain_module_attribute
+                  of_module ?binding_path
+                    ~has_enclosing_fargs:has_functor_parameters name
+                    ([], [], []) mb_expr has_plain_module_attribute
                 in
                 return [ module_definition ]
             | Tstr_modtype { mtd_type = None; _ } ->
@@ -1437,7 +1524,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
                 in
                 let translate_include =
                   let* module_definition =
-                    of_module include_name ([], [], []) incl_mod false
+                    of_module
+                      ~has_enclosing_fargs:has_functor_parameters include_name
+                      ([], [], []) incl_mod false
                   in
                   let* fallback_signature_path =
                     match applied_functor_root_path incl_mod with
@@ -1494,7 +1583,7 @@ let rec of_structure (structure : structure) : t list Monad.t =
     ([], structure.str_final_env, [])
   >>= fun (structure, _, _) -> return structure
 
-and of_module ?binding_path (name : Name.t)
+and of_module ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
     (functor_parameters : functor_parameters)
     (module_expr : module_expr) (has_plain_module_attribute : bool) : t Monad.t
     =
@@ -1639,8 +1728,8 @@ and of_module ?binding_path (name : Name.t)
         | _, _, _ -> return (None, None))
   in
   let module_definition =
-    of_module_expr ?binding_path name functor_parameters as_expression
-      None module_expr
+    of_module_expr ?binding_path ~has_enclosing_fargs name
+      functor_parameters as_expression None module_expr
   in
   let module_definition =
     match (binding_path, synthetic_signature) with
@@ -1670,7 +1759,8 @@ and of_module ?binding_path (name : Name.t)
       set_module_path_alias source target body)
     include_aliases (translate_module ())
 
-and of_module_expr ?binding_path (name : Name.t)
+and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
+    (name : Name.t)
     (functor_parameters : functor_parameters)
     (as_expression :
       (Types.module_type * Path.t * (Name.t * int) list option) option)
@@ -1713,7 +1803,13 @@ and of_module_expr ?binding_path (name : Name.t)
   match module_expr.mod_desc with
   | Tmod_structure source_structure ->
       let translate_structure () =
-      let* structure = of_structure source_structure in
+      let _, parameters, _ = functor_parameters in
+      let has_functor_parameters =
+        has_enclosing_fargs || parameters <> []
+      in
+      let* structure =
+        of_structure ~has_functor_parameters source_structure
+      in
       let* local_module_bindings =
         source_structure.str_items
         |> Monad.List.filter_map
@@ -1738,8 +1834,12 @@ and of_module_expr ?binding_path (name : Name.t)
                 typ_vars module_type
             in
             let _, parameters, _ = functor_parameters in
-            let local_mixed_path (path_name : PathName.t) : MixedPath.t =
-              if parameters = [] || path_name.PathName.path <> [] then
+            let local_mixed_path (access : Name.t list)
+                (path_name : PathName.t) : MixedPath.t =
+              if
+                parameters = []
+                || not (local_access_uses_fargs structure access)
+              then
                 MixedPath.PathName path_name
               else
                 MixedPath.AppliedAccess
@@ -1864,13 +1964,13 @@ and of_module_expr ?binding_path (name : Name.t)
                             List.rev (List.tl (List.rev access))
                           in
                           return
-                            (local_mixed_path
+                            (local_mixed_path access
                                (PathName.of_name path base)))
                   | None ->
                       let base = List.hd (List.rev access) in
                       let path = List.rev (List.tl (List.rev access)) in
                       return
-                        (local_mixed_path
+                        (local_mixed_path access
                            (PathName.of_name path base)))
               | _ -> (
               match List.rev access with
@@ -1882,7 +1982,7 @@ and of_module_expr ?binding_path (name : Name.t)
                     "A module field has an empty local access path"
               | base :: rev_path ->
                   return
-                    (local_mixed_path
+                    (local_mixed_path access
                        (PathName.of_name (List.rev rev_path) base)))
             in
             let* e =
@@ -2648,8 +2748,8 @@ and of_module_expr ?binding_path (name : Name.t)
                 signature_hint )
       in
       let body =
-        of_module ?binding_path name functor_parameters module_expr
-          false
+        of_module ?binding_path ~has_enclosing_fargs name
+          functor_parameters module_expr false
       in
       (match (parameter, parameter_signature_hint) with
       | Named (Some ident, _, _), Some signature_path ->
@@ -2667,8 +2767,8 @@ and of_module_expr ?binding_path (name : Name.t)
             | Tmodtype_explicit module_type -> Some module_type
             | Tmodtype_implicit -> module_type_annotation)
       in
-      of_module_expr ?binding_path name functor_parameters as_expression
-        module_type_annotation module_expr
+      of_module_expr ?binding_path ~has_enclosing_fargs name
+        functor_parameters as_expression module_type_annotation module_expr
   | Tmod_unpack _ ->
       return
         (Error

@@ -54,7 +54,7 @@ Module Make.
       Make_result._return (M_t := M_t) (_fargs := _fargs) _ _ :=
         (_return (_fargs := _fargs));
       Make_result.Option_iterM (M_t := M_t) (_fargs := _fargs) _ _ :=
-        Option.iterM
+        (Option.iterM (_fargs := _fargs))
     |} : @Make_result M_t _fargs).
 End Make.
 Definition Make {M_t : Set -> Set -> Set} (M : S (t := M_t)) :=

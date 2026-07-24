@@ -124,8 +124,9 @@ Module Outer.
     :=
     {|
       Outer_result.Included := (Included (_fargs := _fargs));
-      Outer_result.Namespace_identity _ := Namespace.identity;
-      Outer_result.Namespace_Repr := Namespace.Repr
+      Outer_result.Namespace_identity _ :=
+        (Namespace.identity (_fargs := _fargs));
+      Outer_result.Namespace_Repr := (Namespace.Repr (_fargs := _fargs))
     |}.
 End Outer.
 Definition Outer (Argument : ARGUMENT) :=

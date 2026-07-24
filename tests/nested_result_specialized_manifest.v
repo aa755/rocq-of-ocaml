@@ -1182,11 +1182,12 @@ Module Result_state.
       Result_state_result.Result (T_state := T_state) (T__error := T__error)
         (_fargs := _fargs) := (Result (_fargs := _fargs));
       Result_state_result.Inner_return (T_state := T_state) (T__error :=
-        T__error) (_fargs := _fargs) _ := Inner._return;
+        T__error) (_fargs := _fargs) _ := (Inner._return (_fargs := _fargs));
       Result_state_result.op_Inner_gtgteq (T_state := T_state) (T__error :=
-        T__error) (_fargs := _fargs) _ _ := Inner.op_gtgteq;
+        T__error) (_fargs := _fargs) _ _ := (Inner.op_gtgteq (_fargs := _fargs));
       Result_state_result.op_Inner_letdollar (T_state := T_state) (T__error :=
-        T__error) (_fargs := _fargs) _ _ := Inner.op_letdollar;
+        T__error) (_fargs := _fargs) _ _ :=
+        (Inner.op_letdollar (_fargs := _fargs));
       Result_state_result.get (T_state := T_state) (T__error := T__error)
         (_fargs := _fargs) := (get (_fargs := _fargs));
       Result_state_result.put (T_state := T_state) (T__error := T__error)

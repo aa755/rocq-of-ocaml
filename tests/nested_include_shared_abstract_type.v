@@ -110,9 +110,9 @@ Module Outer.
       Outer_result.S := (S (_fargs := _fargs));
       Outer_result.Signed_Impl_make :=
         (S (_fargs := _fargs)).(Make.Make_result.Impl).(Make.Impl.Impl_signature.make);
-      Outer_result.Signed_make := Signed.make;
-      Outer_result.Signed_identity := Signed.identity;
-      Outer_result.Signed_round_trip := Signed.round_trip
+      Outer_result.Signed_make := (Signed.make (_fargs := _fargs));
+      Outer_result.Signed_identity := (Signed.identity (_fargs := _fargs));
+      Outer_result.Signed_round_trip := (Signed.round_trip (_fargs := _fargs))
     |}.
 End Outer.
 Definition Outer (Argument : ARGUMENT) :=

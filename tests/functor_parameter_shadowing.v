@@ -48,7 +48,7 @@ Module Enrich.
       Enrich_result.map (M_t := M_t) (_fargs := _fargs) _ _ :=
         (map (_fargs := _fargs));
       Enrich_result.Nested_identity (M_t := M_t) (_fargs := _fargs) _ :=
-        Nested.identity
+        (Nested.identity (_fargs := _fargs))
     |} : @Enrich_result M_t _fargs).
 End Enrich.
 Definition Enrich {M_t : Set -> Set} (M : MONAD (t := M_t)) :=

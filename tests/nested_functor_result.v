@@ -214,9 +214,9 @@ Module Included.
   Definition functor `{_fargs : FArgs} :@Included_result Left_t _fargs :=
     ({|
       Included_result.Applied_value (Left_t := Left_t) (_fargs := _fargs) :=
-        Applied.value;
+        (Applied.value (_fargs := _fargs));
       Included_result.Applied_duplicate (Left_t := Left_t) (_fargs := _fargs) :=
-        Applied.duplicate
+        (Applied.duplicate (_fargs := _fargs))
     |} : @Included_result Left_t _fargs).
 End Included.
 Definition Included {Left_t : Set} (Left : VALUE (t := Left_t)) :=

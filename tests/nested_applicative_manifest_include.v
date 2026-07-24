@@ -121,8 +121,8 @@ Module Outer.
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (Nested_t := _) :=
     {|
-      Outer_result.Nested_make _ := Nested.make;
-      Outer_result.Nested_duplicate _ := Nested.duplicate
+      Outer_result.Nested_make _ := (Nested.make (_fargs := _fargs));
+      Outer_result.Nested_duplicate _ := (Nested.duplicate (_fargs := _fargs))
     |}.
 End Outer.
 Definition Outer {Value_t : Set}
