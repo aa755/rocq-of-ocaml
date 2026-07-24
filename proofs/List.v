@@ -1,6 +1,6 @@
 Require Import Libraries.
 Require Import Basics.
-From Stdlib Require Import Program.Program.
+From Stdlib Require Import Lia Program.Program.
 
 Local Open Scope Z_scope.
 Import ListNotations.
@@ -13,12 +13,31 @@ Fixpoint length_aux {A : Type} (len : Z) (x : list A) : Z :=
 
 Definition length {A : Type} (l : list A) : Z := length_aux 0 l.
 
+Lemma length_aux_spec {A : Type} (len : Z) (l : list A)
+  : length_aux len l = len + Z.of_nat (Datatypes.length l).
+Proof.
+  revert len.
+  induction l as [|x l IH]; intro len; simpl.
+  - lia.
+  - rewrite IH.
+    lia.
+Qed.
+
 Lemma length_cons {A : Type} (x : A) (l : list A)
   : length (x :: l) = length l + 1.
-Admitted.
+Proof.
+  unfold length.
+  rewrite !length_aux_spec.
+  simpl.
+  lia.
+Qed.
 
 Lemma length_is_pos {A : Type} (l : list A) : 0 <= length l.
-Admitted.
+Proof.
+  unfold length.
+  rewrite length_aux_spec.
+  lia.
+Qed.
 
 Definition append {A : Type} : (list A) -> (list A) -> list A :=
   Stdlib.app.

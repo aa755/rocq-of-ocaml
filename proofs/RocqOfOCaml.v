@@ -7,6 +7,8 @@ Require Lens.
 Require Bigstring.
 Require Digestif.
 Require Libsecp256k1.
+Require Ppx_deriving_runtime.
+Require Ppx_deriving_yojson_runtime.
 Require OCamlBigarray.
 Require OCamlChar.
 Require OCamlFormat.

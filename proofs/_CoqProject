@@ -9,6 +9,8 @@ Lens.v
 Bigstring.v
 Digestif.v
 Libsecp256k1.v
+Ppx_deriving_runtime.v
+Ppx_deriving_yojson_runtime.v
 OCamlBigarray.v
 OCamlChar.v
 OCamlFormat.v
