@@ -13,6 +13,7 @@ type t =
   (* Application holds the information of what are tags *)
   | Apply of MixedPath.t * (t * bool) list
   | Signature of PathName.t * (Name.t * t option) list
+  | InferModule of t
   | ForallModule of Name.t * t * t
   | ExistTyps of (Name.t * int) list * t
   | ForallTyps of (Name.t * int) list * t
@@ -31,6 +32,7 @@ let tag_constructor_of (typ : t) =
   | Tuple _ -> "tuple"
   | Apply (mpath, _) -> MixedPath.to_string mpath
   | Signature _ -> "signature"
+  | InferModule _ -> "inferredModule"
   | ForallModule _ -> "forallModule"
   | ExistTyps _ -> "existsTyps"
   | ForallTyps _ -> "forallTyps"
@@ -283,6 +285,7 @@ let rec typ_args_of_typ (typ : t) : Name.Set.t =
              | None -> Name.Set.empty
              | Some typ -> typ_args_of_typ typ)
       |> List.fold_left Name.Set.union Name.Set.empty
+  | InferModule typ -> typ_args_of_typ typ
   | ExistTyps (typ_params, typ) ->
       let typ_params = List.map fst typ_params in
       diff_typ_names typ typ_params
@@ -345,6 +348,7 @@ let subst_path (source : Name.t list) (target : Name.t) (typ : t) : t =
           ( path_name,
             typ_params
             |> List.map (fun (name, typ) -> (name, Option.map subst typ)) )
+    | InferModule typ -> InferModule (subst typ)
     | ExistTyps (typ_params, typ) ->
         ExistTyps (typ_params, subst_after_names_with_arity typ_params typ)
     | ForallModule (name, typ1, typ2) ->
@@ -408,6 +412,7 @@ let subst_constructor_path (source : Name.t list) (target : MixedPath.t)
     | Signature (path, parameters) ->
         Signature
           (path, List.map (fun (name, typ) -> (name, Option.map subst typ)) parameters)
+    | InferModule typ -> InferModule (subst typ)
     | ForallModule (name, parameter, result) ->
         ForallModule (name, subst parameter, subst result)
     | ExistTyps (parameters, body) ->
@@ -454,6 +459,7 @@ let subst_constructor_application (source : Name.t) (target : t) (typ : t) :
     | Signature (path, parameters) ->
         Signature
           (path, List.map (fun (name, typ) -> (name, Option.map subst typ)) parameters)
+    | InferModule typ -> InferModule (subst typ)
     | ForallModule (name, parameter, result) ->
         ForallModule (name, subst parameter, subst result)
     | ExistTyps (parameters, body) ->
@@ -520,6 +526,7 @@ let subst_constructor_definition (source : Name.t list) (target : t) (typ : t)
             List.map
               (fun (name, typ) -> (name, Option.map recurse typ))
               parameters )
+    | InferModule typ -> InferModule (recurse typ)
     | ForallModule (name, parameter, result) ->
         ForallModule
           ( name,
@@ -579,6 +586,7 @@ let subst_constructor_definition (source : Name.t list) (target : t) (typ : t)
             List.map
               (fun (name, typ) -> (name, Option.map subst typ))
               parameters )
+    | InferModule typ -> InferModule (subst typ)
     | ForallModule (name, parameter, result) ->
         ForallModule (name, subst parameter, subst result)
     | ExistTyps (parameters, body) ->
@@ -1325,6 +1333,7 @@ let rec decode_only_variables (new_typ_vars : VarEnv.t) (typ : t) : t =
       let names, ts = List.split ts in
       let ts = ts |> List.map @@ Option.map dec in
       Signature (path, List.combine names ts)
+  | InferModule typ -> InferModule (dec typ)
   | Apply (mpath, ts) -> (
       let ts, bs = List.split ts in
       let ts = List.map dec ts in
@@ -1388,6 +1397,7 @@ let rec local_typ_constructors_of_typ (typ : t) : Name.Set.t =
              | None -> Name.Set.empty
              | Some typ -> local_typ_constructors_of_typ typ)
       |> List.fold_left Name.Set.union Name.Set.empty
+  | InferModule typ -> local_typ_constructors_of_typ typ
   | ExistTyps (_, typ) -> local_typ_constructors_of_typ typ
   | ForallModule (_, param, result) ->
       local_typ_constructors_of_typs [ param; result ]
@@ -1567,6 +1577,10 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t) :
                           match typ with
                           | None -> !^"_"
                           | Some typ -> to_coq subst None typ))))))
+  | InferModule typ ->
+      parens
+        (!^"ltac:(constructor)" ^^ !^":"
+        ^^ to_coq subst None typ)
   | ExistTyps (typ_params, typ) ->
       let existential_typs_pattern =
         typ_params

@@ -88,12 +88,31 @@ let is_functor_application_alias (typ : Types.type_expr) : bool =
   | Tconstr (path, _, _) -> path_contains_functor_application path
   | _ -> false
 
+let concrete_manifest_declaration (env : Env.t) (typ : Types.type_expr) :
+    Types.type_expr option =
+  let rec resolve visited followed_declaration typ =
+    match Types.get_desc typ with
+    | Tconstr (path, _, _) ->
+        if List.exists (Path.same path) visited then None
+        else (
+          match Env.find_type path env with
+          | { Types.type_manifest = Some manifest; _ } ->
+              resolve (path :: visited) true manifest
+          | { Types.type_manifest = None; _ }
+          | exception Not_found ->
+              if followed_declaration then Some typ else None)
+    | Tlink typ | Tsubst (typ, _) | Tpoly (typ, _) ->
+        resolve visited followed_declaration typ
+    | _ -> if followed_declaration then Some typ else None
+  in
+  resolve [] false typ
+
 (** Decompose a module-type path rooted below an applicative functor path.
     OCaml represents [F(A)(B).S] as path applications, while Rocq-of-OCaml
     represents the functor arguments by [F.Build_FArgs A B].  The static
     signature name is therefore [F.S], parameterized by that [FArgs] value. *)
 let decompose_applied_signature_path (path : Path.t) :
-    (Path.t * Path.t list) option =
+    (Path.t * Path.t * Path.t list) option =
   let rec collect_applications path arguments =
     match path with
     | Path.Papply (functor_path, argument_path) ->
@@ -104,22 +123,28 @@ let decompose_applied_signature_path (path : Path.t) :
     match path with
     | Path.Pdot (prefix, field) -> (
         match replace_application prefix with
-        | Some (static_prefix, arguments) ->
-            Some (Path.Pdot (static_prefix, field), arguments)
+        | Some (static_prefix, functor_path, arguments) ->
+            Some
+              ( Path.Pdot (static_prefix, field),
+                functor_path,
+                arguments )
         | None -> None)
     | Path.Pextra_ty (prefix, extra) -> (
         match replace_application prefix with
-        | Some (static_prefix, arguments) ->
-            Some (Path.Pextra_ty (static_prefix, extra), arguments)
+        | Some (static_prefix, functor_path, arguments) ->
+            Some
+              ( Path.Pextra_ty (static_prefix, extra),
+                functor_path,
+                arguments )
         | None -> None)
     | Path.Papply _ ->
         let static_path, arguments = collect_applications path [] in
-        Some (static_path, arguments)
+        Some (static_path, static_path, arguments)
     | Path.Pident _ -> None
   in
   replace_application path
 
-let signature_path_and_explicit_params (signature_path : Path.t) :
+let rec signature_path_and_explicit_params (signature_path : Path.t) :
     (PathName.t * (Name.t * Type.t option) list) Monad.t =
   match decompose_applied_signature_path signature_path with
   | None ->
@@ -127,7 +152,7 @@ let signature_path_and_explicit_params (signature_path : Path.t) :
         PathName.of_path_with_convert false signature_path
       in
       return (signature_path_name, [])
-  | Some (static_signature_path, argument_paths) ->
+  | Some (static_signature_path, functor_path, argument_paths) ->
       let* signature_path_name =
         PathName.of_path_with_convert false static_signature_path
       in
@@ -137,11 +162,115 @@ let signature_path_and_explicit_params (signature_path : Path.t) :
           PathName.base = Name.of_string_raw "Build_FArgs";
         }
       in
+      let* env = get_env in
+      let rec functor_parameters module_type =
+        match Env.scrape_alias env module_type with
+        | Types.Mty_functor
+            (Types.Named (ident, parameter), result) ->
+            (ident, parameter) :: functor_parameters result
+        | _ -> []
+        | exception _ -> []
+      in
+      let* parameter_types =
+        match Env.find_module functor_path env with
+        | { Types.md_type; _ } ->
+            return (functor_parameters md_type)
+        | exception Not_found -> return []
+      in
+      let module_type_has_only_associated_types module_type =
+        match Env.scrape_alias env module_type with
+        | Types.Mty_signature signature ->
+            signature
+            |> List.for_all (function
+                 | Types.Sig_type _ -> true
+                 | Types.Sig_value _
+                 | Types.Sig_module _
+                 | Types.Sig_modtype _
+                 | Types.Sig_typext _
+                 | Types.Sig_class _
+                 | Types.Sig_class_type _ ->
+                     false)
+        | _ -> false
+        | exception _ -> false
+      in
+      let apply_path_fields path fields =
+        List.fold_left
+          (fun path field -> Path.Pdot (path, field))
+          path fields
+      in
+      let infer_namespace_argument argument_path parameter_ident
+          parameter_type =
+        let parameter_name =
+          Name.string_of_optional_ident parameter_ident
+        in
+        let* signature_path =
+          let* hinted =
+            get_anonymous_functor_parameter functor_path parameter_name
+          in
+          match hinted with
+          | Some _ as signature -> return signature
+          | None ->
+              let* classification =
+                IsFirstClassModule.is_module_typ_first_class parameter_type
+                  None
+              in
+              (match classification with
+              | IsFirstClassModule.Found signature ->
+                  return (Some signature)
+              | IsFirstClassModule.Not_found _ -> return None)
+        in
+        match signature_path with
+        | Some signature_path
+          when module_type_has_only_associated_types parameter_type ->
+            let* signature_path_name =
+              PathName.of_path_with_convert false signature_path
+            in
+            let* signature_parameters =
+              get_signature_typ_params_arity signature_path
+            in
+            let* parameters =
+              Tree.flatten signature_parameters
+              |> Monad.List.map (fun (fields, _) ->
+                     let* name = Name.of_strings false fields in
+                     let* value =
+                       MixedPath.of_path false
+                         (apply_path_fields argument_path fields)
+                     in
+                     return
+                       ( name,
+                         Some (Type.Apply (value, [])) ))
+            in
+            return
+              (Some
+                 (Type.InferModule
+                    (Type.Signature
+                       (signature_path_name, parameters))))
+        | Some _ | None -> return None
+      in
       let* arguments =
-        argument_paths
-        |> Monad.List.map (fun argument_path ->
-               let* argument = MixedPath.of_path false argument_path in
-               return (Type.Apply (argument, []), false))
+        List.mapi
+          (fun index argument_path ->
+            (argument_path, List.nth_opt parameter_types index))
+          argument_paths
+        |> Monad.List.map
+             (fun (argument_path, parameter) ->
+               let* existing_signature =
+                 MixedPath.get_signature_path argument_path
+               in
+               let* inferred =
+                 match (existing_signature, parameter) with
+                 | None, Some (parameter_ident, parameter_type) ->
+                     infer_namespace_argument argument_path parameter_ident
+                       parameter_type
+                 | Some _, _ | None, None -> return None
+               in
+               match inferred with
+               | Some argument -> return (argument, false)
+               | None ->
+                   let* argument =
+                     MixedPath.of_path false argument_path
+                   in
+                   return (Type.Apply (argument, []), false))
       in
       let fargs =
         Type.Apply (MixedPath.PathName build_fargs_path, arguments)
@@ -150,7 +279,7 @@ let signature_path_and_explicit_params (signature_path : Path.t) :
         ( signature_path_name,
           [ (Name.of_string_raw "_fargs", Some fargs) ] )
 
-let get_signature_typ_params_arity (signature_path : Path.t) :
+and get_signature_typ_params_arity (signature_path : Path.t) :
     int Tree.t Monad.t =
   let* env = get_env in
   match Env.find_modtype signature_path env with
@@ -540,6 +669,7 @@ let rec of_types ?result_signature_path
       in
       (match result with
       | IsFirstClassModule.Found signature_path ->
+          let* env = get_env in
           let* signature_path_name =
             PathName.of_path_with_convert false signature_path
           in
@@ -556,6 +686,13 @@ let rec of_types ?result_signature_path
                   let* typ_args =
                     type_params
                     |> Monad.List.map Type.of_type_expr_variable
+                  in
+                  let manifest =
+                    if type_params = [] then
+                      match concrete_manifest_declaration env manifest with
+                      | Some manifest -> manifest
+                      | None -> manifest
+                    else manifest
                   in
                   let* typ =
                     Type.of_type_expr_without_free_vars manifest

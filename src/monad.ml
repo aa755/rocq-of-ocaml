@@ -15,8 +15,10 @@ module Command = struct
     | GetEnv : Env.t t
     | GetEnvStack : Env.t list t
     | GetIncludedPathAlias : Ident.t -> Path.t option t
+    | GetIncludedSignaturePathAlias : Ident.t -> Path.t option t
     | GetIncludedRecordAlias :
         Ident.t -> IncludedRecordAliasTarget.t option t
+    | GetConstructorName : Types.Uid.t -> string option t
     | GetValueName : Ident.t -> string option t
     | GetModulePathAlias : Path.t -> Path.t option t
     | GetSignatureHint : Path.t -> Path.t option t
@@ -26,7 +28,7 @@ module Command = struct
     | GetAnonymousFunctorParameter :
         Path.t * string -> Path.t option t
     | GetFunctorParameterTypes :
-        Path.t -> Typedtree.module_type list option t
+        Path.t -> FunctorParameterHint.t list option t
     | GetFunctorResultSignature : Path.t -> Path.t option t
     | GetResultModuleField :
         Path.t * string -> Path.t option t
@@ -67,9 +69,16 @@ module Notations = struct
   let get_included_path_alias (ident : Ident.t) : Path.t option t =
     Command (Command.GetIncludedPathAlias ident)
 
+  let get_included_signature_path_alias (ident : Ident.t) :
+      Path.t option t =
+    Command (Command.GetIncludedSignaturePathAlias ident)
+
   let get_included_record_alias (ident : Ident.t) :
       IncludedRecordAliasTarget.t option t =
     Command (Command.GetIncludedRecordAlias ident)
+
+  let get_constructor_name (uid : Types.Uid.t) : string option t =
+    Command (Command.GetConstructorName uid)
 
   let get_value_name (ident : Ident.t) : string option t =
     Command (Command.GetValueName ident)
@@ -95,7 +104,7 @@ module Notations = struct
       (Command.GetAnonymousFunctorParameter (functor_path, parameter_name))
 
   let get_functor_parameter_types (functor_path : Path.t) :
-      Typedtree.module_type list option t =
+      FunctorParameterHint.t list option t =
     Command (Command.GetFunctorParameterTypes functor_path)
 
   let get_functor_result_signature (functor_path : Path.t) :

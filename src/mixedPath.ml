@@ -37,25 +37,115 @@ let get_pathName_base : t -> Name.t = function
   | PathName { base; _ } -> base
   | _ -> Name.Make ""
 
-let get_signature_path (path : Path.t) : Path.t option Monad.t =
-  let* env = get_env in
-  match Env.find_module path env with
-  | module_declaration -> (
-      let { Types.md_type; md_attributes; _ } = module_declaration in
-      let* is_first_class =
-        IsFirstClassModule.is_module_typ_first_class md_type (Some path)
+let rec resolve_included_signature_path_aliases (path : Path.t) :
+    Path.t Monad.t =
+  match path with
+  | Pident ident ->
+      let* alias = get_included_signature_path_alias ident in
+      (match alias with
+      | Some alias when not (Path.same alias path) ->
+          resolve_included_signature_path_aliases alias
+      | Some _ -> return path
+      | None ->
+          let* env = get_env in
+          (match Env.find_module path env with
+          | { Types.md_type = Mty_alias alias; _ }
+            when not (Path.same alias path) ->
+              resolve_included_signature_path_aliases alias
+          | _ | (exception _) -> return path))
+  | Pdot (parent, field) ->
+      let* parent = resolve_included_signature_path_aliases parent in
+      return (Path.Pdot (parent, field))
+  | Papply (functor_path, argument_path) ->
+      let* functor_path =
+        resolve_included_signature_path_aliases functor_path
       in
-      match is_first_class with
-      | IsFirstClassModule.Found signature_path -> return (Some signature_path)
-      | IsFirstClassModule.Not_found _
-        when List.exists
-               (fun attribute ->
-                 attribute.Parsetree.attr_name.txt = "rocq_plain_module")
-               md_attributes ->
-          return None
-      | IsFirstClassModule.Not_found _ ->
-          get_signature_hint path)
-  | exception _ -> return None
+      let* argument_path =
+        resolve_included_signature_path_aliases argument_path
+      in
+      return (Path.Papply (functor_path, argument_path))
+  | Pextra_ty (parent, extra) ->
+      let* parent = resolve_included_signature_path_aliases parent in
+      return (Path.Pextra_ty (parent, extra))
+
+let rec get_signature_path (path : Path.t) : Path.t option Monad.t =
+  let* env = get_env in
+  let* is_static_local_module_alias =
+    match path with
+    | Path.Pident ident when not (Ident.global ident) -> (
+        match (Env.find_module path env).Types.md_type with
+        | Mty_alias target ->
+            let rec root_and_has_field has_field = function
+              | Path.Pdot (parent, _)
+              | Path.Pextra_ty (parent, _) ->
+                  root_and_has_field true parent
+              | (Path.Pident _ | Path.Papply _) as root ->
+                  (root, has_field)
+            in
+            let root, has_field =
+              root_and_has_field false target
+            in
+            if not has_field then return false
+            else
+              let* root_signature = get_signature_hint root in
+              return
+                (match root_signature with
+                | Some root_signature ->
+                    String.ends_with ~suffix:"_result"
+                      (Path.last root_signature)
+                | None -> false)
+        | _ -> return false
+        | exception _ -> return false)
+    | Path.Pident _ | Path.Pdot _ | Path.Papply _ | Path.Pextra_ty _ ->
+        return false
+  in
+  if is_static_local_module_alias then return None
+  else
+  let exact path =
+    match Env.find_module path env with
+    | module_declaration -> (
+        let { Types.md_type; md_attributes; _ } = module_declaration in
+        let* is_first_class =
+          IsFirstClassModule.is_module_typ_first_class md_type (Some path)
+        in
+        match is_first_class with
+        | IsFirstClassModule.Found signature_path ->
+            return (Some signature_path)
+        | IsFirstClassModule.Not_found _
+          when List.exists
+                 (fun attribute ->
+                   attribute.Parsetree.attr_name.txt = "rocq_plain_module")
+                 md_attributes ->
+            return None
+        | IsFirstClassModule.Not_found _ ->
+            get_signature_hint path)
+    | exception _ -> get_signature_hint path
+  in
+  let* result = exact path in
+  match result with
+  | Some _ -> return result
+  | None ->
+      let* resolved_path =
+        resolve_included_signature_path_aliases path
+      in
+      let* resolved_result =
+        if Path.same path resolved_path then return None
+        else exact resolved_path
+      in
+      (match resolved_result with
+      | Some _ -> return resolved_result
+      | None -> (
+          match resolved_path with
+          | Path.Pdot (parent, field) ->
+              let* parent_signature = get_signature_path parent in
+              (match parent_signature with
+              | Some parent_signature ->
+                  get_result_module_field parent_signature field
+              | None -> return None)
+          | Path.Pident _
+          | Path.Papply _
+          | Path.Pextra_ty _ ->
+              return None))
 
 module SignedPath = struct
   type t = { path : Path.t; signature_path : Path.t option }
@@ -216,7 +306,11 @@ let rec resolve_module_path_aliases (path : Path.t) : Path.t Monad.t =
   | Some alias -> resolve_module_path_aliases alias
   | None -> (
       match path with
-      | Pident _ -> return path
+      | Pident ident ->
+          let* included_alias = get_included_path_alias ident in
+          (match included_alias with
+          | Some alias -> resolve_module_path_aliases alias
+          | None -> return path)
       | Pdot (prefix, field) ->
           let* prefix = resolve_module_path_aliases prefix in
           return (Path.Pdot (prefix, field))
@@ -228,9 +322,14 @@ let rec resolve_module_path_aliases (path : Path.t) : Path.t Monad.t =
           let* prefix = resolve_module_path_aliases prefix in
           return (Path.Pextra_ty (prefix, extra)))
 
-let path_has_global_head (path : Path.t) : bool =
-  let ident = Path.head path in
-  Ident.global ident || Ident.is_predef ident
+let rec path_has_global_head (path : Path.t) : bool =
+  match path with
+  | Path.Pident ident ->
+      Ident.global ident || Ident.is_predef ident
+  | Path.Pdot (prefix, _) | Path.Pextra_ty (prefix, _) ->
+      path_has_global_head prefix
+  | Path.Papply (functor_path, _) ->
+      path_has_global_head functor_path
 
 let of_included_record_alias (is_value : bool)
     ({

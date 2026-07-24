@@ -18,19 +18,21 @@ type alias = {
   scope_end : int;
   available_from : int;
   allow_unscoped : bool;
+  use_for_path : bool;
 }
 
 type t = alias list
 
 let empty : t = []
 
-let find (ident : Ident.t) (location : Location.t) (aliases : t) :
-    Path.t option =
+let find_with (include_signature_only : bool) (ident : Ident.t)
+    (location : Location.t) (aliases : t) : Path.t option =
   let position = location.loc_start.pos_cnum in
   let scoped_candidates =
     aliases
     |> List.filter (fun alias ->
-           Ident.same ident alias.ident
+           (include_signature_only || alias.use_for_path)
+           && Ident.same ident alias.ident
            && alias.scope_start <= position
            && position <= alias.scope_end
            && alias.available_from <= position)
@@ -46,12 +48,19 @@ let find (ident : Ident.t) (location : Location.t) (aliases : t) :
       let targets =
         aliases
         |> List.filter_map (fun alias ->
-               if alias.allow_unscoped && Ident.same ident alias.ident then
+               if
+                 (include_signature_only || alias.use_for_path)
+                 && alias.allow_unscoped
+                 && Ident.same ident alias.ident
+               then
                  Some alias.target
                else None)
         |> List.sort_uniq Path.compare
       in
       match targets with [ target ] -> Some target | _ -> None)
+
+let find = find_with false
+let find_for_signature = find_with true
 
 let rec contains_functor_application (path : Path.t) : bool =
   match path with
@@ -94,8 +103,8 @@ let names_declared_by_structure_item (item : Typedtree.structure_item) :
 
 let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
   let aliases = ref empty in
-  let add_alias scope_start scope_end available_from allow_unscoped ident target
-      =
+  let add_alias ?(use_for_path = true) scope_start scope_end available_from
+      allow_unscoped ident target =
     aliases :=
       {
         ident;
@@ -104,6 +113,7 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
         scope_end;
         available_from;
         allow_unscoped;
+        use_for_path;
       }
       :: !aliases
   in
@@ -133,6 +143,26 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                   | _ -> None)
               | exception Not_found -> None)
           | Path.Pextra_ty (parent, _) -> type_ident_of_path parent
+          | Path.Papply _ -> None
+        in
+        let rec module_ident_of_path (path : Path.t) : Ident.t option =
+          match path with
+          | Path.Pident ident -> Some ident
+          | Path.Pdot (parent, field) -> (
+              match Env.find_module parent env with
+              | { Types.md_type; _ } -> (
+                  match Mtype.scrape env md_type with
+                  | Types.Mty_signature signature ->
+                      signature
+                      |> List.find_map (function
+                           | Types.Sig_module (ident, _, _, _, _)
+                             when Ident.name ident = field ->
+                               Some ident
+                           | _ -> None)
+                  | _ -> None)
+              | exception Not_found -> None)
+          | Path.Pextra_ty (parent, _) ->
+              module_ident_of_path parent
           | Path.Papply _ -> None
         in
         let add_manifest_path_for_target field target
@@ -181,6 +211,17 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
         |> List.iter (fun signature_item ->
                let ident = Types.signature_item_id signature_item in
                let field = Ident.name ident in
+               (match signature_item with
+               | Types.Sig_module _ ->
+                   let target = Path.Pdot (module_path, field) in
+                   add_alias ~use_for_path:false scope_start scope_end
+                     available_from true ident target;
+                   Option.iter
+                     (fun source_ident ->
+                       add_alias ~use_for_path:false scope_start scope_end
+                         available_from true source_ident target)
+                     (module_ident_of_path target)
+               | _ -> ());
                (match signature_item with
                | Types.Sig_value (_, { val_type; _ }, _) ->
                    add_type_paths val_type

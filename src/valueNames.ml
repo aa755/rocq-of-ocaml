@@ -23,6 +23,39 @@ let value_idents (structure : Typedtree.structure) : Ident.t list =
          | Tstr_primitive description -> [ description.val_id ]
          | _ -> [])
 
+let structure_type_names (structure : Typedtree.structure) : StringSet.t =
+  structure.str_items
+  |> List.fold_left
+       (fun names (item : Typedtree.structure_item) ->
+         match item.str_desc with
+         | Tstr_type (_, declarations) ->
+             List.fold_left
+               (fun names (declaration : Typedtree.type_declaration) ->
+                 StringSet.add (Ident.name declaration.typ_id) names)
+               names declarations
+         | _ -> names)
+       StringSet.empty
+
+let signature_value_idents (signature : Typedtree.signature) : Ident.t list =
+  signature.sig_items
+  |> List.filter_map (fun (item : Typedtree.signature_item) ->
+         match item.sig_desc with
+         | Tsig_value description -> Some description.val_id
+         | _ -> None)
+
+let signature_type_names (signature : Typedtree.signature) : StringSet.t =
+  signature.sig_items
+  |> List.fold_left
+       (fun names (item : Typedtree.signature_item) ->
+         match item.sig_desc with
+         | Tsig_type (_, declarations) | Tsig_typesubst declarations ->
+             List.fold_left
+               (fun names (declaration : Typedtree.type_declaration) ->
+                 StringSet.add (Ident.name declaration.typ_id) names)
+               names declarations
+         | _ -> names)
+       StringSet.empty
+
 let counts (idents : Ident.t list) : int StringMap.t =
   List.fold_left
     (fun counts ident ->
@@ -69,8 +102,8 @@ let pattern_ident :
   | Tpat_alias (_, ident, _, _, _) -> Some ident
   | _ -> None
 
-let add_structure (names : t) (structure : Typedtree.structure) : t =
-  let idents = value_idents structure in
+let add_declaration_scope (names : t) (idents : Ident.t list)
+    (type_names : StringSet.t) : t =
   let remaining = ref (counts idents) in
   let indices = ref StringMap.empty in
   let occupied =
@@ -78,23 +111,74 @@ let add_structure (names : t) (structure : Typedtree.structure) : t =
       (idents
       |> List.fold_left
            (fun names ident -> StringSet.add (Ident.name ident) names)
-           StringSet.empty)
+           type_names)
   in
   List.fold_left
     (fun names ident ->
       let original = Ident.name ident in
       let left = StringMap.find original !remaining in
       remaining := StringMap.add original (left - 1) !remaining;
-      if left <= 1 then names
+      let collides_with_type = StringSet.mem original type_names in
+      if left <= 1 && not collides_with_type then names
       else
-        let index =
-          Option.value (StringMap.find_opt original !indices) ~default:1
+        let renamed =
+          if collides_with_type then fresh_value_name !occupied original 0
+          else
+            let index =
+              Option.value (StringMap.find_opt original !indices) ~default:1
+            in
+            indices := StringMap.add original (index + 1) !indices;
+            fresh_name !occupied original index
         in
-        let renamed = fresh_name !occupied original index in
         occupied := StringSet.add renamed !occupied;
-        indices := StringMap.add original (index + 1) !indices;
         Ident.Map.add ident renamed names)
     names idents
+
+let add_structure (names : t) (structure : Typedtree.structure) : t =
+  add_declaration_scope names (value_idents structure)
+    (structure_type_names structure)
+
+let add_signature (names : t) (signature : Typedtree.signature) : t =
+  add_declaration_scope names (signature_value_idents signature)
+    (signature_type_names signature)
+
+(** Reconstruct the deterministic value rename for a qualified [parent.field]
+    path.  Compiler-libs retains only the field string in [Path.Pdot], so the
+    original value [Ident.t] used by [find] is unavailable at reference sites. *)
+let find_qualified (env : Env.t) (parent : Path.t) (field : string) :
+    string option =
+  let signature =
+    match (Env.find_module parent env).Types.md_type with
+    | module_type -> (
+        match Env.scrape_alias env module_type with
+        | Types.Mty_signature signature -> Some signature
+        | _ -> None)
+    | exception Not_found -> None
+  in
+  match signature with
+  | None -> None
+  | Some signature ->
+      let value_names, type_names =
+        List.fold_left
+          (fun (value_names, type_names) item ->
+            match item with
+            | Types.Sig_value (ident, _, _) ->
+                (StringSet.add (Ident.name ident) value_names, type_names)
+            | Types.Sig_type (ident, _, _, _) ->
+                (value_names, StringSet.add (Ident.name ident) type_names)
+            | _ -> (value_names, type_names))
+          (StringSet.empty, StringSet.empty) signature
+      in
+      if
+        StringSet.mem field value_names
+        && StringSet.mem field type_names
+      then
+        Some
+          (fresh_value_name
+             (StringSet.union value_names type_names)
+             field 0)
+      else
+        None
 
 (** Functor parameters become fields of the generated [FArgs] class.  That
     puts them in the same Rocq namespace as declarations in the functor body,
@@ -196,6 +280,10 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
         (fun self structure ->
           names := add_structure !names structure;
           default_iterator.structure self structure);
+      signature =
+        (fun self signature ->
+          names := add_signature !names signature;
+          default_iterator.signature self signature);
       module_expr =
         (fun self module_expr ->
           (match module_expr.mod_desc with

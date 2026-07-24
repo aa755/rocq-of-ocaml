@@ -14,7 +14,7 @@ type t = {
     (Path.t * Types.module_type * Location.t) list;
   anonymous_functor_parameters : (Path.t * string * Path.t) list;
   functor_parameter_types :
-    (Path.t * Typedtree.module_type list) list;
+    (Path.t * FunctorParameterHint.t list) list;
   functor_result_signatures : (Path.t * Path.t) list;
   result_module_fields : (Path.t * string * Path.t) list;
   result_namespace_includes : (Path.t * string * string) list;
@@ -78,6 +78,17 @@ let find_module_type (module_type_path : Path.t) (location : Location.t)
   with
   | Some _ as module_type -> module_type
   | None -> (
+      match
+        hints.anonymous_signatures
+        |> List.find_map
+             (fun (candidate, module_type, _) ->
+               if Path.same module_type_path candidate then
+                 Some module_type
+               else
+                 None)
+      with
+      | Some _ as module_type -> module_type
+      | None ->
       match path_base_name module_type_path with
       | None -> None
       | Some name ->
@@ -119,7 +130,7 @@ let find_anonymous_functor_parameter (functor_path : Path.t)
          else None)
 
 let find_functor_parameter_types (functor_path : Path.t) (hints : t) :
-    Typedtree.module_type list option =
+    FunctorParameterHint.t list option =
   hints.functor_parameter_types
   |> List.find_map (fun (candidate, parameter_types) ->
          if Path.same functor_path candidate then Some parameter_types
@@ -198,10 +209,15 @@ let rec final_functor_body (module_expr : Typedtree.module_expr) :
   | _ -> None
 
 let rec functor_parameter_types (module_expr : Typedtree.module_expr) :
-    Typedtree.module_type list =
+    FunctorParameterHint.t list =
   match module_expr.mod_desc with
-  | Tmod_functor (Named (_, _, parameter_type), body) ->
-      parameter_type :: functor_parameter_types body
+  | Tmod_functor (Named (ident, _, parameter_type), body) ->
+      {
+        ident;
+        module_type = parameter_type;
+        path_aliases = [];
+      }
+      :: functor_parameter_types body
   | Tmod_functor (Unit, body) -> functor_parameter_types body
   | Tmod_constraint (inner, _, _, _) -> functor_parameter_types inner
   | _ -> []
@@ -293,6 +309,11 @@ let derived_functor_result_signature (functor_path : Path.t) : Path.t =
   Path.Pdot
     (functor_path, Path.last functor_path ^ "_result")
 
+let module_type_fingerprint (env : Env.t) (module_type : Types.module_type) :
+    string =
+  Printtyp.wrap_printing_env ~error:true env (fun () ->
+      Format.asprintf "%a" Printtyp.modtype module_type)
+
 let rec aliased_module_path (module_expr : Typedtree.module_expr) :
     Path.t option =
   match module_expr.mod_desc with
@@ -304,6 +325,7 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
   let module_annotations = ref [] in
   let module_types = ref [] in
   let anonymous_signatures = ref [] in
+  let anonymous_signature_fingerprints = ref [] in
   let anonymous_module_signatures = ref [] in
   let anonymous_functor_parameters = ref [] in
   let add (ident : Ident.t option) (signature_path : Path.t option) : unit =
@@ -330,6 +352,12 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
             anonymous_signatures :=
               (signature_path, module_type.mty_type, module_type.mty_loc)
               :: !anonymous_signatures
+            ;
+            anonymous_signature_fingerprints :=
+              ( signature_path,
+                module_type_fingerprint module_type.mty_env
+                  module_type.mty_type )
+              :: !anonymous_signature_fingerprints
             ;
             anonymous_functor_parameters :=
               ( module_path,
@@ -369,6 +397,11 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                       module_type.mty_type,
                       module_type.mty_loc )
                     :: !anonymous_signatures;
+                  anonymous_signature_fingerprints :=
+                    ( signature_path,
+                      module_type_fingerprint module_type.mty_env
+                        module_type.mty_type )
+                    :: !anonymous_signature_fingerprints;
                   module_types :=
                     ( signature_path,
                       module_type.mty_type,
@@ -655,8 +688,13 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                     :: !named_functor_results
               | None ->
                   let result_path =
-                    Path.Pdot
-                      (functor_path, Ident.name ident ^ "_result")
+                    match module_expr_anonymous_annotation body with
+                    | Some _ ->
+                        Path.Pdot
+                          (functor_path, Ident.name ident ^ "_signature")
+                    | None ->
+                        Path.Pdot
+                          (functor_path, Ident.name ident ^ "_result")
                   in
                   synthetic_functor_results :=
                     (functor_path, result_path)
@@ -1032,7 +1070,48 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                        Path.same signature_path anonymous_path)))
   in
   let anonymous_functor_parameters =
-    !anonymous_functor_parameters
+    let canonical_signatures = ref [] in
+    List.rev !anonymous_functor_parameters
+    |> List.map
+         (fun
+           ( functor_path,
+             parameter_name,
+             parameter_path,
+             signature_path )
+         ->
+           let canonical_path =
+             match
+               !anonymous_signature_fingerprints
+               |> List.find_map (fun (candidate, fingerprint) ->
+                      if Path.same candidate signature_path then
+                        Some fingerprint
+                      else
+                        None)
+             with
+             | None -> signature_path
+             | Some fingerprint -> (
+                 match
+                   !canonical_signatures
+                   |> List.find_map
+                        (fun (candidate_fingerprint, candidate_path) ->
+                          if
+                            String.equal candidate_fingerprint fingerprint
+                          then
+                            Some candidate_path
+                          else
+                            None)
+                 with
+                 | Some canonical_path -> canonical_path
+                 | None ->
+                     canonical_signatures :=
+                       (fingerprint, signature_path)
+                       :: !canonical_signatures;
+                     signature_path)
+           in
+           ( functor_path,
+             parameter_name,
+             parameter_path,
+             canonical_path ))
     |> List.filter_map
          (fun (functor_path, parameter_name, parameter_path, signature_path) ->
            match parameter_path with
@@ -1051,12 +1130,68 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
     |> List.filter (fun (path, _, _) ->
            List.exists (Path.same path) retained_anonymous_signatures)
   in
+  let module_annotations =
+    let direct_annotations = !module_annotations in
+    let canonical_annotations = ref [] in
+    let rec collect_structure owner (structure : Typedtree.structure) =
+      structure.str_items
+      |> List.iter (fun (item : Typedtree.structure_item) ->
+             match item.str_desc with
+             | Tstr_module binding ->
+                 collect_binding owner binding
+             | Tstr_recmodule bindings ->
+                 List.iter (collect_binding owner) bindings
+             | _ -> ())
+    and collect_binding owner (binding : Typedtree.module_binding) =
+      match binding.mb_id with
+      | None -> ()
+      | Some ident ->
+          let local_path = Path.Pident ident in
+          let canonical_path =
+            match owner with
+            | None -> local_path
+            | Some owner ->
+                Path.Pdot (owner, Ident.name ident)
+          in
+          (match
+             direct_annotations
+             |> List.find_map (fun (candidate, signature) ->
+                    if Path.same candidate local_path then
+                      Some signature
+                    else None)
+           with
+          | Some signature
+            when not (Path.same canonical_path local_path) ->
+              canonical_annotations :=
+                (canonical_path, signature)
+                :: !canonical_annotations
+          | Some _ | None -> ());
+          let nested_structure =
+            match module_expr_structure binding.mb_expr with
+            | Some _ as structure -> structure
+            | None -> (
+                match final_functor_body binding.mb_expr with
+                | Some body -> module_expr_structure body
+                | None -> None)
+          in
+          (match nested_structure with
+          | Some structure ->
+              collect_structure (Some canonical_path) structure
+          | None -> ())
+    in
+    (match typedtree with
+    | `Implementation structure ->
+        collect_structure None structure
+    | `Interface _ -> ());
+    List.rev_append !canonical_annotations
+      (List.rev direct_annotations)
+  in
   {
-    module_annotations = List.rev !module_annotations;
+    module_annotations;
     module_types = List.rev !module_types;
     anonymous_signatures = List.rev anonymous_signatures;
     anonymous_functor_parameters =
-      List.rev anonymous_functor_parameters;
+      anonymous_functor_parameters;
     functor_parameter_types =
       List.rev
         (aliased_functor_parameter_types

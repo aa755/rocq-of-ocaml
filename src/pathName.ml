@@ -100,7 +100,10 @@ let split_ident (is_value : bool) (ident : Ident.t) :
   let* renamed = get_value_name ident in
   let ident_name = Option.value renamed ~default:(Ident.name ident) in
   let ident_elements =
-    Str.split (Str.regexp_string "__") ident_name |> List.rev
+    if Ident.global ident then
+      Str.split (Str.regexp_string "__") ident_name |> List.rev
+    else
+      [ ident_name ]
   in
   match ident_elements with
   | base :: path ->
@@ -124,10 +127,26 @@ let of_path_without_convert (is_value : bool) (path : Path.t) : t Monad.t =
             let* alias = get_included_path_alias ident in
             match alias with
             | Some alias -> aux alias
-            | None -> split_ident is_value ident)
-        | Path.Pdot (path, field) ->
-            aux path >>= fun (path, base) ->
-            Name.of_string is_value field >>= fun field ->
+            | None ->
+                let* path, base = split_ident is_value ident in
+                (* [aux] accumulates a reversed path for efficient [Pdot]
+                   traversal, while [split_ident] exposes flattened global
+                   components in source order. *)
+                return (List.rev path, base))
+        | Path.Pdot (parent, field) ->
+            aux parent >>= fun (path, base) ->
+            let* field =
+              if is_value then
+                let* env = get_env in
+                let field =
+                  Option.value
+                    (ValueNames.find_qualified env parent field)
+                    ~default:field
+                in
+                Name.of_string true field
+              else
+                Name.of_string false field
+            in
             return (base :: path, field)
         | Path.Papply _ ->
             let name = Path.name path in
@@ -203,10 +222,25 @@ let of_constructor_description
       let typ_ident = Path.head path in
       of_path_without_convert false path >>= fun { path; _ } ->
       let* cstr_name =
-        map_constructor_name constructor_description.cstr_name
-          (Ident.name typ_ident)
+        let* renamed =
+          get_constructor_name constructor_description.cstr_uid
+        in
+        match renamed with
+        | Some constructor_name -> return constructor_name
+        | None ->
+            map_constructor_name constructor_description.cstr_name
+              (Ident.name typ_ident)
       in
-      Name.of_string false cstr_name >>= fun base -> convert { path; base }
+      let* base = Name.of_string false cstr_name in
+      let constructor = { path; base } in
+      (* Unqualified renaming rules such as [Ok -> inl] and
+         [Failure -> RocqOfOCaml.Failure] describe predefined constructors.
+         OCaml permits an ordinary local variant to reuse those names; in
+         that case the constructor must remain local. *)
+      if path = [] && not (Ident.is_predef typ_ident) then
+        return constructor
+      else
+        convert constructor
   | _ ->
       Name.of_string false constructor_description.cstr_name
       >>= fun cstr_name ->

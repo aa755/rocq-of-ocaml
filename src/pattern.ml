@@ -239,6 +239,18 @@ let rec has_or_patterns (p : t) : bool =
   | Record fields -> fields |> List.map snd |> List.exists has_or_patterns
   | Or _ -> true
 
+(** Whether binding this pattern cannot fail.  This is used when lowering a
+    polymorphic-variant payload: refutable payload patterns need an explicit
+    fallback to the remaining OCaml match cases. *)
+let rec is_irrefutable (p : t) : bool =
+  match p with
+  | Any | Variable _ | ModuleUnpack _ -> true
+  | Tuple patterns -> List.for_all is_irrefutable patterns
+  | Constructor (constructor, []) when PathName.is_tt constructor -> true
+  | Alias (pattern, _) -> is_irrefutable pattern
+  | Record fields -> List.for_all (fun (_, pattern) -> is_irrefutable pattern) fields
+  | Constant _ | Constructor _ | Or _ -> false
+
 let rec flatten_or (p : t) : t list =
   match p with Or (p1, p2) -> flatten_or p1 @ flatten_or p2 | _ -> [ p ]
 

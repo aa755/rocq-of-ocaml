@@ -133,8 +133,12 @@ let of_ocaml_case (typ_name : Name.t) (attributes : Attribute.t list)
   let { Types.cd_args; cd_id; cd_loc; cd_res; _ } = case in
   set_loc cd_loc
     (let* constructor_name =
-       PathName.map_constructor_name (Ident.name cd_id)
-         (Name.to_string typ_name)
+       let* renamed = get_constructor_name case.cd_uid in
+       match renamed with
+       | Some constructor_name -> return constructor_name
+       | None ->
+           PathName.map_constructor_name (Ident.name cd_id)
+             (Name.to_string typ_name)
      in
      let* constructor_name = Name.of_string false constructor_name in
      let typ_vars = Name.Map.empty in

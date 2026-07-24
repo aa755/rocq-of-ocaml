@@ -105,6 +105,7 @@ let rules =
     ("Stdlib.land", "Z.land");
     ("Stdlib.lor", "Z.lor");
     ("Stdlib.lxor", "Z.lxor");
+    ("Stdlib.lnot", "Z.lnot");
     ("Stdlib.lsl", "Z.shiftl");
     ("Stdlib.lsr", "Z.shiftr");
     ("Stdlib.asr", "Z.shiftr");

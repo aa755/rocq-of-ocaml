@@ -275,6 +275,30 @@ let find_similar_signatures ?(include_hidden_hints = false) (env : Env.t)
 
 type maybe_found = Found of Path.t | Not_found of string
 
+let rec resolve_included_signature_path_aliases (path : Path.t) :
+    Path.t Monad.t =
+  match path with
+  | Path.Pident ident ->
+      let* alias = get_included_signature_path_alias ident in
+      (match alias with
+      | Some alias when not (Path.same alias path) ->
+          resolve_included_signature_path_aliases alias
+      | Some _ | None -> return path)
+  | Path.Pdot (parent, field) ->
+      let* parent = resolve_included_signature_path_aliases parent in
+      return (Path.Pdot (parent, field))
+  | Path.Papply (functor_path, argument_path) ->
+      let* functor_path =
+        resolve_included_signature_path_aliases functor_path
+      in
+      let* argument_path =
+        resolve_included_signature_path_aliases argument_path
+      in
+      return (Path.Papply (functor_path, argument_path))
+  | Path.Pextra_ty (parent, extra) ->
+      let* parent = resolve_included_signature_path_aliases parent in
+      return (Path.Pextra_ty (parent, extra))
+
 (** Get the path of the signature definition of the [module_typ]
     if it is a first-class module, [None] otherwise. Optionally, when given the path of the module we want to check for its signature, to verify if it is not
     in a blacklist. *)
@@ -422,6 +446,22 @@ let module_typ_first_class_hash : maybe_found Hash.t = Hash.create 64
 let is_module_typ_first_class ?(include_hidden_hints = false)
     (module_typ : Types.module_type) (module_path : Path.t option) :
     maybe_found Monad.t =
+  let classify () =
+    let* result =
+      is_module_typ_first_class_aux ~include_hidden_hints module_typ
+        module_path
+    in
+    match (result, module_path) with
+    | Not_found _, Some path ->
+        let* resolved_path =
+          resolve_included_signature_path_aliases path
+        in
+        if Path.same path resolved_path then return result
+        else
+          is_module_typ_first_class_aux ~include_hidden_hints module_typ
+            (Some resolved_path)
+    | Found _, _ | Not_found _, None -> return result
+  in
   let index =
     match module_typ with
     | Mty_signature _ ->
@@ -438,12 +478,7 @@ let is_module_typ_first_class ?(include_hidden_hints = false)
       match Hash.find_opt module_typ_first_class_hash index with
       | Some result -> return result
       | None ->
-          let* result =
-            is_module_typ_first_class_aux ~include_hidden_hints module_typ
-              module_path
-          in
+          let* result = classify () in
           Hash.replace module_typ_first_class_hash index result;
           return result)
-  | _ ->
-      is_module_typ_first_class_aux ~include_hidden_hints module_typ
-        module_path
+  | _ -> classify ()

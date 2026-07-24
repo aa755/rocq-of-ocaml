@@ -36,6 +36,7 @@ module Context = struct
   type t = {
     comments : comments;
     configuration : Configuration.t;
+    constructor_names : ConstructorNames.t;
     env : Env.t;
     env_stack : EnvStack.t;
     included_path_aliases : IncludedPathAliases.t;
@@ -49,6 +50,7 @@ module Context = struct
   }
 
   let init (comments : comments) (configuration : Configuration.t)
+      (constructor_names : ConstructorNames.t)
       (initial_env : Env.t) (initial_loc : Location.t)
       (included_path_aliases : IncludedPathAliases.t)
       (included_record_aliases : IncludedRecordAliases.t)
@@ -59,6 +61,7 @@ module Context = struct
     {
       comments;
       configuration;
+      constructor_names;
       env = initial_env;
       env_stack = [];
       included_path_aliases;
@@ -127,10 +130,16 @@ module Command = struct
         Result.success
           (IncludedPathAliases.find ident context.loc
              context.included_path_aliases)
+    | GetIncludedSignaturePathAlias ident ->
+        Result.success
+          (IncludedPathAliases.find_for_signature ident context.loc
+             context.included_path_aliases)
     | GetIncludedRecordAlias ident ->
         Result.success
           (IncludedRecordAliases.find ident context.loc
              context.included_record_aliases)
+    | GetConstructorName uid ->
+        Result.success (ConstructorNames.find uid context.constructor_names)
     | GetValueName ident ->
         Result.success (ValueNames.find ident context.value_names)
     | GetModulePathAlias path ->
@@ -162,13 +171,21 @@ module Command = struct
           | Some target when Path.same path target -> None
           | Some _ | None -> alias)
     | GetSignatureHint path ->
+        let normalized_path =
+          normalize_project_path context.env path
+        in
         Result.success
           (match SignatureHints.find path context.signature_hints with
           | Some _ as result -> result
-          | None ->
-              ProjectHints.find_module_result
-                (normalize_project_path context.env path)
-                context.project_hints)
+          | None -> (
+              match
+                SignatureHints.find normalized_path
+                  context.signature_hints
+              with
+              | Some _ as result -> result
+              | None ->
+                  ProjectHints.find_module_result normalized_path
+                    context.project_hints))
     | GetModuleTypeHint path ->
         Result.success
           (match
@@ -190,12 +207,26 @@ module Command = struct
              context.signature_hints)
     | GetAnonymousFunctorParameter (functor_path, parameter_name) ->
         Result.success
-          (SignatureHints.find_anonymous_functor_parameter functor_path
-             parameter_name context.signature_hints)
+          (match
+             SignatureHints.find_anonymous_functor_parameter functor_path
+               parameter_name context.signature_hints
+           with
+          | Some _ as result -> result
+          | None ->
+              ProjectHints.find_anonymous_functor_parameter
+                (normalize_project_path context.env functor_path)
+                parameter_name context.project_hints)
     | GetFunctorParameterTypes functor_path ->
         Result.success
-          (SignatureHints.find_functor_parameter_types functor_path
-             context.signature_hints)
+          (match
+             SignatureHints.find_functor_parameter_types functor_path
+               context.signature_hints
+           with
+          | Some _ as result -> result
+          | None ->
+              ProjectHints.find_functor_parameter_types
+                (normalize_project_path context.env functor_path)
+                context.project_hints)
     | GetFunctorResultSignature functor_path ->
         Result.success
           (match

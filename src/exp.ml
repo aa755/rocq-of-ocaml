@@ -319,7 +319,9 @@ let rec any_patterns_with_ith_true (is_guarded : bool) (i : int) (n : int) :
 let rec get_include_name (module_expr : module_expr) : Name.t Monad.t =
   match module_expr.mod_desc with
   | Tmod_ident (path, _) ->
-      let* path_name = PathName.of_path_with_convert false path in
+      let* path_name =
+        PathName.of_path_with_convert false path
+      in
       let* name = PathName.to_name false path_name in
       return (Name.suffix_by_include name)
   | Tmod_apply (applied_expr, _, _) -> get_include_name applied_expr
@@ -331,7 +333,12 @@ let rec get_include_name (module_expr : module_expr) : Name.t Monad.t =
         ("Cannot find a name for this module expression.\n\n"
        ^ "Try to first give a name to this module before doing the include.")
 
-let build_module (typ_params_arity : int Tree.t)
+let build_module
+    ?(typ_param_of_path =
+      fun path ->
+        let* name = Name.of_strings false path in
+        return (Type.Variable name))
+    (typ_params_arity : int Tree.t)
     (values : ModuleTypValues.t list)
     (signature_path : Path.t)
     (mixed_path_of_value_or_typ :
@@ -346,15 +353,20 @@ let build_module (typ_params_arity : int Tree.t)
            return
              (field_name, nb_free_vars, Variable (mixed_path, [])))
   in
-  let* signature_path = PathName.of_path_with_convert false signature_path in
+  let* signature_path, explicit_params =
+    ModuleTyp.signature_path_and_explicit_params signature_path
+  in
   let* typ_params =
     typ_params_arity
     |> Tree.flatten
     |> Monad.List.map (fun (path, _) ->
            let* name = Name.of_strings false path in
-           return (name, Some (Type.Variable name)))
+           let* typ = typ_param_of_path path in
+           return (name, Some typ))
   in
-  return (Module (Type.Signature (signature_path, typ_params), fields))
+  return
+    (Module
+       (Type.Signature (signature_path, explicit_params @ typ_params), fields))
 
 (** Preserve the dependent signature of an anonymous structure at the point
     where its terminal record is elaborated.  The aliases introduced while
@@ -1357,16 +1369,71 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 },
                 e ) ->
               let* x = Name.of_optional_ident true x in
-              PathName.of_path_with_convert false path >>= fun path_name ->
+              PathName.of_path_with_convert false path
+              >>= fun path_name ->
               of_expression typ_vars e >>= fun e ->
               return (LetModuleUnpack (x, path_name, e))
           | Texp_letmodule (x, _, _, module_expr, e) ->
-              let* x = Name.of_optional_ident true x in
+              let x_ident = x in
+              let* x = Name.of_optional_ident true x_ident in
+              let* module_signature =
+                let path =
+                  match module_expr.mod_desc with
+                  | Tmod_ident (path, _) -> Some path
+                  | _ -> None
+                in
+                let* classification =
+                  IsFirstClassModule.is_module_typ_first_class
+                    module_expr.mod_type path
+                in
+                match classification with
+                | IsFirstClassModule.Found _ -> return classification
+                | IsFirstClassModule.Not_found _ ->
+                    let rec root_functor_path module_expr =
+                      match module_expr.mod_desc with
+                      | Tmod_ident (path, _) -> Some path
+                      | Tmod_apply (functor_expr, _, _)
+                      | Tmod_apply_unit functor_expr
+                      | Tmod_constraint
+                          (functor_expr, _, _, _) ->
+                          root_functor_path functor_expr
+                      | Tmod_structure _
+                      | Tmod_functor _
+                      | Tmod_unpack _
+                      | Tmod_typed_hole ->
+                          None
+                    in
+                    (match root_functor_path module_expr with
+                    | Some functor_path ->
+                        let* result_signature =
+                          get_functor_result_signature functor_path
+                        in
+                        (match result_signature with
+                        | Some signature_path ->
+                            return
+                              (IsFirstClassModule.Found
+                                 signature_path)
+                        | None -> return classification)
+                    | None -> return classification)
+              in
               push_env
                 ( of_module_expr typ_vars module_expr None >>= fun value ->
                   set_env e.exp_env
                     (push_env
-                       ( of_expression typ_vars e >>= fun e ->
+                       ( (match (x_ident, module_signature) with
+                         | ( Some ident,
+                             IsFirstClassModule.Found
+                               signature_path ) ->
+                             set_signature_hint
+                               (Path.Pident ident)
+                               signature_path
+                               (of_expression typ_vars e)
+                         | ( None,
+                             IsFirstClassModule.Found _ )
+                         | ( _,
+                             IsFirstClassModule.Not_found _ ) ->
+                             of_expression typ_vars e)
+                       >>= fun e ->
                          return (LetVar (None, x, [], value, e)) )) )
           | Texp_letexception _ ->
               error_message (Error "let_exception") SideEffect
@@ -1472,7 +1539,142 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
           | Texp_extension_constructor _ ->
               error_message (Error "extension") NotSupported
                 "Construction of extensions is not handled"
-          | Texp_open (_, e) -> of_expression typ_vars e
+          | Texp_open (open_declaration, e) ->
+              let {
+                open_expr;
+                open_bound_items;
+                _;
+              } = open_declaration
+              in
+              let rec raw_module_expr_path
+                  (module_expr : Typedtree.module_expr) :
+                  Path.t option =
+                match module_expr.mod_desc with
+                | Tmod_ident (path, _) -> Some path
+                | Tmod_apply (functor_expr, argument_expr, _) ->
+                    Option.bind
+                      (raw_module_expr_path functor_expr)
+                      (fun functor_path ->
+                        Option.map
+                          (fun argument_path ->
+                            Path.Papply
+                              (functor_path, argument_path))
+                          (raw_module_expr_path argument_expr))
+                | Tmod_constraint (inner, _, _, _) ->
+                    raw_module_expr_path inner
+                | Tmod_structure _
+                | Tmod_functor _
+                | Tmod_apply_unit _
+                | Tmod_unpack _
+                | Tmod_typed_hole ->
+                    None
+              in
+              let* opened_signature =
+                let path =
+                  match open_expr.mod_desc with
+                  | Tmod_ident (path, _) -> Some path
+                  | _ -> None
+                in
+                let* classification =
+                  IsFirstClassModule.is_module_typ_first_class
+                    open_expr.mod_type path
+                in
+                match classification with
+                | IsFirstClassModule.Found _ -> return classification
+                | IsFirstClassModule.Not_found _ ->
+                    let rec root_functor_path module_expr =
+                      match module_expr.mod_desc with
+                      | Tmod_ident (path, _) -> Some path
+                      | Tmod_apply (functor_expr, _, _)
+                      | Tmod_apply_unit functor_expr
+                      | Tmod_constraint
+                          (functor_expr, _, _, _) ->
+                          root_functor_path functor_expr
+                      | Tmod_structure _
+                      | Tmod_functor _
+                      | Tmod_unpack _
+                      | Tmod_typed_hole ->
+                          None
+                    in
+                    (match root_functor_path open_expr with
+                    | Some functor_path ->
+                        let* result_signature =
+                          get_functor_result_signature functor_path
+                        in
+                        (match result_signature with
+                        | Some signature_path ->
+                            return
+                              (IsFirstClassModule.Found
+                                 signature_path)
+                        | None -> return classification)
+                    | None -> return classification)
+              in
+              let translate_body (opened_path : Path.t) =
+                List.fold_right
+                  (fun signature_item body ->
+                    let ident =
+                      Types.signature_item_id signature_item
+                    in
+                    set_module_path_alias
+                      (Path.Pident ident)
+                      (Path.Pdot
+                         (opened_path, Ident.name ident))
+                      body)
+                  open_bound_items (of_expression typ_vars e)
+              in
+              (match opened_signature with
+              | IsFirstClassModule.Found signature_path ->
+                  let opened_ident =
+                    Ident.create_local
+                      ("opened_module_"
+                      ^ string_of_int
+                          open_declaration.open_loc.loc_start.pos_cnum)
+                  in
+                  let opened_path = Path.Pident opened_ident in
+                  let* opened_name =
+                    Name.of_ident false opened_ident
+                  in
+                  let* opened_value =
+                    of_module_expr typ_vars open_expr None
+                  in
+                  let body =
+                    let body = translate_body opened_path in
+                    let source_paths =
+                      [
+                        raw_module_expr_path open_expr;
+                        ModulePathAliases.module_expr_path open_expr;
+                      ]
+                      |> List.filter_map (fun path -> path)
+                      |> List.sort_uniq Path.compare
+                    in
+                    List.fold_right
+                      (fun source_path body ->
+                        set_module_path_alias source_path
+                          opened_path body)
+                      source_paths body
+                  in
+                  let* body =
+                    set_signature_hint opened_path signature_path
+                      body
+                  in
+                  return
+                    (LetVar
+                       ( None,
+                         opened_name,
+                         [],
+                         opened_value,
+                         body ))
+              | IsFirstClassModule.Not_found _ ->
+                  (match
+                     ModulePathAliases.module_expr_path open_expr
+                   with
+                  | Some opened_path ->
+                      translate_body opened_path
+                  | None ->
+                      error_message
+                        (Error "local_open")
+                        NotSupported
+                        "A local open of an anonymous namespace is not supported."))
           | Texp_typed_hole ->
               error_message (Error "expression_hole") Unexpected
                 "Unexpected expression hole"
@@ -1655,15 +1857,10 @@ and of_match :
     let guard_checks =
       guards
       |> List.map (fun (p, guard) ->
-             let is_pattern_always_true =
-               match p with
-               | Pattern.Any | Pattern.Variable _ -> true
-               | _ -> false
-             in
              let cases =
                [ (p, None, guard) ]
                @
-               if is_pattern_always_true then []
+               if Pattern.is_irrefutable p then []
                else
                  [
                    ( Pattern.Any,
@@ -1909,13 +2106,12 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                         return (args_names, Some e_body)
                       else return ([], None)
                     in
-                    let* args_typs, e_body_typ, source_arg_typs =
+                    let* args_typs, e_body_typ =
                       match
                         open_ocaml_arrow_type vb_expr.exp_env vb_expr.exp_type
                           (List.length args_names)
                       with
                       | Some (argument_types, result_type) ->
-                          let source_argument_types = argument_types in
                           let translate_segment typ =
                             let* typ, _, _ =
                               Type.of_typ_expr true typ_vars typ
@@ -1929,19 +2125,12 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                             translate_segment result_type
                           in
                           return
-                            ( argument_types,
-                              result_type,
-                              List.map
-                                (fun typ -> Some typ)
-                                source_argument_types )
+                            (argument_types, result_type)
                       | None ->
                           let* argument_types, result_type =
                             Type.open_type e_typ (List.length args_names)
                           in
-                          return
-                            ( argument_types,
-                              result_type,
-                              List.map (fun _ -> None) argument_types )
+                          return (argument_types, result_type)
                     in
                     let* configuration = get_configuration in
                     let structs, instance_args =
@@ -1949,65 +2138,18 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                       | [], true
                         when Configuration.is_without_guard_checking
                                configuration ->
-                          let polymorphic_variables =
-                            predefined_variables
-                            @ (new_typ_vars |> List.map fst)
+                          let guard =
+                            Name.of_string_raw "_rocq_guard"
                           in
-                          let is_concrete_inductive = function
-                            | Type.Arrow _ | Type.Kind _ | Type.ForallModule _
-                            | Type.ForallTyps _ | Type.FunTyps _ | Type.Let _
-                            | Type.String _ | Type.Error _ ->
-                                false
-                            | Type.Variable name ->
-                                not
-                                  (List.exists
-                                     (Name.equal name)
-                                     polymorphic_variables)
-                            | Type.Eq _ | Type.Tuple _ | Type.Apply _
-                            | Type.Signature _ | Type.ExistTyps _ ->
-                                true
-                          in
-                          let is_source_concrete_inductive = function
-                            | None -> None
-                            | Some typ ->
-                                let typ =
-                                  try
-                                    Ctype.full_expand
-                                      ~may_forget_scope:false
-                                      vb_expr.exp_env typ
-                                  with _ -> typ
-                                in
-                                Some
-                                  (match Types.get_desc typ with
-                                  | Tarrow _ | Tvar _ | Tunivar _ -> false
-                                  | _ -> true)
-                          in
-                          List.combine args_names
-                            (List.combine args_typs source_arg_typs)
-                          |> List.find_map (fun (name, (typ, source_typ)) ->
-                                 let is_concrete =
-                                   is_source_concrete_inductive source_typ
-                                   |> Option.value
-                                        ~default:
-                                          (is_concrete_inductive typ)
-                                 in
-                                 if is_concrete then
-                                   Some ([ Name.to_string name ], [])
-                                 else None)
-                          |> Option.value
-                               ~default:
-                                 ( let guard =
-                                     Name.of_string_raw "_rocq_guard"
-                                   in
-                                   ( [ Name.to_string guard ],
-                                     [
-                                       ( guard,
-                                         Type.Apply
-                                           ( MixedPath.of_name
-                                               (Name.of_string_raw
-                                                  "GeneralRecursionGuard"),
-                                             [] ) );
-                                     ] ) )
+                          ( [ Name.to_string guard ],
+                            [
+                              ( guard,
+                                Type.Apply
+                                  ( MixedPath.of_name
+                                      (Name.of_string_raw
+                                         "GeneralRecursionGuard"),
+                                    [] ) );
+                            ] )
                       | _ -> (source_structs, [])
                     in
                     let* _ =
@@ -2154,21 +2296,24 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
           | Tmod_typed_hole ->
               0
         in
+        let rec applied_functor_arguments
+            (module_expr : Typedtree.module_expr) :
+            Typedtree.module_expr list =
+          match module_expr.mod_desc with
+          | Tmod_apply (functor_expr, argument, _) ->
+              applied_functor_arguments functor_expr @ [ argument ]
+          | Tmod_constraint (inner, _, _, _) ->
+              applied_functor_arguments inner
+          | Tmod_ident _
+          | Tmod_apply_unit _
+          | Tmod_structure _
+          | Tmod_functor _
+          | Tmod_unpack _
+          | Tmod_typed_hole ->
+              []
+        in
         let expected_anonymous_signature (functor_expr : Typedtree.module_expr)
             (functor_type : Types.module_type) : Path.t option Monad.t =
-          let derived_signature_path functor_path parameter_name =
-            let signature_name =
-              Path.last functor_path ^ "_" ^ parameter_name
-              ^ "_signature"
-            in
-            match functor_path with
-            | Path.Pdot (parent, _) ->
-                Path.Pdot (parent, signature_name)
-            | Path.Pident _ ->
-                Path.Pident (Ident.create_local signature_name)
-            | Path.Papply _ | Path.Pextra_ty _ ->
-                Path.Pdot (functor_path, signature_name)
-          in
           match (root_functor_path functor_expr, functor_type) with
           | ( Some functor_path,
               Mty_functor (Named (parameter_ident, parameter_type), _) ) ->
@@ -2184,7 +2329,9 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                   (Option.bind parameter_types (fun parameter_types ->
                        Option.bind
                          (List.nth_opt parameter_types parameter_index)
-                         SignatureHints.module_type_path))
+                         (fun parameter ->
+                           SignatureHints.module_type_path
+                             parameter.FunctorParameterHint.module_type)))
               in
               begin match Env.scrape_alias env parameter_type with
               | Mty_functor _ ->
@@ -2210,12 +2357,7 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                             get_anonymous_functor_parameter functor_path
                               parameter_name
                           in
-                          return
-                            (Some
-                               (Option.value local_hint
-                                  ~default:
-                                    (derived_signature_path functor_path
-                                       parameter_name)))
+                          return local_hint
                       end
                   end
               end
@@ -2233,16 +2375,52 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
               return (not (Path.same local_module_type_path module_type_path))
           | _ -> return true
         in
-        let cast_path path module_type module_type_path =
+        let cast_path ?source_signature_path path module_type
+            module_type_path =
+          let source_signature =
+            match source_signature_path with
+            | Some path -> IsFirstClassModule.Found path
+            | None -> is_local_module_typ_first_class
+          in
           let* values = ModuleTypValues.get typ_vars module_type in
           let* module_typ_params_arity =
             ModuleTypParams.get_module_typ_typ_params_arity module_type
           in
+          let typ_param_of_path (associated_path : string list) :
+              Type.t Monad.t =
+            match source_signature with
+            | Found local_module_type_path ->
+                let* base =
+                  PathName.of_path_with_convert false path
+                in
+                let* field_name =
+                  Name.of_strings false associated_path
+                in
+                let* field =
+                  PathName.of_path_and_name_with_convert
+                    local_module_type_path field_name
+                in
+                return
+                  (Type.Apply
+                     (MixedPath.Access (base, [ field ]), []))
+            | _ ->
+                let associated_type_path =
+                  List.fold_left
+                    (fun path field -> Path.Pdot (path, field))
+                    path associated_path
+                in
+                let* mixed_path =
+                  MixedPath.of_path false associated_type_path
+                in
+                return (Type.Apply (mixed_path, []))
+          in
           let mixed_path_of_value_or_typ (name : Name.t)
               (_ : Name.t list) : MixedPath.t Monad.t =
-            match is_local_module_typ_first_class with
+            match source_signature with
             | Found local_module_type_path ->
-                let* base = PathName.of_path_with_convert false path in
+                let* base =
+                  PathName.of_path_with_convert false path
+                in
                 let* field =
                   PathName.of_path_and_name_with_convert local_module_type_path
                     name
@@ -2254,10 +2432,233 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                 in
                 return (MixedPath.PathName path_name)
           in
-          build_module module_typ_params_arity values module_type_path
-            mixed_path_of_value_or_typ
+          build_module ~typ_param_of_path module_typ_params_arity values
+            module_type_path mixed_path_of_value_or_typ
         in
-        let apply_mod e1 e2 =
+        let signature_path_of_module_type
+            ?signature_hint (module_type : Types.module_type) :
+            Path.t Monad.t =
+          let* classification =
+            IsFirstClassModule.is_module_typ_first_class module_type None
+          in
+          match classification with
+          | IsFirstClassModule.Found signature_path ->
+              return signature_path
+          | IsFirstClassModule.Not_found reason -> (
+              match signature_hint with
+              | Some signature_path -> return signature_path
+              | None ->
+                  raise
+                    (Path.Pident
+                       (Ident.create_local
+                          "module_coercion_signature_error"))
+                    Unexpected
+                    ("A module coercion requires a named Rocq signature.\n\n"
+                   ^ reason))
+        in
+        let cast_module_expression
+            ~(source_signature_path : Path.t)
+            ~(target_signature_path : Path.t)
+            (target_module_type : Types.module_type) (expression : t) :
+            t Monad.t =
+          if Path.same source_signature_path target_signature_path then
+            return expression
+          else
+            let binding_ident =
+              Ident.create_local "module_coercion"
+            in
+            let* binding_name = Name.of_ident false binding_ident in
+            let* casted =
+              cast_path
+                ~source_signature_path
+                (Path.Pident binding_ident)
+                target_module_type target_signature_path
+            in
+            return
+              (LetVar
+                 (None, binding_name, [], expression, casted))
+        in
+        let qualify_typed_path
+            (typed_type : FunctorParameterHint.t option)
+            (path : Path.t) : Path.t =
+          let aliases =
+            match typed_type with
+            | Some typed_type -> typed_type.FunctorParameterHint.path_aliases
+            | None -> []
+          in
+          let rec qualify = function
+            | Path.Pident ident as path ->
+                aliases
+                |> List.find_map (fun (candidate, target) ->
+                       if Ident.same candidate ident then Some target
+                       else None)
+                |> Option.value ~default:path
+            | Path.Pdot (prefix, field) ->
+                Path.Pdot (qualify prefix, field)
+            | Path.Papply (functor_path, argument_path) ->
+                Path.Papply
+                  (qualify functor_path, qualify argument_path)
+            | Path.Pextra_ty (prefix, extra) ->
+                Path.Pextra_ty (qualify prefix, extra)
+          in
+          qualify path
+        in
+        let rec coerce_functor_expression
+            (source_functor_path : Path.t option)
+            (source_result_signature : Path.t option)
+            (target_typed_type : FunctorParameterHint.t option)
+            (target_path_substitution : Subst.t)
+            (expression : t) (source_type : Types.module_type)
+            (target_type : Types.module_type) : t Monad.t =
+          let* env = get_env in
+          match
+            ( Env.scrape_alias env source_type,
+              Env.scrape_alias env target_type )
+          with
+          | ( Mty_functor
+                (Named (source_ident, source_parameter), source_result),
+              Mty_functor
+                (Named (target_ident, target_parameter), target_result) ) ->
+              let target_typed_parameter, target_typed_result =
+                match target_typed_type with
+                | Some
+                    {
+                      FunctorParameterHint.module_type =
+                        {
+                          mty_desc =
+                            Tmty_functor
+                              ( Named (_, _, parameter),
+                                result );
+                          _;
+                        };
+                      path_aliases;
+                      _;
+                    } ->
+                    ( Some
+                        {
+                          FunctorParameterHint.ident = None;
+                          module_type = parameter;
+                          path_aliases;
+                        },
+                      Some
+                        {
+                          FunctorParameterHint.ident = None;
+                          module_type = result;
+                          path_aliases;
+                        } )
+                | Some _ | None -> (None, None)
+              in
+              let target_ident =
+                Option.value target_ident
+                  ~default:(Ident.create_local "FunctorParameter")
+              in
+              let* target_name = Name.of_ident false target_ident in
+              let* source_parameter_signature =
+                let* signature_hint =
+                  match source_functor_path with
+                  | Some functor_path ->
+                      let parameter_name =
+                        Name.string_of_optional_ident source_ident
+                      in
+                      get_anonymous_functor_parameter functor_path
+                        parameter_name
+                  | None -> return None
+                in
+                signature_path_of_module_type
+                  ?signature_hint source_parameter
+              in
+              let* target_parameter_signature =
+                let typed_hint =
+                  Option.bind target_typed_parameter
+                    (fun parameter ->
+                      ModuleTyp.get_module_typ_path_name
+                        parameter.FunctorParameterHint.module_type)
+                  |> Option.map
+                       (Subst.module_path target_path_substitution)
+                  |> Option.map
+                       (qualify_typed_path target_typed_parameter)
+                in
+                signature_path_of_module_type
+                  ?signature_hint:typed_hint
+                  target_parameter
+              in
+              let* target_parameter_module_type =
+                ModuleTyp.of_types
+                  ~result_signature_path:target_parameter_signature
+                  target_parameter
+              in
+              let* _, target_parameter_type =
+                ModuleTyp.to_typ [] (Ident.name target_ident) false
+                  target_parameter_module_type
+              in
+              let target_parameter_expression =
+                Variable (MixedPath.of_name target_name, [])
+              in
+              let* source_argument =
+                cast_module_expression
+                  ~source_signature_path:target_parameter_signature
+                  ~target_signature_path:source_parameter_signature
+                  source_parameter target_parameter_expression
+              in
+              let application =
+                Apply (expression, [ Some source_argument ])
+              in
+              let source_result =
+                match source_ident with
+                | Some source_ident ->
+                    Subst.modtype Subst.Keep
+                      (Subst.add_module source_ident
+                         (Path.Pident target_ident)
+                         Subst.identity)
+                      source_result
+                | None -> source_result
+              in
+              let result_env =
+                Env.add_module ~arg:true target_ident Types.Mp_present
+                  target_parameter env
+              in
+              let* body =
+                set_env result_env
+                  (set_signature_hint
+                     (Path.Pident target_ident)
+                     target_parameter_signature
+                     (coerce_functor_expression source_functor_path
+                        source_result_signature target_typed_result
+                        target_path_substitution application source_result
+                        target_result))
+              in
+              return
+                (Functor
+                   (target_name, target_parameter_type, body))
+          | Mty_functor _, _
+          | _, Mty_functor _ ->
+              raise
+                (Error "module_coercion_functor_shape")
+                Unexpected
+                "A module coercion cannot convert a functor to a non-functor."
+          | _ ->
+              let* source_signature_path =
+                signature_path_of_module_type
+                  ?signature_hint:source_result_signature source_type
+              in
+              let* target_signature_path =
+                signature_path_of_module_type
+                  ?signature_hint:
+                    (Option.bind target_typed_type
+                       (fun parameter ->
+                         ModuleTyp.get_module_typ_path_name
+                           parameter.FunctorParameterHint.module_type))
+                  target_type
+              in
+              let target_signature_path =
+                Subst.module_path target_path_substitution
+                  target_signature_path
+                |> qualify_typed_path target_typed_type
+              in
+              cast_module_expression ~source_signature_path
+                ~target_signature_path target_type expression
+        in
+        let apply_mod e1 e2 argument_coercion =
           let e1_mod_type = e1.mod_type in
           let expected_module_typ_for_e2 =
             match e1_mod_type with
@@ -2267,6 +2668,48 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
           in
           let* expected_signature_path_for_e2 =
             expected_anonymous_signature e1 e1_mod_type
+          in
+          let* expected_typed_module_type_for_e2 =
+            match root_functor_path e1 with
+            | Some functor_path ->
+                let parameter_index =
+                  applied_functor_argument_count e1
+                in
+                let* parameter_types =
+                  get_functor_parameter_types functor_path
+                in
+                return
+                  (Option.bind parameter_types (fun parameter_types ->
+                       List.nth_opt parameter_types parameter_index))
+            | None -> return None
+          in
+          let* expected_typed_module_path_substitution =
+            match root_functor_path e1 with
+            | Some functor_path ->
+                let* parameter_types =
+                  get_functor_parameter_types functor_path
+                in
+                let rec add_arguments substitution parameters arguments =
+                  match (parameters, arguments) with
+                  | parameter :: parameters, argument :: arguments ->
+                      let substitution =
+                        match
+                          ( parameter.FunctorParameterHint.ident,
+                            root_functor_path argument )
+                        with
+                        | Some ident, Some argument_path ->
+                            Subst.add_module ident argument_path
+                              substitution
+                        | None, _ | _, None -> substitution
+                      in
+                      add_arguments substitution parameters arguments
+                  | [], _ | _, [] -> substitution
+                in
+                return
+                  (add_arguments Subst.identity
+                     (Option.value parameter_types ~default:[])
+                     (applied_functor_arguments e1))
+            | None -> return Subst.identity
           in
           let* e1 = of_module_expr typ_vars e1 None in
           let* es =
@@ -2279,9 +2722,33 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                   ("Tmod_apply_unit was used with a non-generative functor")
               | Some e2 ->
                 let* e2 =
-                  of_module_expr
-                    ?expected_signature_path:expected_signature_path_for_e2
-                    typ_vars e2 expected_module_typ_for_e2
+                  match
+                    (argument_coercion, expected_module_typ_for_e2)
+                  with
+                  | ( Tcoerce_functor _,
+                      Some expected_module_type ) ->
+                      let source_functor_path =
+                        root_functor_path e2
+                      in
+                      let* source_result_signature =
+                        match source_functor_path with
+                        | Some functor_path ->
+                            get_functor_result_signature functor_path
+                        | None -> return None
+                      in
+                      let* expression =
+                        of_module_expr typ_vars e2 None
+                      in
+                      coerce_functor_expression source_functor_path
+                        source_result_signature
+                        expected_typed_module_type_for_e2
+                        expected_typed_module_path_substitution expression
+                        e2.mod_type expected_module_type
+                  | _ ->
+                      of_module_expr
+                        ?expected_signature_path:
+                          expected_signature_path_for_e2
+                        typ_vars e2 expected_module_typ_for_e2
                 in
                 return [ Some (annotate_terminal_module e2) ]
           in
@@ -2313,8 +2780,7 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                     PathName.of_path_with_convert false target
                   in
                   let* parent =
-                    PathName.of_path_with_convert false
-                      parent_application
+                    PathName.of_path_with_convert false parent_application
                   in
                   let parent_fargs =
                     PathName.to_string
@@ -2374,10 +2840,10 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                 in
                 return (Functor (x, module_typ_arg, e))
             | Unit -> of_module_expr typ_vars e None)
-        | Tmod_apply (e1, e2, _) ->
-            apply_mod e1 (Some e2)
+        | Tmod_apply (e1, e2, coercion) ->
+            apply_mod e1 (Some e2) coercion
         | Tmod_apply_unit e1 ->
-            apply_mod e1 None
+            apply_mod e1 None Tcoerce_none
         | Tmod_constraint (module_expr, mod_type, _, _) ->
             let module_type =
               match module_type with
@@ -3033,6 +3499,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
         | (Pattern.VariantDefault pattern, body) :: _ ->
             bind_pattern (Name.to_coq variant_name) pattern body
         | (Pattern.VariantCase (tag, pattern, typ, whole), body) :: rest ->
+            let fallback = dispatch rest in
             let body =
               match whole with
               | None -> to_coq false body
@@ -3041,21 +3508,30 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
                     (Name.to_coq variant_name)
                     whole (to_coq false body)
             in
+            let payload =
+              nest
+                (!^"cast"
+                ^^ Type.to_coq None (Some Type.Context.Apply) typ
+                ^^ Name.to_coq payload_name)
+            in
+            let tagged_body =
+              match pattern with
+              | Pattern.Tuple [] -> body
+              | _ when Pattern.is_irrefutable pattern ->
+                  bind_pattern_doc payload pattern body
+              | _ ->
+                  nest
+                    (!^"match" ^^ payload ^^ !^"with" ^^ newline
+                   ^^ !^"|" ^^ Pattern.to_coq false pattern ^^ !^"=>"
+                   ^^ body ^^ newline ^^ !^"|" ^^ !^"_"
+                   ^^ !^"=>" ^^ fallback ^^ newline ^^ !^"end")
+            in
             nest
               (!^"if" ^^ !^"String.eqb" ^^ Name.to_coq tag_name
              ^^ !^("\"" ^ tag ^ "\"") ^^ !^"then")
             ^^ newline
-            ^^ indent
-                 (match pattern with
-                 | Pattern.Tuple [] -> body
-                 | _ ->
-                     bind_pattern_doc
-                       (nest
-                          (!^"cast"
-                          ^^ Type.to_coq None (Some Type.Context.Apply) typ
-                          ^^ Name.to_coq payload_name))
-                       pattern body)
-            ^^ newline ^^ !^"else" ^^ newline ^^ indent (dispatch rest)
+            ^^ indent tagged_body
+            ^^ newline ^^ !^"else" ^^ newline ^^ indent fallback
       in
       Pp.parens paren
       @@ nest

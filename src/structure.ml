@@ -1120,7 +1120,7 @@ let rec of_structure ?(has_functor_parameters = false)
                              ]
                        | Types.Sig_module
                            (ident, _, { md_type; _ }, _, _) -> (
-                           match Mtype.scrape env md_type with
+                           match Env.scrape_alias env md_type with
                            | Mty_signature nested_signature ->
                                let* name = Name.of_ident false ident in
                                let origin_nested_signature =
@@ -1309,18 +1309,23 @@ let rec of_structure ?(has_functor_parameters = false)
                            (ident, _, { md_type; _ }, _, _)
                          when not
                                 (List.mem (Ident.name ident) exclude_list) ->
+                           let source_name = Ident.name ident in
                            let* name = Name.of_ident false ident in
                            let module_reference = field_reference name in
+                           let nested_module_path =
+                             Option.map
+                               (fun parent ->
+                                 Path.Pdot (parent, source_name))
+                               module_path
+                           in
                            let* module_kind =
                              IsFirstClassModule.is_module_typ_first_class
-                               md_type None
+                               md_type nested_module_path
                            in
                            let aliases =
                              match module_kind with
                              | IsFirstClassModule.Found _ ->
                                  [
-                                   ModuleSynonym
-                                     (name, module_reference, false);
                                    namespace_item IncludeValue name [] None;
                                  ]
                              | IsFirstClassModule.Not_found _ ->
@@ -1469,9 +1474,24 @@ let rec of_structure ?(has_functor_parameters = false)
             | Tstr_class_type _ ->
                 error_message (Error "class_type") NotSupported
                   "Structure item `class_type` not handled."
-            | Tstr_include { incl_attributes; _ }
+            | Tstr_include { incl_attributes; incl_type; _ }
               when has_raw_attribute "merlin.hide" incl_attributes ->
-                return []
+                incl_type
+                |> Monad.List.filter_map (function
+                     | Types.Sig_value
+                         (ident, { Types.val_type; _ }, _)
+                       when not (String.equal (Ident.name ident) "_") ->
+                         let* name = Name.of_ident true ident in
+                         let* typ, _, free_typ_vars =
+                           Type.of_typ_expr true Name.Map.empty val_type
+                         in
+                         return
+                           (Some
+                              (AbstractValue
+                                 ( name,
+                                   List.map fst free_typ_vars,
+                                   typ )))
+                     | _ -> return None)
             | Tstr_include
                 {
                   incl_attributes;
@@ -1812,13 +1832,83 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
       in
       let* local_module_bindings =
         source_structure.str_items
-        |> Monad.List.filter_map
+        |> Monad.List.concat_map
              (fun (item : Typedtree.structure_item) ->
                match item.str_desc with
-               | Tstr_module { mb_id = Some ident; _ } ->
+               | Tstr_module { mb_id = Some ident; mb_expr; _ } ->
                    let* name = Name.of_ident false ident in
-                   return (Some (name, ident))
-               | _ -> return None)
+                   let* target_access =
+                     let rec contains_application path =
+                       match path with
+                       | Path.Papply _ -> return true
+                       | Path.Pdot (prefix, _)
+                       | Path.Pextra_ty (prefix, _) ->
+                           let* prefix_contains_application =
+                             contains_application prefix
+                           in
+                           if prefix_contains_application then return true
+                           else
+                             let* module_alias =
+                               get_module_path_alias path
+                             in
+                             (match module_alias with
+                             | Some alias -> contains_application alias
+                             | None -> return false)
+                       | Path.Pident ident ->
+                           let* module_alias = get_module_path_alias path in
+                           (match module_alias with
+                           | Some alias -> contains_application alias
+                           | None ->
+                               let* included_alias =
+                                 get_included_path_alias ident
+                               in
+                               (match included_alias with
+                               | Some alias -> contains_application alias
+                               | None -> return false))
+                     in
+                     match ModulePathAliases.module_expr_path mb_expr with
+                     | Some path ->
+                         let has_global_head =
+                           match Path.head path with
+                           | ident -> Ident.global ident
+                           | exception _ -> false
+                         in
+                         let* contains_application =
+                           contains_application path
+                         in
+                         if
+                           contains_application
+                           || not has_global_head
+                         then return None
+                         else
+                           let* { PathName.path; base } =
+                             PathName.of_path_without_convert false path
+                           in
+                           return (Some (path @ [ base ]))
+                     | None -> return None
+                   in
+                   return
+                     [
+                       ( name,
+                         ident,
+                         SignatureHints.module_expr_annotation mb_expr,
+                         target_access );
+                     ]
+               | Tstr_recmodule bindings ->
+                   bindings
+                   |> Monad.List.filter_map
+                        (fun binding ->
+                          match binding.mb_id with
+                          | None -> return None
+                          | Some ident ->
+                              let* name = Name.of_ident false ident in
+                          let signature_path =
+                            Option.bind
+                              (explicit_module_type binding.mb_expr)
+                              ModuleTyp.get_module_typ_path_name
+                          in
+                          return (Some (name, ident, signature_path, None)))
+               | _ -> return [])
       in
       let* e =
         match as_expression with
@@ -1845,27 +1935,202 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                 MixedPath.AppliedAccess
                   (path_name, [ ("_fargs", "_fargs") ], [])
             in
+            let flattened_local_access (outer_field : Name.t) :
+                Name.t list option Monad.t =
+              let candidate access =
+                let component_variants component =
+                  let stripped_reserved =
+                    if
+                      String.length component > 1
+                      && Char.equal component.[0] '_'
+                    then
+                      [
+                        String.sub component 1
+                          (String.length component - 1);
+                      ]
+                    else []
+                  in
+                  let value_suffix = "_value" in
+                  let stripped_value =
+                    if String.ends_with ~suffix:value_suffix component then
+                      [
+                        String.sub component 0
+                          (String.length component
+                          - String.length value_suffix);
+                      ]
+                    else []
+                  in
+                  List.sort_uniq String.compare
+                    (component :: stripped_reserved @ stripped_value)
+                in
+                let rec combinations = function
+                  | [] -> [ [] ]
+                  | variants :: remaining ->
+                      let remaining = combinations remaining in
+                      variants
+                      |> List.concat_map (fun variant ->
+                             remaining
+                             |> List.map (fun suffix ->
+                                    variant :: suffix))
+                in
+                let flattened_name components =
+                  match List.rev components with
+                  | leaf :: reversed_modules
+                    when String.starts_with ~prefix:"op_" leaf ->
+                      let operator =
+                        String.sub leaf 3 (String.length leaf - 3)
+                      in
+                      "op_"
+                      ^ String.concat "_"
+                          (List.rev reversed_modules @ [ operator ])
+                  | _ -> String.concat "_" components
+                in
+                let outer_field = Name.to_string outer_field in
+                let matches =
+                  access
+                  |> List.map (fun name ->
+                         component_variants (Name.to_string name))
+                  |> combinations
+                  |> List.exists (fun components ->
+                         String.equal
+                           (flattened_name components)
+                           outer_field)
+                in
+                return (if matches then Some access else None)
+              in
+              let rec first_some f = function
+                | [] -> return None
+                | item :: remaining ->
+                    let* result = f item in
+                    (match result with
+                    | Some _ -> return result
+                    | None -> first_some f remaining)
+              in
+              let rec search prefix = function
+                | [] -> return None
+                | definition :: remaining ->
+                    let* result =
+                      match definition with
+                      | Value value ->
+                          value.Value.definition.Exp.Definition.cases
+                          |> List.map (fun (header, _) ->
+                                 header.Exp.Header.name)
+                          |> first_some (fun name ->
+                                 candidate (prefix @ [ name ]))
+                      | AbstractValue (name, _, _)
+                      | ModuleIncludeItem (_, name, _, _, _)
+                      | TypeSynonym (name, _)
+                      | ModuleExpression (name, _, _, _)
+                      | ModuleSynonym (name, _, _)
+                      | SignatureSynonym (name, _, _) ->
+                          candidate (prefix @ [ name ])
+                      | Module (name, _, definitions, _) ->
+                          let path = prefix @ [ name ] in
+                          let* nested = search path definitions in
+                          (match nested with
+                          | Some _ -> return nested
+                          | None -> candidate path)
+                      | Documentation (_, definitions) ->
+                          search prefix definitions
+                      | ErrorMessage (_, definition) ->
+                          search prefix [ definition ]
+                      | TypeDefinition _
+                      | ModuleInclude _
+                      | Signature _
+                      | Error _ ->
+                          return None
+                    in
+                    (match result with
+                    | Some _ -> return result
+                    | None -> search prefix remaining)
+              in
+              search [] structure
+            in
             let mixed_path_of_value_or_typ (outer_field : Name.t)
                 (access : Name.t list) : MixedPath.t Monad.t =
+              let rec remove_prefix prefix path =
+                match (prefix, path) with
+                | [], path -> Some path
+                | prefix_name :: prefix, path_name :: path
+                  when Name.equal prefix_name path_name ->
+                    remove_prefix prefix path
+                | _ -> None
+              in
+              let access =
+                match access with
+                | root :: _ when
+                    List.exists
+                      (fun (name, _, _, _) -> Name.equal name root)
+                      local_module_bindings ->
+                    access
+                | _ ->
+                    local_module_bindings
+                    |> List.find_map
+                         (fun (name, _, _, target_access) ->
+                           match target_access with
+                           | Some target_access -> (
+                               match remove_prefix target_access access with
+                               | Some (_ :: _ as fields) ->
+                                   Some (name :: fields)
+                               | Some [] | None -> None)
+                           | None -> None)
+                    |> Option.value ~default:access
+              in
+              let* local_access =
+                flattened_local_access outer_field
+              in
+              match local_access with
+              | Some access ->
+                  let base = List.hd (List.rev access) in
+                  let path =
+                    List.rev (List.tl (List.rev access))
+                  in
+                  return
+                    (local_mixed_path access
+                       (PathName.of_name path base))
+              | None -> (
               match access with
               | root :: fields when fields <> [] -> (
                   match
                     local_module_bindings
-                    |> List.find_opt (fun (name, _) ->
+                    |> List.find_opt (fun (name, _, _, _) ->
                            Name.equal name root)
                   with
-                  | Some (_, ident) ->
+                  | Some (_, ident, declared_signature, _) ->
                       let module_path = Path.Pident ident in
                       let* signature_hint =
-                        get_signature_hint module_path
+                        match declared_signature with
+                        | Some _ as signature -> return signature
+                        | None -> get_signature_hint module_path
                       in
                       (match signature_hint with
                       | Some signature_path ->
                           let* base =
                             PathName.of_path_with_convert false module_path
                           in
-                          let rec nested_projection_fields signature_path =
-                            function
+                          let strip_flattened_prefix outer_field prefix =
+                            let prefix = Name.to_string prefix ^ "_" in
+                            let operator_prefix = "op_" ^ prefix in
+                            if
+                              String.starts_with ~prefix:operator_prefix
+                                outer_field
+                            then
+                              "op_"
+                              ^ String.sub outer_field
+                                  (String.length operator_prefix)
+                                  (String.length outer_field
+                                  - String.length operator_prefix)
+                            else if
+                              String.starts_with ~prefix outer_field
+                            then
+                              String.sub outer_field
+                                (String.length prefix)
+                                (String.length outer_field
+                                - String.length prefix)
+                            else outer_field
+                          in
+                          let rec nested_projection_fields signature_path
+                              flattened_field = function
                             | [] -> return (Some [])
                             | [ field ] ->
                                 let* field =
@@ -1883,7 +2148,15 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                     (Name.to_string module_field)
                                 in
                                 (match child_signature with
-                                | None -> return None
+                                | None ->
+                                    let field =
+                                      Name.of_string_raw flattened_field
+                                    in
+                                    let* field =
+                                      PathName.of_path_and_name_with_convert
+                                        signature_path field
+                                    in
+                                    return (Some [ field ])
                                 | Some child_signature ->
                                     let* env = get_env in
                                     let child_signature =
@@ -1891,7 +2164,10 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                         signature_path child_signature
                                     in
                                     let* remaining =
-                                      nested_projection_fields child_signature
+                                      nested_projection_fields
+                                        child_signature
+                                        (strip_flattened_prefix
+                                           flattened_field module_field)
                                         remaining
                                     in
                                     return
@@ -1900,7 +2176,11 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                          remaining))
                           in
                           let* nested_projection_fields =
-                            nested_projection_fields signature_path fields
+                            nested_projection_fields signature_path
+                              (strip_flattened_prefix
+                                 (Name.to_string outer_field)
+                                 root)
+                              fields
                           in
                           (match nested_projection_fields with
                           | Some projection_fields ->
@@ -1941,9 +2221,7 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                     (String.length root_prefix)
                                     (String.length outer_field
                                     - String.length root_prefix)
-                                else
-                                  String.concat "_"
-                                    (List.map Name.to_string fields)
+                                else outer_field
                               in
                               let field = Name.of_string_raw inner_field in
                               let* field =
@@ -1963,15 +2241,17 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                           let path =
                             List.rev (List.tl (List.rev access))
                           in
-                          return
-                            (local_mixed_path access
-                               (PathName.of_name path base)))
+                          let* path_name =
+                            PathName.convert (PathName.of_name path base)
+                          in
+                          return (local_mixed_path access path_name))
                   | None ->
                       let base = List.hd (List.rev access) in
                       let path = List.rev (List.tl (List.rev access)) in
-                      return
-                        (local_mixed_path access
-                           (PathName.of_name path base)))
+                      let* path_name =
+                        PathName.convert (PathName.of_name path base)
+                      in
+                      return (local_mixed_path access path_name))
               | _ -> (
               match List.rev access with
               | [] ->
@@ -1981,9 +2261,11 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                     Unexpected
                     "A module field has an empty local access path"
               | base :: rev_path ->
-                  return
-                    (local_mixed_path access
-                       (PathName.of_name (List.rev rev_path) base)))
+                  let* path_name =
+                    PathName.convert
+                      (PathName.of_name (List.rev rev_path) base)
+                  in
+                  return (local_mixed_path access path_name)))
             in
             let* e =
               Exp.build_module module_typ_params_arity values module_type_path
@@ -2086,6 +2368,34 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                           in
                           return
                             (Some ([ field ], included_signature)))
+                in
+                let rec resolve_result_module_path signature_path
+                    record_fields = function
+                  | [] ->
+                      return (Some (record_fields, signature_path))
+                  | source_field :: remaining ->
+                      let* field_signature =
+                        get_result_module_field signature_path source_field
+                      in
+                      (match field_signature with
+                      | Some field_signature ->
+                          let* field_name =
+                            Name.of_string false source_field
+                          in
+                          let* field =
+                            PathName.of_path_and_name_with_convert
+                              signature_path field_name
+                          in
+                          resolve_result_module_path field_signature
+                            (record_fields @ [ field ]) remaining
+                      | None -> return None)
+                in
+                let* result_module_path =
+                  match included_record with
+                  | Some _ -> return None
+                  | None ->
+                      resolve_result_module_path root_signature []
+                        source_fields
                 in
                 let rec items_of_signature record_fields signature_path
                     flattened_prefix included_record signature =
@@ -2232,7 +2542,7 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                      @ [ source_name ])
                                  in
                                  let* recorded_signature =
-                                   get_result_module_field root_signature
+                                   get_result_module_field signature_path
                                      flattened_module_name
                                  in
                                  let rec functor_root_of_path path =
@@ -2365,33 +2675,36 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                    | None -> return None
                                  in
                                  let* module_kind =
-                                   match recorded_signature with
-                                   | Some signature ->
+                                   let* direct =
+                                     IsFirstClassModule
+                                     .is_module_typ_first_class
+                                       ~include_hidden_hints:
+                                         (record_fields <> []
+                                         && Option.is_none
+                                              result_module_path)
+                                       md_type
+                                       (Some (Path.Pident ident))
+                                   in
+                                   match
+                                     ( direct,
+                                       recorded_signature,
+                                       discovered_signature )
+                                   with
+                                   | IsFirstClassModule.Found _, _, _ ->
+                                       return direct
+                                   | ( IsFirstClassModule.Not_found _,
+                                       Some signature,
+                                       _ )
+                                   | ( IsFirstClassModule.Not_found _,
+                                       None,
+                                       Some signature ) ->
                                        return
                                          (IsFirstClassModule.Found
                                             signature)
-                                   | None ->
-                                       let* direct =
-                                         IsFirstClassModule
-                                         .is_module_typ_first_class
-                                           ~include_hidden_hints:
-                                             (record_fields <> [])
-                                           md_type
-                                           (Some (Path.Pident ident))
-                                       in
-                                       (match
-                                          (direct, discovered_signature)
-                                        with
-                                       | IsFirstClassModule.Found _, _ ->
-                                           return direct
-                                       | ( IsFirstClassModule.Not_found _,
-                                           Some signature ) ->
-                                           return
-                                             (IsFirstClassModule.Found
-                                                signature)
-                                       | IsFirstClassModule.Not_found _, None
-                                         ->
-                                           return direct)
+                                   | ( IsFirstClassModule.Not_found _,
+                                       None,
+                                       None ) ->
+                                       return direct
                                  in
                                  let* nested_items, module_value =
                                    match module_kind with
@@ -2431,9 +2744,13 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                                       record_fields ) )) )
                                    | IsFirstClassModule.Not_found _ ->
                                        let* nested_included_record =
-                                         match included_record with
-                                         | None -> return None
-                                         | Some
+                                         match
+                                           ( result_module_path,
+                                             included_record )
+                                         with
+                                         | Some _, _ -> return None
+                                         | None, None -> return None
+                                         | None, Some
                                              ( included_fields,
                                                included_signature ) ->
                                              let* hinted_signature =
@@ -2533,8 +2850,23 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                      module_expr.mod_type
                  with
                 | Mty_signature signature ->
+                    let record_fields, signature_path, flattened_prefix,
+                        included_record =
+                      match result_module_path with
+                      | Some (record_fields, signature_path) ->
+                          ( record_fields,
+                            signature_path,
+                            [],
+                            Some (record_fields, signature_path) )
+                      | None ->
+                          ( [],
+                            root_signature,
+                            source_fields,
+                            included_record )
+                    in
                     let* items =
-                      items_of_signature [] root_signature source_fields
+                      items_of_signature record_fields signature_path
+                        flattened_prefix
                         included_record signature
                     in
                     return (Some items)
@@ -2559,7 +2891,51 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                 | _ -> false
                 | exception _ -> false
               in
-              return (ModuleSynonym (name, reference, is_functor))))
+              if
+                (not is_functor)
+                && source_fields = []
+                && Option.is_some root_signature
+              then
+                let* module_exp =
+                  Exp.of_module_expr Name.Map.empty module_expr None
+                in
+                let* application_fargs =
+                  match root_signature with
+                  | Some signature
+                    when
+                      String.ends_with ~suffix:"_result"
+                        (Path.last signature) ->
+                      let fargs_name =
+                        Name.of_string_raw
+                          (Name.to_string name ^ "_fargs")
+                      in
+                      let* target =
+                        PathName.of_path_with_convert false path
+                      in
+                      let target =
+                        {
+                          target with
+                          PathName.base =
+                            Name.of_string_raw
+                              (Name.to_string target.base ^ "_fargs");
+                        }
+                      in
+                      return
+                        (Some
+                           ( fargs_name,
+                             Exp.Variable
+                               (MixedPath.PathName target, []) ))
+                  | Some _ | None -> return None
+                in
+                return
+                  (ModuleExpression
+                     ( name,
+                       module_typ,
+                       application_fargs,
+                       module_exp ))
+              else
+                return
+                  (ModuleSynonym (name, reference, is_functor))))
   | Tmod_apply _ | Tmod_apply_unit _ ->
       let module_type_annotation =
         match module_type_annotation with
@@ -2680,14 +3056,43 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
         | Named (ident, _, module_type_arg) ->
             let* x = Name.of_optional_ident false ident in
             let id = Name.string_of_optional_ident ident in
-            let* named_signature =
-              IsFirstClassModule.is_module_typ_first_class
-                module_type_arg.mty_type None
+            let synthetic_signature_name =
+              Name.to_string name ^ "_" ^ id ^ "_signature"
+            in
+            let* reusable_signature_hint =
+              match binding_path with
+              | Some functor_path ->
+                  get_anonymous_functor_parameter functor_path id
+              | None -> return None
+            in
+            let* named_signature, uses_reusable_signature =
+              match reusable_signature_hint with
+              | Some signature_path
+                when
+                  not
+                    (String.equal (Path.last signature_path)
+                       synthetic_signature_name) ->
+                  return (IsFirstClassModule.Found signature_path, true)
+              | Some _ | None ->
+                  let* named_signature =
+                    IsFirstClassModule.is_module_typ_first_class
+                      module_type_arg.mty_type None
+                  in
+                  return (named_signature, false)
             in
             let* module_type_arg, parameter_signature, signature_hint =
               match (module_type_arg.mty_desc, named_signature) with
               | _, IsFirstClassModule.Found signature_path ->
-                  let* module_type_arg = ModuleTyp.of_ocaml module_type_arg in
+                  let* module_type_arg =
+                    if uses_reusable_signature then
+                      let* module_type_arg =
+                        ModuleTyp.of_ocaml_module_with_substitutions
+                          signature_path []
+                      in
+                      return ([], module_type_arg)
+                    else
+                      ModuleTyp.of_ocaml module_type_arg
+                  in
                   return (module_type_arg, None, Some signature_path)
               | Tmty_signature signature, IsFirstClassModule.Not_found _ ->
                   let* signature_name =

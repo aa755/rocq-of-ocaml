@@ -56,11 +56,11 @@ and get_module_typ_typ_params_aux (mapper : 'a mapper)
         else
           let visited_paths = path_name :: visited_paths in
           get_env >>= fun env ->
-          match Env.find_module path env with
-          | { Types.md_type; _ } ->
+          match Env.scrape_alias env module_typ with
+          | (Mty_signature _ as strengthened_module_type) ->
               get_module_typ_typ_params_aux mapper visited_module_types
-                visited_paths prefix md_type
-          | exception Not_found ->
+                visited_paths prefix strengthened_module_type
+          | _ | exception Not_found ->
               let* hinted_module_type = get_module_type_hint path in
               (match hinted_module_type with
               | Some module_type ->

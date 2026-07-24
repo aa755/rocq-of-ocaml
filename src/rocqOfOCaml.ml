@@ -169,10 +169,12 @@ let main () =
           let included_record_aliases =
             IncludedRecordAliases.of_typedtree typedtree signature_hints
           in
+          let constructor_names = ConstructorNames.of_typedtree typedtree in
           let value_names = ValueNames.of_typedtree typedtree in
 
           let context =
-            MonadEval.Context.init comments configuration initial_env
+            MonadEval.Context.init comments configuration constructor_names
+              initial_env
               initial_loc included_path_aliases included_record_aliases
               module_path_aliases signature_hints project_hints value_names
           in
