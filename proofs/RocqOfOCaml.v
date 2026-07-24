@@ -4,6 +4,9 @@ Require Export List.
 Require Export Tags.
 
 Require Lens.
+Require Bigstring.
+Require Digestif.
+Require Libsecp256k1.
 Require OCamlBigarray.
 Require OCamlChar.
 Require OCamlFormat.

@@ -6,6 +6,9 @@ RocqOfOCaml.v
 Libraries.v
 List.v
 Lens.v
+Bigstring.v
+Digestif.v
+Libsecp256k1.v
 OCamlBigarray.v
 OCamlChar.v
 OCamlFormat.v
