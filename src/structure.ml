@@ -500,6 +500,59 @@ let qualify_result_field_signature (env : Env.t) (result_signature : Path.t)
         append_path owner field_signature
     | _ -> field_signature
 
+let signature_item_named (name : string) (signature : Types.signature) :
+    Types.signature_item option =
+  signature
+  |> List.find_opt (fun item ->
+         String.equal (Ident.name (Types.signature_item_id item)) name)
+
+(** Match a generic functor-result type with its specialized application type.
+    The returned overrides identify only specialized constructor nodes whose
+    generic counterparts denote one of [origin_type_paths]. *)
+let constructor_overrides_from_origin
+    (origin_type_paths : (Path.t * MixedPath.t) list)
+    (origin_typ : Types.type_expr) (specialized_typ : Types.type_expr) :
+    (int * MixedPath.t) list =
+  let seen = Hashtbl.create 17 in
+  let immediate_children typ =
+    let children = ref [] in
+    Btype.iter_type_expr (fun child -> children := child :: !children) typ;
+    List.rev !children
+  in
+  let repr typ =
+    typ |> Types.Transient_expr.repr |> Types.Transient_expr.type_expr
+  in
+  let rec collect overrides origin_typ specialized_typ =
+    let origin_typ = repr origin_typ in
+    let specialized_typ = repr specialized_typ in
+    let key = (Types.get_id origin_typ, Types.get_id specialized_typ) in
+    if Hashtbl.mem seen key then overrides
+    else (
+      Hashtbl.add seen key ();
+      let overrides =
+        match
+          (Types.get_desc origin_typ, Types.get_desc specialized_typ)
+        with
+        | Tconstr (origin_path, _, _), Tconstr _ -> (
+            match
+              List.find_map
+                (fun (candidate, target) ->
+                  if Path.same origin_path candidate then Some target else None)
+                origin_type_paths
+            with
+            | Some target ->
+                (Types.get_id specialized_typ, target) :: overrides
+            | None -> overrides)
+        | _ -> overrides
+      in
+      let origin_children = immediate_children origin_typ in
+      let specialized_children = immediate_children specialized_typ in
+      if List.length origin_children = List.length specialized_children then
+        List.fold_left2 collect overrides origin_children specialized_children
+      else overrides)
+  in
+  collect [] origin_typ specialized_typ
+
 (** Import an OCaml structure. *)
 let rec of_structure (structure : structure) : t list Monad.t =
   let get_record_include_items
@@ -638,6 +691,8 @@ let rec of_structure (structure : structure) : t list Monad.t =
                 (signature_path : Path.t) (prefix : string list)
                 (inherited_type_substitutions :
                   (Name.t list * MixedPath.t) list)
+                (inherited_origin_type_paths : (Path.t * MixedPath.t) list)
+                (origin_signature : Types.signature option)
                 (exclude : string list) (signature : Types.signature) :
                 t list Monad.t =
               let mixed_path_names = function
@@ -819,6 +874,76 @@ let rec of_structure (structure : structure) : t list Monad.t =
                 @ local_type_substitutions
                 @ inherited_type_substitutions
               in
+              let origin_item name =
+                match origin_signature with
+                | Some signature -> signature_item_named name signature
+                | None -> None
+              in
+              (* The specialized result signature may replace a parent
+                 associated type such as [M.t] with its concrete argument type.
+                 Keep the generic result signature as provenance: only
+                 constructor occurrences that were [M.t] are redirected to the
+                 parent result-record field.  This remains precise when the
+                 concrete type also occurs independently in a nested module. *)
+              let* descendant_origin_type_paths =
+                signature
+                |> Monad.List.concat_map (function
+                     | Types.Sig_type (ident, _, _, _) -> (
+                         let source_name = Ident.name ident in
+                         match origin_item source_name with
+                         | Some
+                             (Types.Sig_type
+                               ( origin_ident,
+                                 {
+                                   type_manifest;
+                                   type_params;
+                                   _;
+                                 },
+                                 _,
+                                 _ )) ->
+                             let* flattened_name =
+                               Name.of_strings false (prefix @ [ source_name ])
+                             in
+                             let* field =
+                               PathName.of_path_and_name_with_convert
+                                 signature_path flattened_name
+                             in
+                             let target =
+                               MixedPath.Access
+                                 (reference, record_fields @ [ field ])
+                             in
+                             let manifest_paths =
+                               match type_manifest with
+                               | Some manifest -> (
+                                   match Types.get_desc manifest with
+                                   | Tconstr (source, arguments, _)
+                                     when
+                                       List.length type_params =
+                                         List.length arguments
+                                       &&
+                                       (try
+                                          Ctype.equal env false type_params
+                                            arguments;
+                                          true
+                                        with _ -> false)
+                                       &&
+                                       let head = Path.head source in
+                                       (not (Ident.global head))
+                                       && not (Ident.is_predef head) ->
+                                       [ source ]
+                                   | _ -> [])
+                               | None -> []
+                             in
+                             return
+                               (List.map
+                                  (fun source -> (source, target))
+                                  (Path.Pident origin_ident :: manifest_paths))
+                         | _ -> return [])
+                     | _ -> return [])
+              in
+              let descendant_origin_type_paths =
+                descendant_origin_type_paths @ inherited_origin_type_paths
+              in
               let qualify_shadowed_types item_index typ =
                 let manifest_type_substitutions =
                   manifest_type_substitutions
@@ -852,8 +977,19 @@ let rec of_structure (structure : structure) : t list Monad.t =
                              PathName.of_path_and_name_with_convert
                                signature_path flattened_name
                            in
+                           let constructor_overrides =
+                             match origin_item source_name with
+                             | Some
+                                 (Types.Sig_value
+                                   (_, { val_type = origin_type; _ }, _)) ->
+                                 constructor_overrides_from_origin
+                                   inherited_origin_type_paths origin_type
+                                   val_type
+                             | _ -> []
+                           in
                            let* typ, _, new_typ_vars =
-                             Type.of_typ_expr true Name.Map.empty val_type
+                             Type.of_typ_expr ~constructor_overrides true
+                               Name.Map.empty val_type
                            in
                            let typ = qualify_shadowed_types item_index typ in
                            return
@@ -894,6 +1030,17 @@ let rec of_structure (structure : structure) : t list Monad.t =
                            match Mtype.scrape env md_type with
                            | Mty_signature nested_signature ->
                                let* name = Name.of_ident false ident in
+                               let origin_nested_signature =
+                                 match origin_item source_name with
+                                 | Some
+                                     (Types.Sig_module
+                                       (_, _, { md_type; _ }, _, _)) -> (
+                                     match Mtype.scrape env md_type with
+                                     | Mty_signature signature ->
+                                         Some signature
+                                     | _ -> None)
+                                 | _ -> None
+                               in
                                let* nested_kind =
                                  let* field_signature =
                                    get_result_module_field signature_path
@@ -929,7 +1076,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                      let* nested_items =
                                        items_of_signature record_fields
                                          nested_signature_path []
-                                         nested_type_substitutions []
+                                         nested_type_substitutions
+                                         descendant_origin_type_paths
+                                         origin_nested_signature []
                                          nested_signature
                                      in
                                      let alias =
@@ -948,7 +1097,9 @@ let rec of_structure (structure : structure) : t list Monad.t =
                                          signature_path
                                          (prefix @ [ source_name ])
                                          nested_type_substitutions
-                                         [] nested_signature
+                                         descendant_origin_type_paths
+                                         origin_nested_signature []
+                                         nested_signature
                                      in
                                      return (nested_items, None)
                                in
@@ -971,8 +1122,18 @@ let rec of_structure (structure : structure) : t list Monad.t =
                   set_module_path_alias source target translation)
                 manifest_path_aliases translate_signature
             in
+            let* origin_signature =
+              let* origin_module_type = get_module_type_hint mod_type_path in
+              match origin_module_type with
+              | Some module_type -> (
+                  match Mtype.scrape env module_type with
+                  | Mty_signature signature -> return (Some signature)
+                  | _ -> return None)
+              | None -> return None
+            in
             let* items =
-              items_of_signature [] mod_type_path [] [] exclude_list signature
+              items_of_signature [] mod_type_path [] [] [] origin_signature
+                exclude_list signature
             in
             let documentation =
               "Inclusion of the module [" ^ PathName.to_string reference ^ "]"

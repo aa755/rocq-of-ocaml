@@ -804,10 +804,14 @@ let constructor_path_contains_functor_application (typ : Types.type_expr) :
   | Tconstr (path, _, _) -> path_contains_functor_application path
   | _ -> false
 
+(** [constructor_overrides] replaces the translated path of selected
+    constructor nodes, identified by their compiler type-expression IDs. *)
 let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
+    ?(constructor_overrides : (int * MixedPath.t) list = [])
     (with_free_vars : bool)
     (typ_vars : Name.t Name.Map.t) (typ : Types.type_expr) :
     (t * Name.t Name.Map.t * VarEnv.t) Monad.t =
+  let source_typ_id = Types.get_id typ in
   let* typ =
     if expand_aliases then
       let* env = get_env in
@@ -864,16 +868,19 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
                 NotSupported
                 "An unnamed type variable escaped its polymorphic scope"))
   | Tarrow (_, typ_x, typ_y, _) ->
-      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ_x
+      of_typ_expr ~should_tag ~expand_aliases ~constructor_overrides
+        with_free_vars typ_vars typ_x
       >>= fun (typ_x, typ_vars, new_typ_vars_x) ->
-      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ_y
+      of_typ_expr ~should_tag ~expand_aliases ~constructor_overrides
+        with_free_vars typ_vars typ_y
       >>= fun (typ_y, typ_vars, new_typ_vars_y) ->
       let new_typ_vars = VarEnv.union new_typ_vars_x new_typ_vars_y in
       return (Arrow (typ_x, typ_y), typ_vars, new_typ_vars)
   | Ttuple typs ->
       let typs = List.map snd typs in
       let tag_list = tag_args_with should_tag typs in
-      of_typs_exprs ~expand_aliases ~tag_list with_free_vars typs typ_vars
+      of_typs_exprs ~expand_aliases ~constructor_overrides ~tag_list
+        with_free_vars typs typ_vars
       >>= fun (typs, typ_vars, new_typ_vars) ->
       return (Tuple typs, typ_vars, new_typ_vars)
   | Tconstr (path, typs, _) ->
@@ -885,7 +892,11 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
                | VariableKindAnalysis.Phantom -> None
                | _ -> Some typ)
       in
-      let* mixed_path = simplified_contructor_path path (List.length typs) in
+      let* mixed_path =
+        match List.assoc_opt source_typ_id constructor_overrides with
+        | Some mixed_path -> return mixed_path
+        | None -> simplified_contructor_path path (List.length typs)
+      in
       let* is_abstract = is_type_abstract path in
       let native_type =
         List.mem (MixedPath.to_string mixed_path) Name.native_types
@@ -900,7 +911,8 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
       if not is_tagged_variant then
         let tag_list = tag_no_args typs in
         let* typs, typ_vars, new_typs_vars =
-          of_typs_exprs ~expand_aliases with_free_vars typs typ_vars
+          of_typs_exprs ~expand_aliases ~constructor_overrides with_free_vars
+            typs typ_vars
         in
         let* typ = apply_with_notations mixed_path typs tag_list in
         return (typ, typ_vars, new_typs_vars)
@@ -916,7 +928,8 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
         let* tag_list = get_constr_arg_tags path in
         let* existential_typs = existential_typs_of_typs typs in
         let* typs, typ_vars, new_typs_vars =
-          of_typs_exprs ~expand_aliases ~tag_list with_free_vars typs typ_vars
+          of_typs_exprs ~expand_aliases ~constructor_overrides ~tag_list
+            with_free_vars typs typ_vars
         in
         let* typs = tag_typ_constr path existential_typs typs in
         let* typ = apply_with_notations mixed_path typs tag_list in
@@ -925,7 +938,8 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
       match !object_descr with
       | Some (path, _ :: typs) ->
           let tag_list = tag_args_with should_tag typs in
-          of_typs_exprs ~expand_aliases ~tag_list with_free_vars typs typ_vars
+          of_typs_exprs ~expand_aliases ~constructor_overrides ~tag_list
+            with_free_vars typs typ_vars
           >>= fun (typs, typ_vars, new_typ_vars) ->
           let are_tags = tag_no_args typs in
           MixedPath.of_path false path >>= fun mixed_path ->
@@ -938,9 +952,11 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
             (Error "unhandled_object_type", typ_vars, [])
             NotSupported "We do not handle this form of object types")
   | Tfield (_, _, typ1, typ2) ->
-      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ1
+      of_typ_expr ~should_tag ~expand_aliases ~constructor_overrides
+        with_free_vars typ_vars typ1
       >>= fun (typ1, typ_vars, new_typ_vars1) ->
-      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ2
+      of_typ_expr ~should_tag ~expand_aliases ~constructor_overrides
+        with_free_vars typ_vars typ2
       >>= fun (typ2, typ_vars, new_typ_vars2) ->
       raise
         ( Tuple [ typ1; typ2 ],
@@ -950,7 +966,8 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
   | Tnil ->
       raise (Error "nil", typ_vars, []) NotSupported "Nil type is not handled"
   | Tlink typ | Tsubst (typ, _) ->
-      of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ
+      of_typ_expr ~should_tag ~expand_aliases ~constructor_overrides
+        with_free_vars typ_vars typ
   | Tvariant row_desc ->
       let row_fields = Types.row_fields row_desc in
       let* path_name = PathName.typ_of_variants (List.map fst row_fields) in
@@ -974,7 +991,8 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
                | Some _ -> Some (typ_arg, 0))
       in
       let* typ, typ_vars, new_typ_vars_typ =
-        of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ
+        of_typ_expr ~should_tag ~expand_aliases ~constructor_overrides
+          with_free_vars typ_vars typ
       in
       let new_typ_vars_typ =
         VarEnv.remove (List.map fst typ_args) new_typ_vars_typ
@@ -984,8 +1002,8 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
       let* path_name = PathName.of_path_without_convert false path in
       Monad.List.fold_left
         (fun (typ_substitutions, typ_vars, new_typ_vars) (path, typ) ->
-          of_typ_expr ~should_tag:false ~expand_aliases with_free_vars typ_vars
-            typ
+          of_typ_expr ~should_tag:false ~expand_aliases
+            ~constructor_overrides with_free_vars typ_vars typ
           >>= fun (typ, typ_vars, new_typ_vars') ->
           return
             ( (path, typ) :: typ_substitutions,
@@ -1027,7 +1045,9 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
           typ_vars,
           new_typ_vars )
 
-and of_typs_exprs ?(expand_aliases = false) (with_free_vars : bool)
+and of_typs_exprs ?(expand_aliases = false)
+    ?(constructor_overrides : (int * MixedPath.t) list = [])
+    (with_free_vars : bool)
     (typs : Types.type_expr list)
     ?(tag_list = tag_no_args typs) (typ_vars : Name.t Name.Map.t) :
     (t list * Name.t Name.Map.t * VarEnv.t) Monad.t =
@@ -1042,7 +1062,8 @@ and of_typs_exprs ?(expand_aliases = false) (with_free_vars : bool)
     let tag_typs = List.combine typs tag_list in
     Monad.List.fold_left
       (fun (typs, typ_vars, new_typ_vars) (typ, should_tag) ->
-        of_typ_expr ~should_tag ~expand_aliases with_free_vars typ_vars typ
+        of_typ_expr ~should_tag ~expand_aliases ~constructor_overrides
+          with_free_vars typ_vars typ
         >>= fun (typ, typ_vars, new_typ_vars') ->
         let new_typ_vars = VarEnv.union new_typ_vars new_typ_vars' in
         return (typ :: typs, typ_vars, new_typ_vars))
