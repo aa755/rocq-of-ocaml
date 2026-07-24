@@ -222,11 +222,11 @@ let manifest_alias_by_suffix (prefix : string list)
     let_in_type_target option Monad.t =
   match Types.get_desc typ with
   | Tconstr (path, [], _) ->
-      let components =
+      let components, follows_functor_application =
         match path_suffix_after_functor_application path with
-        | Some (_ :: _ as suffix) -> Some suffix
-        | Some [] -> None
-        | None -> path_components_without_application path
+        | Some (_ :: _ as suffix) -> (Some suffix, true)
+        | Some [] -> (None, true)
+        | None -> (path_components_without_application path, false)
       in
       (match components with
       | Some (_ :: _ as components) ->
@@ -248,7 +248,8 @@ let manifest_alias_by_suffix (prefix : string list)
             prefix |> Monad.List.map (Name.of_string false)
           in
           let may_reference_enclosing_representation =
-            suffixes
+            (not follows_functor_application)
+            && suffixes
             |> List.exists (function
                  | first :: _ ->
                      String.equal (Name.to_string first) "Impl"
@@ -494,7 +495,7 @@ let rec items_of_types_signature
                     ~abstract_functor_applications signature
               | _ -> return []
             in
-            let* manifest_aliases =
+            let manifest_aliases_with let_in_type =
               let* env = get_env in
               match Mtype.scrape env md_type with
               | Mty_signature signature ->
@@ -523,6 +524,27 @@ let rec items_of_types_signature
                              ModuleTyp.get_signature_concrete_manifest
                                signature_path [ Ident.name type_ident ]
                            in
+                           (* A short path such as [Impl.t] denotes the child
+                              module in this result, not a same-named module
+                              inherited by the enclosing result. *)
+                           let manifest_uses_local_module =
+                             match Types.get_desc manifest with
+                             | Tconstr (path, [], _) -> (
+                                 match
+                                   path_components_without_application path
+                                 with
+                                 | Some (module_name :: _ :: _) ->
+                                     signature
+                                     |> List.exists (function
+                                          | Types.Sig_module
+                                              (ident, _, _, _, _) ->
+                                              String.equal
+                                                (Ident.name ident)
+                                                module_name
+                                          | _ -> false)
+                                 | Some _ | None -> false)
+                             | _ -> false
+                           in
                            let specialized_target () =
                                match
                                  concrete_manifest_declaration env manifest
@@ -550,6 +572,11 @@ let rec items_of_types_signature
                                 result signature is needed only to materialize
                                 an applicative functor path. *)
                              if is_functor_application_alias env manifest then
+                               match target_concrete_manifest with
+                               | Some manifest ->
+                                   Type.of_type_expr_without_free_vars manifest
+                               | None -> specialized_target ()
+                             else if manifest_uses_local_module then
                                match target_concrete_manifest with
                                | Some manifest ->
                                    Type.of_type_expr_without_free_vars manifest
@@ -711,6 +738,10 @@ let rec items_of_types_signature
                          return (aliases (ManifestConstructor typ))
                      | None -> return [])
             in
+            let* manifest_aliases =
+              manifest_aliases_with
+                (local_typ_param_aliases @ let_in_type)
+            in
             let* applicative_manifest_aliases =
               let* env = get_env in
               match Mtype.scrape env md_type with
@@ -729,58 +760,55 @@ let rec items_of_types_signature
                          when
                              abstract_functor_applications
                              && is_functor_application_alias env manifest ->
-                           (match Types.get_desc manifest with
-                           | Tconstr (path, [], _) -> (
+                           let* type_name =
+                             Name.of_ident false type_ident
+                           in
+                           let* local_target =
+                             match Types.get_desc manifest with
+                             | Tconstr (path, [], _) -> (
+                                 match
+                                   path_suffix_after_functor_application path
+                                 with
+                                 | Some (_ :: _ as suffix) ->
+                                     let* suffix =
+                                       suffix
+                                       |> Monad.List.map
+                                            (Name.of_string false)
+                                     in
+                                     return
+                                       (find_let_in_type_target suffix
+                                          local_typ_param_aliases)
+                                 | Some [] | None -> return None)
+                             | _ -> return None
+                           in
+                           (match local_target with
+                           | Some target ->
+                               return
+                                 (Some
+                                    ( [ name; type_name ],
+                                      target ))
+                           | None -> (
                                match
-                                 path_suffix_after_functor_application path
+                                 applicative_manifest_declaration env manifest
                                with
-                               | Some (_ :: _ as suffix) ->
-                                   let* suffix =
-                                     suffix
-                                     |> Monad.List.map (Name.of_string false)
+                               | None -> return None
+                               | Some declaration ->
+                                   let* target =
+                                     Type.of_type_expr_without_free_vars
+                                       declaration
                                    in
-                                   (match
-                                      find_let_in_type_target suffix
-                                        local_typ_param_aliases
-                                    with
-                                   | Some target ->
-                                       let* type_name =
-                                         Name.of_ident false type_ident
-                                       in
-                                       return
-                                         (Some
-                                            ( [ name; type_name ],
-                                              target ))
-                                   | None -> (
-                                       match
-                                         applicative_manifest_declaration env
-                                           manifest
-                                       with
-                                       | None -> return None
-                                       | Some declaration ->
-                                           let* target =
-                                             Type
-                                             .of_type_expr_without_free_vars
-                                               declaration
-                                           in
-                                           let target =
-                                             target
-                                             |> apply_constructor_aliases
-                                                  constructor_aliases
-                                             |> apply_let_in_type
-                                                  local_typ_param_aliases
-                                             |> apply_let_in_type let_in_type
-                                           in
-                                           let* type_name =
-                                             Name.of_ident false type_ident
-                                           in
-                                           return
-                                             (Some
-                                                ( [ name; type_name ],
-                                                  ManifestConstructor
-                                                    target ))))
-                               | Some [] | None -> return None)
-                           | _ -> return None)
+                                   let target =
+                                     target
+                                     |> apply_constructor_aliases
+                                          constructor_aliases
+                                     |> apply_let_in_type
+                                          local_typ_param_aliases
+                                     |> apply_let_in_type let_in_type
+                                   in
+                                   return
+                                     (Some
+                                        ( [ name; type_name ],
+                                          ManifestConstructor target ))))
                        | _ -> return None)
               | _ -> return []
             in
