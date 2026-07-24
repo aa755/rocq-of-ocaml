@@ -1,0 +1,28 @@
+module type INPUT = sig
+  val value : int
+end
+
+module type OUTPUT = sig
+  val result : int
+end
+
+module Produce (Input : sig
+  val value : int
+end) =
+struct
+  let result = Input.value
+  let extra = Input.value + 1
+end
+
+module Consume
+    (Producer : functor (Input : INPUT) -> OUTPUT)
+    (Input : INPUT) =
+struct
+  module Result = Producer (Input)
+end
+
+module Concrete = struct
+  let value = 41
+end
+
+module Applied = Consume (Produce) (Concrete)

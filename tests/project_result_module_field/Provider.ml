@@ -16,6 +16,17 @@ module Fixed (Argument : ARGUMENT) = struct
   end
 end
 
+module DefaultArgument = struct
+  let token = ()
+end
+
+module Applied = Fixed (DefaultArgument)
+
+module Aliased (Argument : ARGUMENT) = struct
+  module Direct = Fixed (Argument)
+  module Alias = Direct
+end
+
 module Base (Argument : ARGUMENT) = struct
   type t = int
 
@@ -30,4 +41,26 @@ module Outer (Argument : ARGUMENT) = struct
 
     module Repr = Fixed (Argument)
   end
+end
+
+module Anonymous (T : sig
+  type t
+end) =
+struct
+  let identity (value : T.t) = value
+end
+
+module type INPUT = sig
+  val value : int
+end
+
+module type OUTPUT = sig
+  val result : int
+end
+
+module Consume
+    (Producer : functor (Input : INPUT) -> OUTPUT)
+    (Input : INPUT) =
+struct
+  module Result = Producer (Input)
 end

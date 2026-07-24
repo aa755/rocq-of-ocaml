@@ -83,6 +83,15 @@ Definition Base : Make.Make_result (_fargs := Base_fargs) := Make Empty_value.
 
 Module Extended.
   (** Inclusion of the module [Base] *)
+  Module Impl.
+    Definition t := Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.t).
+    
+    Definition make : int -> t :=
+      Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.make).
+  End Impl.
+  
+  Definition Impl := Base.(Make.Make_result.Impl).
+  
   Definition t := Base.(Make.Make_result.t).
   
   Definition make : int -> t := Base.(Make.Make_result.make).

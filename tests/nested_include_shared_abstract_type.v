@@ -79,6 +79,16 @@ Module Outer.
   
   Module Signed.
     (** Inclusion of the module [S] *)
+    Module Impl.
+      Definition t `{_fargs : FArgs} :=
+        S.(Make.Make_result.Impl).(Make.Impl.Impl_signature.t).
+      
+      Definition make `{_fargs : FArgs} : int -> t :=
+        S.(Make.Make_result.Impl).(Make.Impl.Impl_signature.make).
+    End Impl.
+    
+    Definition Impl `{_fargs : FArgs} := S.(Make.Make_result.Impl).
+    
     Definition t `{_fargs : FArgs} := S.(Make.Make_result.t).
     
     Definition make `{_fargs : FArgs} : int -> t := S.(Make.Make_result.make).
@@ -108,8 +118,7 @@ Module Outer.
   Definition functor `{_fargs : FArgs} :Outer_result (S_Impl_t := _) :=
     {|
       Outer_result.S := (S (_fargs := _fargs));
-      Outer_result.Signed_Impl_make :=
-        (S (_fargs := _fargs)).(Make.Make_result.Impl).(Make.Impl.Impl_signature.make);
+      Outer_result.Signed_Impl_make := (Signed.Impl.make (_fargs := _fargs));
       Outer_result.Signed_make := (Signed.make (_fargs := _fargs));
       Outer_result.Signed_identity := (Signed.identity (_fargs := _fargs));
       Outer_result.Signed_round_trip := (Signed.round_trip (_fargs := _fargs))

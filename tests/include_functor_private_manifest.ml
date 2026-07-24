@@ -38,3 +38,11 @@ end
 module Value = struct
   include Make (Argument)
 end
+
+module Named = Make (Argument)
+
+module Value_from_named = struct
+  include Named
+end
+
+let make_from_named value = Value_from_named.Impl.make value

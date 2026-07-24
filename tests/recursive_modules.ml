@@ -12,6 +12,8 @@ module Instantiate
 struct
   module rec First : A = MakeA (Second)
   and Second : B = MakeB (First)
+
+  let two_is_even = First.even 2
 end
 
 module MakeA (Other : B) = struct
@@ -25,3 +27,23 @@ end
 module Instance = Instantiate (MakeA) (MakeB)
 
 let four_is_even = Instance.First.even 4
+
+module type TYPE = sig
+  type t
+end
+
+module Box (T : TYPE) =
+struct
+  module type S = sig
+    val run : T.t -> T.t
+  end
+end
+
+module RecursiveResult
+    (T : TYPE)
+    (MakeWorker : functor (X : TYPE with type t = T.t) -> Box(T).S) : sig
+  module Worker : Box(T).S
+end =
+struct
+  module rec Worker : Box(T).S = MakeWorker (T)
+end

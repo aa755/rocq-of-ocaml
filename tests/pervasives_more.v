@@ -65,6 +65,8 @@ Definition n_lor : int := Z.lor 12 13.
 
 Definition n_lxor : int := Z.lxor 12 13.
 
+Definition n_lnot : int := Z.lnot 13.
+
 Definition n_lsl : int := Z.shiftl 12 13.
 
 Definition n_lsr : int := Z.shiftr 12 13.

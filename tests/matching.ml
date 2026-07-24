@@ -12,3 +12,8 @@ let m x =
   | Bar k when k = 0 -> k
   | Bar n -> -n
   | Foo _ -> 0
+
+let guarded_unit n =
+  match () with
+  | () when n > 0 -> n
+  | () -> 0

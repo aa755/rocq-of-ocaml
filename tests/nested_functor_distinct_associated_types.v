@@ -202,10 +202,164 @@ Module Pair.
   
   Module Signed.
     (** Inclusion of the module [S] *)
+    Module Impl.
+      Definition t `{_fargs : FArgs} :=
+        S.(Number.Number_result.Impl).(Number.Impl.Impl_signature.t).
+      
+      Definition make `{_fargs : FArgs} : int -> t :=
+        S.(Number.Number_result.Impl).(Number.Impl.Impl_signature.make).
+    End Impl.
+    
+    Definition Impl `{_fargs : FArgs} := S.(Number.Number_result.Impl).
+    
     Definition t `{_fargs : FArgs} := S.(Number.Number_result.t).
     
     Definition make `{_fargs : FArgs} : int -> t :=
       S.(Number.Number_result.make).
+    
+    Module _Set.
+      Definition elt `{_fargs : FArgs} :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.elt).
+      
+      Definition t `{_fargs : FArgs} :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.t).
+      
+      Definition empty `{_fargs : FArgs} : t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.empty).
+      
+      Definition add `{_fargs : FArgs} : elt -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.add).
+      
+      Definition singleton `{_fargs : FArgs} : elt -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.singleton).
+      
+      Definition remove `{_fargs : FArgs} : elt -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.remove).
+      
+      Definition union `{_fargs : FArgs} : t -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.union).
+      
+      Definition inter `{_fargs : FArgs} : t -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.inter).
+      
+      Definition disjoint `{_fargs : FArgs} : t -> t -> bool :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.disjoint).
+      
+      Definition diff `{_fargs : FArgs} : t -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.diff).
+      
+      Definition cardinal `{_fargs : FArgs} : t -> int :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.cardinal).
+      
+      Definition elements `{_fargs : FArgs} : t -> list elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.elements).
+      
+      Definition min_elt `{_fargs : FArgs} : t -> elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.min_elt).
+      
+      Definition min_elt_opt `{_fargs : FArgs} : t -> option elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.min_elt_opt).
+      
+      Definition max_elt `{_fargs : FArgs} : t -> elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.max_elt).
+      
+      Definition max_elt_opt `{_fargs : FArgs} : t -> option elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.max_elt_opt).
+      
+      Definition choose `{_fargs : FArgs} : t -> elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.choose).
+      
+      Definition choose_opt `{_fargs : FArgs} : t -> option elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.choose_opt).
+      
+      Definition find `{_fargs : FArgs} : elt -> t -> elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find).
+      
+      Definition find_opt `{_fargs : FArgs} : elt -> t -> option elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_opt).
+      
+      Definition find_first `{_fargs : FArgs} : (elt -> bool) -> t -> elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_first).
+      
+      Definition find_first_opt `{_fargs : FArgs} :
+        (elt -> bool) -> t -> option elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_first_opt).
+      
+      Definition find_last `{_fargs : FArgs} : (elt -> bool) -> t -> elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_last).
+      
+      Definition find_last_opt `{_fargs : FArgs} :
+        (elt -> bool) -> t -> option elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_last_opt).
+      
+      Definition iter `{_fargs : FArgs} : (elt -> unit) -> t -> unit :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.iter).
+      
+      Definition fold `{_fargs : FArgs} {acc : Set} :
+        (elt -> acc -> acc) -> t -> acc -> acc :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.fold).
+      
+      Definition map `{_fargs : FArgs} : (elt -> elt) -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.map).
+      
+      Definition filter `{_fargs : FArgs} : (elt -> bool) -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.filter).
+      
+      Definition filter_map `{_fargs : FArgs} : (elt -> option elt) -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.filter_map).
+      
+      Definition partition `{_fargs : FArgs} : (elt -> bool) -> t -> t * t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.partition).
+      
+      Definition split `{_fargs : FArgs} : elt -> t -> t * bool * t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.split).
+      
+      Definition is_empty `{_fargs : FArgs} : t -> bool :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.is_empty).
+      
+      Definition mem `{_fargs : FArgs} : elt -> t -> bool :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.mem).
+      
+      Definition equal `{_fargs : FArgs} : t -> t -> bool :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.equal).
+      
+      Definition compare `{_fargs : FArgs} : t -> t -> int :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.compare).
+      
+      Definition subset `{_fargs : FArgs} : t -> t -> bool :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.subset).
+      
+      Definition for_all `{_fargs : FArgs} : (elt -> bool) -> t -> bool :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.for_all).
+      
+      Definition _exists `{_fargs : FArgs} : (elt -> bool) -> t -> bool :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S._exists).
+      
+      Definition to_list `{_fargs : FArgs} : t -> list elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_list).
+      
+      Definition of_list `{_fargs : FArgs} : list elt -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.of_list).
+      
+      Definition to_seq_from `{_fargs : FArgs} :
+        elt -> t -> RocqOfOCaml.OCamlSeq.t elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_seq_from).
+      
+      Definition to_seq `{_fargs : FArgs} : t -> RocqOfOCaml.OCamlSeq.t elt :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_seq).
+      
+      Definition to_rev_seq `{_fargs : FArgs} : t -> RocqOfOCaml.OCamlSeq.t elt
+        := S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_rev_seq).
+      
+      Definition add_seq `{_fargs : FArgs} :
+        RocqOfOCaml.OCamlSeq.t elt -> t -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.add_seq).
+      
+      Definition of_seq `{_fargs : FArgs} : RocqOfOCaml.OCamlSeq.t elt -> t :=
+        S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.of_seq).
+    End _Set.
+    
+    Definition _Set `{_fargs : FArgs} := S.(Number.Number_result._Set).
     
     Definition Repr_fargs `{_fargs : FArgs} := Representation.Build_FArgs Token.
     
@@ -262,11 +416,9 @@ Module Pair.
     :Pair_result (S_Impl_t := _) (S_Set_t := _) (Signed_Repr_Impl_t := _) :=
     {|
       Pair_result.S := (S (_fargs := _fargs));
-      Pair_result.Signed_Impl_make :=
-        (S (_fargs := _fargs)).(Number.Number_result.Impl).(Number.Impl.Impl_signature.make);
+      Pair_result.Signed_Impl_make := (Signed.Impl.make (_fargs := _fargs));
       Pair_result.Signed_make := (Signed.make (_fargs := _fargs));
-      Pair_result.Signed_Set :=
-        (S (_fargs := _fargs)).(Number.Number_result._Set);
+      Pair_result.Signed_Set := Signed._Set;
       Pair_result.Signed_Repr := (Signed.Repr (_fargs := _fargs));
       Pair_result.Signed_Bytes := (Signed.Bytes (_fargs := _fargs));
       Pair_result.Signed_of_repr := (Signed.of_repr (_fargs := _fargs));

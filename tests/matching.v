@@ -32,3 +32,12 @@ Definition m_value (x_value : t) : int :=
   | (Bar n_value, _, _, _) => Z.opp n_value
   | (Foo _ _, _, _, _) => 0
   end.
+
+Definition guarded_unit (n_value : int) : int :=
+  match
+    (tt,
+      (let '_ := tt in
+      RocqOfOCaml.Basics.Stdlib.gt n_value 0)) with
+  | (_, true) => n_value
+  | (_, _) => 0
+  end.

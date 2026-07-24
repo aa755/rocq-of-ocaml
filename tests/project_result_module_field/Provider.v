@@ -56,6 +56,58 @@ End Fixed.
 Definition Fixed (Argument : ARGUMENT) :=
   @Fixed.functor (Fixed.Build_FArgs Argument).
 
+Module DefaultArgument.
+  Definition token : unit := tt.
+  
+  (* DefaultArgument *)
+  Definition module :ARGUMENT :=
+    {|
+      ARGUMENT.token := token
+    |}.
+End DefaultArgument.
+Definition DefaultArgument := DefaultArgument.module.
+
+Definition Applied_fargs := Fixed.Build_FArgs DefaultArgument.
+
+Definition Applied : Fixed.Fixed_result (_fargs := Applied_fargs) :=
+  Fixed DefaultArgument.
+
+Module Aliased.
+  Class FArgs := {
+    Argument : ARGUMENT;
+  }.
+  
+  Definition Direct_fargs `{_fargs : FArgs} := Fixed.Build_FArgs Argument.
+  
+  Definition Direct `{_fargs : FArgs} :
+    Fixed.Fixed_result (_fargs := Direct_fargs) := Fixed Argument.
+  
+  Definition Alias_fargs `{_fargs : FArgs} := Direct_fargs.
+  
+  Definition Alias `{_fargs : FArgs} := Direct.
+  
+  Module Aliased_result.
+    Record signature `{_fargs : FArgs} {Direct_Map_t : Set} : Set := {
+      Direct :
+        Fixed.Fixed_result (_fargs := Direct_fargs) (Map_t := Direct_Map_t);
+      Alias_Map_t := Direct_Map_t;
+      Alias :
+        Fixed.Fixed_result (_fargs := Alias_fargs) (Map_t := Direct_Map_t);
+    }.
+  End Aliased_result.
+  Definition Aliased_result `{_fargs : FArgs} := @Aliased_result.signature _.
+  Arguments Aliased_result {_ _}.
+  
+  (* Aliased *)
+  Definition functor `{_fargs : FArgs} :Aliased_result (Direct_Map_t := _) :=
+    {|
+      Aliased_result.Direct := (Direct (_fargs := _fargs));
+      Aliased_result.Alias := (Alias (_fargs := _fargs))
+    |}.
+End Aliased.
+Definition Aliased (Argument : ARGUMENT) :=
+  @Aliased.functor (Aliased.Build_FArgs Argument).
+
 Module Base.
   Class FArgs := {
     Argument : ARGUMENT;
@@ -131,3 +183,78 @@ Module Outer.
 End Outer.
 Definition Outer (Argument : ARGUMENT) :=
   @Outer.functor (Outer.Build_FArgs Argument).
+
+Module Anonymous_T_signature.
+  Record signature {t : Set} : Set := {
+    t := t;
+  }.
+End Anonymous_T_signature.
+Definition Anonymous_T_signature := @Anonymous_T_signature.signature.
+Arguments Anonymous_T_signature {_}.
+
+Module Anonymous.
+  Class FArgs {T_t : Set} := {
+    T : Anonymous_T_signature (t := T_t);
+  }.
+  Arguments Build_FArgs {_}.
+  
+  Definition identity `{_fargs : FArgs} (value : T.(Anonymous_T_signature.t))
+    : T.(Anonymous_T_signature.t) := value.
+  
+  Module Anonymous_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      identity : T.(Anonymous_T_signature.t) -> T.(Anonymous_T_signature.t);
+    }.
+  End Anonymous_result.
+  Definition Anonymous_result `{_fargs : FArgs} := @Anonymous_result.signature _
+    _.
+  Arguments Anonymous_result {_ _}.
+  
+  (* Anonymous *)
+  Definition functor `{_fargs : FArgs} :@Anonymous_result T_t _fargs :=
+    ({|
+      Anonymous_result.identity (T_t := T_t) (_fargs := _fargs) :=
+        (identity (_fargs := _fargs))
+    |} : @Anonymous_result T_t _fargs).
+End Anonymous.
+Definition Anonymous {T_t : Set} (T : Anonymous_T_signature (t := T_t)) :=
+  @Anonymous.functor T_t (Anonymous.Build_FArgs T).
+
+Module INPUT.
+  Record signature : Set := {
+    value : int;
+  }.
+End INPUT.
+Definition INPUT := INPUT.signature.
+
+Module OUTPUT.
+  Record signature : Set := {
+    result_value : int;
+  }.
+End OUTPUT.
+Definition OUTPUT := OUTPUT.signature.
+
+Module Consume.
+  Class FArgs := {
+    Producer : forall (Input : INPUT), OUTPUT;
+    Input : INPUT;
+  }.
+  
+  Definition Result `{_fargs : FArgs} := Producer Input.
+  
+  Module Consume_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      Result : OUTPUT;
+    }.
+  End Consume_result.
+  Definition Consume_result `{_fargs : FArgs} := @Consume_result.signature _.
+  Arguments Consume_result {_}.
+  
+  (* Consume *)
+  Definition functor `{_fargs : FArgs} :@Consume_result _fargs :=
+    ({|
+      Consume_result.Result (_fargs := _fargs) := (Result (_fargs := _fargs))
+    |} : @Consume_result _fargs).
+End Consume.
+Definition Consume (Producer : forall (Input : INPUT), OUTPUT) (Input : INPUT)
+  := @Consume.functor (Consume.Build_FArgs Producer Input).

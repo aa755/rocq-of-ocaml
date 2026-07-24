@@ -15,6 +15,9 @@ Module Argument.
 End Argument.
 Definition Argument := Argument.module.
 
+Definition direct_map : Set :=
+  Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+
 Definition Result_fargs := Provider.Outer.Build_FArgs Argument.
 
 Definition Result : Provider.Outer.Outer_result (_fargs := Result_fargs) :=
@@ -44,3 +47,105 @@ Module Alias.
   
   Definition Repr := Result.(Provider.Outer.Outer_result.Namespace_Repr).
 End Alias.
+
+Definition AliasedResult_fargs := Provider.Aliased.Build_FArgs Argument.
+
+Definition AliasedResult :
+  Provider.Aliased.Aliased_result (_fargs := AliasedResult_fargs) :=
+  Provider.Aliased Argument.
+
+Module AliasedField.
+  Definition t :=
+    AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.t).
+  
+  Module Map.
+    Definition t :=
+      AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+    
+    Definition empty :=
+      AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
+  End Map.
+  
+  Definition Map :=
+    AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).
+End AliasedField.
+
+Definition aliased_map : Set :=
+  AliasedField.Map.(Provider.Fixed.Map.Map_signature.t).
+
+Definition AnonymousInt_fargs :=
+  Provider.Anonymous.Build_FArgs
+    (let t : Set := int in
+    ((ltac:(constructor) : Provider.Anonymous_T_signature (t := t)) :
+      Provider.Anonymous_T_signature (t := t))).
+
+Definition AnonymousInt :
+  Provider.Anonymous.Anonymous_result (_fargs := AnonymousInt_fargs) :=
+  Provider.Anonymous
+    (let t : Set := int in
+    ((ltac:(constructor) : Provider.Anonymous_T_signature (t := t)) :
+      Provider.Anonymous_T_signature (t := t))).
+
+Definition anonymous_identity : int :=
+  AnonymousInt.(Provider.Anonymous.Anonymous_result.identity) 42.
+
+Module Produce.
+  Class FArgs := {
+    Input : Provider.INPUT;
+  }.
+  
+  Definition result_value `{_fargs : FArgs} : int :=
+    Input.(Provider.INPUT.value).
+  
+  Definition extra `{_fargs : FArgs} : int :=
+    Z.add Input.(Provider.INPUT.value) 1.
+  
+  Module Produce_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      result_value : int;
+      extra : int;
+    }.
+  End Produce_result.
+  Definition Produce_result `{_fargs : FArgs} := @Produce_result.signature _.
+  Arguments Produce_result {_}.
+  
+  (* Produce *)
+  Definition functor `{_fargs : FArgs} :@Produce_result _fargs :=
+    ({|
+      Produce_result.result_value (_fargs := _fargs) :=
+        (result_value (_fargs := _fargs));
+      Produce_result.extra (_fargs := _fargs) := (extra (_fargs := _fargs))
+    |} : @Produce_result _fargs).
+End Produce.
+Definition Produce (Input : Provider.INPUT) :=
+  @Produce.functor (Produce.Build_FArgs Input).
+
+Module Concrete.
+  Definition value : int := 41.
+  
+  (* Concrete *)
+  Definition module :Provider.INPUT :=
+    {|
+      Provider.INPUT.value := value
+    |}.
+End Concrete.
+Definition Concrete := Concrete.module.
+
+Definition Coerced_fargs :=
+  Provider.Consume.Build_FArgs
+    (fun (Input : Provider.INPUT) =>
+      let module_coercion := Produce Input in
+      {|
+        Provider.OUTPUT.result_value :=
+          module_coercion.(Produce.Produce_result.result_value)
+      |}) Concrete.
+
+Definition Coerced : Provider.Consume.Consume_result (_fargs := Coerced_fargs)
+  :=
+  Provider.Consume
+    (fun (Input : Provider.INPUT) =>
+      let module_coercion := Produce Input in
+      {|
+        Provider.OUTPUT.result_value :=
+          module_coercion.(Produce.Produce_result.result_value)
+      |}) Concrete.

@@ -36,6 +36,19 @@ Definition match_open (x_value : Variant.t) : int :=
         (-1)
   end.
 
+Definition match_payload_constant (x_value : Variant.t) : int :=
+  let _variant_value := x_value in
+  match _variant_value with
+  | Variant.Build _variant_tag _ _variant_payload =>
+    if String.eqb _variant_tag "String" then
+      match cast string _variant_payload with
+      | "" => 0
+      | _ => 1
+      end
+    else
+      1
+  end.
+
 Definition active : Set := Variant.t.
 
 Definition narrow (x_value : Variant.t) : option active :=

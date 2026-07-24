@@ -34,10 +34,13 @@ Module Instantiate.
   Definition Second `{_fargs : FArgs} : B :=
     snd _recursive_modules_First_Second.
   
+  Definition two_is_even `{_fargs : FArgs} : bool := First.(A.even) 2.
+  
   Module Instantiate_result.
     Record signature `{_fargs : FArgs} : Set := {
       First : A;
       Second : B;
+      two_is_even : bool;
     }.
   End Instantiate_result.
   Definition Instantiate_result `{_fargs : FArgs} :=
@@ -49,7 +52,9 @@ Module Instantiate.
     ({|
       Instantiate_result.First (_fargs := _fargs) := (First (_fargs := _fargs));
       Instantiate_result.Second (_fargs := _fargs) :=
-        (Second (_fargs := _fargs))
+        (Second (_fargs := _fargs));
+      Instantiate_result.two_is_even (_fargs := _fargs) :=
+        (two_is_even (_fargs := _fargs))
     |} : @Instantiate_result _fargs).
 End Instantiate.
 Definition Instantiate
@@ -95,3 +100,79 @@ Definition Instance : Instantiate.Instantiate_result (_fargs := Instance_fargs)
 
 Definition four_is_even : bool :=
   Instance.(Instantiate.Instantiate_result.First).(A.even) 4.
+
+Module TYPE.
+  Record signature {t : Set} : Set := {
+    t := t;
+  }.
+End TYPE.
+Definition TYPE := @TYPE.signature.
+Arguments TYPE {_}.
+
+Module Box.
+  Class FArgs {T_t : Set} := {
+    T : TYPE (t := T_t);
+  }.
+  Arguments Build_FArgs {_}.
+  
+  Module S.
+    Record signature `{_fargs : FArgs} : Set := {
+      run : T.(TYPE.t) -> T.(TYPE.t);
+    }.
+  End S.
+  Definition S `{_fargs : FArgs} := @S.signature _ _.
+  Arguments S {_ _}.
+  
+  Module Box_result.
+    Inductive signature `{_fargs : FArgs} : Set :=
+    | Build_signature : signature.
+  End Box_result.
+  Definition Box_result `{_fargs : FArgs} := @Box_result.signature _ _.
+  Arguments Box_result {_ _}.
+  
+  (* Box *)
+  Definition functor `{_fargs : FArgs} :@Box_result T_t _fargs :=
+    ((ltac:(constructor) : Box_result) : @Box_result T_t _fargs).
+End Box.
+Definition Box {T_t : Set} (T : TYPE (t := T_t)) :=
+  @Box.functor T_t (Box.Build_FArgs T).
+
+Module RecursiveResult.
+  Class FArgs {T_t : Set} := {
+    T : TYPE (t := T_t);
+    MakeWorker :
+      forall (X : TYPE (t := T.(TYPE.t))), Box.S (_fargs := Box.Build_FArgs T);
+  }.
+  Arguments Build_FArgs {_}.
+  
+  Definition _recursive_modules_Worker `{_fargs : FArgs} :
+    Box.S (_fargs := Box.Build_FArgs T) :=
+    recursive_module_fix
+      (fun (_recursive_modules : Box.S (_fargs := Box.Build_FArgs T)) =>
+        let Worker := _recursive_modules in
+        MakeWorker T).
+  
+  Definition Worker `{_fargs : FArgs} : Box.S (_fargs := Box.Build_FArgs T) :=
+    _recursive_modules_Worker.
+  
+  Module RecursiveResult_signature.
+    Record signature `{_fargs : FArgs} : Set := {
+      Worker_run : T.(TYPE.t) -> T.(TYPE.t);
+    }.
+  End RecursiveResult_signature.
+  Definition RecursiveResult_signature `{_fargs : FArgs} :=
+    @RecursiveResult_signature.signature _ _.
+  Arguments RecursiveResult_signature {_ _}.
+  
+  (* RecursiveResult *)
+  Definition functor `{_fargs : FArgs} :RecursiveResult_signature :=
+    {|
+      RecursiveResult_signature.Worker_run :=
+        (Worker (_fargs := _fargs)).(Box.S.run)
+    |}.
+End RecursiveResult.
+Definition RecursiveResult {T_t : Set}
+  (T : TYPE (t := T_t))
+  (MakeWorker :
+    forall (X : TYPE (t := T.(TYPE.t))), Box.S (_fargs := Box.Build_FArgs T)) :=
+  @RecursiveResult.functor T_t (RecursiveResult.Build_FArgs T MakeWorker).

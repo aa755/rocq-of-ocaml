@@ -74,16 +74,16 @@ Module Nested.
     
     Definition Extend_stable_include_fargs `{_fargs : FArgs} :=
       Extend_stable.Build_FArgs
-        {|
+        ({|
           BASE_STABLE._return _ := M.(BASE._return)
-        |}.
+        |} : BASE_STABLE (t := M.(BASE.t))).
     
     Definition Extend_stable_include `{_fargs : FArgs} :
       Extend_stable.Extend_result (_fargs := Extend_stable_include_fargs) :=
       Extend_stable
-        {|
+        ({|
           BASE_STABLE._return _ := M.(BASE._return)
-        |}.
+        |} : BASE_STABLE (t := M.(BASE.t))).
     
     (** Inclusion of the module [Extend_stable_include] *)
     Definition t `{_fargs : FArgs} (a : Set) :=

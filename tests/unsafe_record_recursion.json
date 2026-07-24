@@ -1,0 +1,5 @@
+{
+  "without_guard_checking": [
+    "tests/unsafe_record_recursion.ml"
+  ]
+}

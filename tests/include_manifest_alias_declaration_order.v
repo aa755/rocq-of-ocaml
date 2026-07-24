@@ -71,9 +71,9 @@ Module Make.
   
   Definition Extend_include `{_fargs : FArgs} :=
     Extend
-      {|
+      ({|
         CORE._return _ := Monad.(WITH_GET._return)
-      |}.
+      |} : CORE (t := Monad.(WITH_GET.t))).
   
   (** Inclusion of the module [Extend_include] *)
   Definition t `{_fargs : FArgs} (a : Set) := Extend_include.(CORE.t) a.

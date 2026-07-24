@@ -11,4 +11,8 @@ Module t.
 End t.
 Definition t := t.record.
 
+Parameter generated : int -> int.
+
 Definition get (x_value : t) : int := x_value.(t.value).
+
+Definition generated_result : int := generated 41.

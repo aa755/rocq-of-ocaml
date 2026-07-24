@@ -17,6 +17,11 @@ let match_open (x : [> `A | `B of int ]) =
   | `B n -> n
   | _ -> -1
 
+let match_payload_constant (x : [ `String of string ]) =
+  match x with
+  | `String "" -> 0
+  | _ -> 1
+
 type active = [ `A | `B of int ]
 
 let narrow (x : [ `A | `B of int | `C ]) : active option =

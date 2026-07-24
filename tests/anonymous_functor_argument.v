@@ -36,26 +36,18 @@ End First.
 Definition First {T_t : Set} (T : First_T_signature (t := T_t)) :=
   @First.functor T_t (First.Build_FArgs T).
 
-Module Second_T_signature.
-  Record signature {t : Set} : Set := {
-    t := t;
-  }.
-End Second_T_signature.
-Definition Second_T_signature := @Second_T_signature.signature.
-Arguments Second_T_signature {_}.
-
 Module Second.
   Class FArgs {T_t : Set} := {
-    T : Second_T_signature (t := T_t);
+    T : First_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
   
-  Definition id `{_fargs : FArgs} (x_value : T.(Second_T_signature.t))
-    : T.(Second_T_signature.t) := x_value.
+  Definition id `{_fargs : FArgs} (x_value : T.(First_T_signature.t))
+    : T.(First_T_signature.t) := x_value.
   
   Module Second_result.
     Record signature `{_fargs : FArgs} : Set := {
-      id : T.(Second_T_signature.t) -> T.(Second_T_signature.t);
+      id : T.(First_T_signature.t) -> T.(First_T_signature.t);
     }.
   End Second_result.
   Definition Second_result `{_fargs : FArgs} := @Second_result.signature _ _.
@@ -68,7 +60,7 @@ Module Second.
         (id (_fargs := _fargs))
     |} : @Second_result T_t _fargs).
 End Second.
-Definition Second {T_t : Set} (T : Second_T_signature (t := T_t)) :=
+Definition Second {T_t : Set} (T : First_T_signature (t := T_t)) :=
   @Second.functor T_t (Second.Build_FArgs T).
 
 Definition First_int_fargs :=
@@ -86,11 +78,79 @@ Definition First_int : First.First_result (_fargs := First_int_fargs) :=
 Definition Second_bool_fargs :=
   Second.Build_FArgs
     (let t : Set := bool in
-    ((ltac:(constructor) : Second_T_signature (t := t)) :
-      Second_T_signature (t := t))).
+    ((ltac:(constructor) : First_T_signature (t := t)) :
+      First_T_signature (t := t))).
 
 Definition Second_bool : Second.Second_result (_fargs := Second_bool_fargs) :=
   Second
     (let t : Set := bool in
-    ((ltac:(constructor) : Second_T_signature (t := t)) :
-      Second_T_signature (t := t))).
+    ((ltac:(constructor) : First_T_signature (t := t)) :
+      First_T_signature (t := t))).
+
+Module Interface.
+  Class FArgs {H_t : Set} := {
+    H : First_T_signature (t := H_t);
+  }.
+  Arguments Build_FArgs {_}.
+  
+  Module S.
+    Record signature `{_fargs : FArgs} : Set := {
+      get : H.(First_T_signature.t);
+    }.
+  End S.
+  Definition S `{_fargs : FArgs} := @S.signature _ _.
+  Arguments S {_ _}.
+  
+  Module Interface_result.
+    Inductive signature `{_fargs : FArgs} : Set :=
+    | Build_signature : signature.
+  End Interface_result.
+  Definition Interface_result `{_fargs : FArgs} := @Interface_result.signature _
+    _.
+  Arguments Interface_result {_ _}.
+  
+  (* Interface *)
+  Definition functor `{_fargs : FArgs} :@Interface_result H_t _fargs :=
+    ((ltac:(constructor) : Interface_result) : @Interface_result H_t _fargs).
+End Interface.
+Definition Interface {H_t : Set} (H : First_T_signature (t := H_t)) :=
+  @Interface.functor H_t (Interface.Build_FArgs H).
+
+Module RESULT.
+  Record signature : Set := {
+    token : unit;
+  }.
+End RESULT.
+Definition RESULT := RESULT.signature.
+
+Module Consumer.
+  Class FArgs {T_t : Set} := {
+    T : First_T_signature (t := T_t);
+    F : forall (X : Interface.S (_fargs := Interface.Build_FArgs T)), RESULT;
+    X : Interface.S (_fargs := Interface.Build_FArgs T);
+  }.
+  Arguments Build_FArgs {_}.
+  
+  Definition Applied `{_fargs : FArgs} := F X.
+  
+  Module Consumer_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      Applied : RESULT;
+    }.
+  End Consumer_result.
+  Definition Consumer_result `{_fargs : FArgs} := @Consumer_result.signature _
+    _.
+  Arguments Consumer_result {_ _}.
+  
+  (* Consumer *)
+  Definition functor `{_fargs : FArgs} :@Consumer_result T_t _fargs :=
+    ({|
+      Consumer_result.Applied (T_t := T_t) (_fargs := _fargs) :=
+        (Applied (_fargs := _fargs))
+    |} : @Consumer_result T_t _fargs).
+End Consumer.
+Definition Consumer {T_t : Set}
+  (T : First_T_signature (t := T_t))
+  (F : forall (X : Interface.S (_fargs := Interface.Build_FArgs T)), RESULT)
+  (X : Interface.S (_fargs := Interface.Build_FArgs T)) :=
+  @Consumer.functor T_t (Consumer.Build_FArgs T F X).

@@ -78,12 +78,12 @@ Definition Int_ordered := Int_ordered.module.
 
 Definition Int_comparison_fargs :=
   Make.Build_FArgs
-    {|
+    ({|
       Ordered_alias.compare := Int_ordered.(Ordered.compare)
-    |}.
+    |} : Ordered_alias (t := Int_ordered.(Ordered.t))).
 
 Definition Int_comparison : Make.Make_result (_fargs := Int_comparison_fargs) :=
   Make
-    {|
+    ({|
       Ordered_alias.compare := Int_ordered.(Ordered.compare)
-    |}.
+    |} : Ordered_alias (t := Int_ordered.(Ordered.t))).
