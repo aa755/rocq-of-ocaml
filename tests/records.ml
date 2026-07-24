@@ -80,3 +80,13 @@ module RecordWithInnerAndOuterPolymorphism = struct
     f : 'b. 'b -> 'b -> 'a;
   }
 end
+
+module RecordFieldNamedR = struct
+  type t = {
+    r : int;
+    s : int;
+  }
+
+  let value = { r = 1; s = 2 }
+  let updated = { value with r = 3 }
+end

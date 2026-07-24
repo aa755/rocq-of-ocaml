@@ -37,6 +37,23 @@ module RecordSkeleton = struct
            ^^ newline
            ^^
            if with_with then
+             let record_name =
+               let rec fresh suffix =
+                 let candidate =
+                   Name.of_string_raw
+                     (if suffix = 0 then "r"
+                      else if suffix = 1 then "record_value"
+                      else "record_value_" ^ string_of_int (suffix - 1))
+                 in
+                 if
+                   fields
+                   |> List.exists (fun (field_name, _) ->
+                          Name.equal candidate field_name)
+                 then fresh (suffix + 1)
+                 else candidate
+               in
+               fresh 0
+             in
              separate newline
                (fields
                |> List.map (fun (name, _) ->
@@ -57,7 +74,10 @@ module RecordSkeleton = struct
                            | _ :: _ ->
                                braces (nest (separate space prefixed_typ_args)))
                         ^^ Name.to_coq name
-                        ^^ nest (parens (!^"r" ^^ !^":" ^^ record_typ))
+                        ^^ nest
+                             (parens
+                                (Name.to_coq record_name ^^ !^":"
+                               ^^ record_typ))
                         ^-^ !^" :=" ^^ newline ^^ indent
                         @@ nest
                              (!^"Build"
@@ -70,7 +90,7 @@ module RecordSkeleton = struct
                                            (if Name.equal name name' then
                                             Name.to_coq name
                                            else
-                                             !^"r" ^-^ !^".("
+                                             Name.to_coq record_name ^-^ !^".("
                                              ^-^ Name.to_coq name' ^-^ !^")")))
                              ^-^ !^"."))))
              ^^ newline

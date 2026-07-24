@@ -235,3 +235,21 @@ Module RecordWithInnerAndOuterPolymorphism.
   End t.
   Definition t := t.record.
 End RecordWithInnerAndOuterPolymorphism.
+
+Module RecordFieldNamedR.
+  Module t.
+    Record record : Set := Build {
+      r : int;
+      s : int;
+    }.
+    Definition with_r r (record_value : record) :=
+      Build r record_value.(s).
+    Definition with_s s (record_value : record) :=
+      Build record_value.(r) s.
+  End t.
+  Definition t := t.record.
+  
+  Definition value : t := {| t.r := 1; t.s := 2; |}.
+  
+  Definition updated : t := t.with_r 3 value.
+End RecordFieldNamedR.
