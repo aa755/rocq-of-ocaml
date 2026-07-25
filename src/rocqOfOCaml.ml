@@ -5,9 +5,11 @@ module Output = struct
     has_errors : bool;
     source_file_name : string;
     success_message : string;
+    warning_message : string;
   }
 
   let write (json_mode : bool) (output : t) : unit =
+    if output.warning_message <> "" then prerr_string output.warning_message;
     if json_mode then
       let error_file_name = output.source_file_name ^ ".errors" in
       Util.File.write error_file_name output.error_message
@@ -22,8 +24,8 @@ end
 let exp (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     (typedtree_errors : exn list) (source_file_name : string)
     (source_file_content : string) (json_mode : bool) :
-    Ast.t * MonadEval.Import.t list * string * bool =
-  let { MonadEval.Result.errors; imports; value; _ } =
+    Ast.t * MonadEval.Import.t list * string * bool * string =
+  let { MonadEval.Result.errors; imports; value; warnings; _ } =
     MonadEval.eval (Ast.of_typedtree typedtree typedtree_errors) context
   in
   let imports = MonadEval.Import.merge [] imports in
@@ -31,14 +33,15 @@ let exp (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     Error.display_errors json_mode source_file_name source_file_content errors
   in
   let has_errors = match errors with [] -> false | _ :: _ -> true in
-  (value, imports, error_message, has_errors)
+  let warning_message = Error.display_warnings source_file_name warnings in
+  (value, imports, error_message, has_errors, warning_message)
 
 (** Display on stdout the conversion in Rocq of an OCaml structure. *)
 let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     (typedtree_errors : exn list) (source_file_name : string)
     (source_file_content : string) (output_file_name : string option)
     (json_mode : bool) : Output.t =
-  let ast, imports, error_message, has_errors =
+  let ast, imports, error_message, has_errors, warning_message =
     exp context typedtree typedtree_errors source_file_name source_file_content
       json_mode
   in
@@ -80,6 +83,7 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     has_errors;
     source_file_name;
     success_message;
+    warning_message;
   }
 
 let exit (context : MonadEval.Context.t) (output : Output.t) : unit =

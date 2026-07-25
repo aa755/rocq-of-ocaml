@@ -37,6 +37,7 @@ module Command = struct
     | GetAppliedFunctorChild :
         Path.t -> (Path.t * Path.t) option t
     | Raise : 'a * Error.Category.t * string -> 'a t
+    | Warn : string -> unit t
     | Use : import -> unit t
     | UseUnsafeFixpoint : unit t
 end
@@ -143,6 +144,8 @@ module Notations = struct
   let raise (value : 'a) (category : Error.Category.t) (message : string) : 'a t
       =
     Command (Command.Raise (value, category, message))
+
+  let warn (message : string) : unit t = Command (Command.Warn message)
 
   let use (import : import) : unit t = Command (Command.Use import)
   let use_unsafe_fixpoint : unit t = Command Command.UseUnsafeFixpoint

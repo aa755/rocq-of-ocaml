@@ -150,3 +150,12 @@ let display_errors (json_mode : bool) (source_file_name : string)
   if not json_mode then
     display_errors_human source_file_name source_file_content errors
   else display_errors_json errors
+
+let display_warnings (source_file_name : string) (warnings : t list) : string =
+  warnings
+  |> List.sort (fun warning1 warning2 ->
+         compare warning1.loc.start.line warning2.loc.start.line)
+  |> List.map (fun { loc; message; _ } ->
+         Printf.sprintf "Warning: %s:%d:%d: %s\n" source_file_name
+           loc.start.line loc.start.character message)
+  |> String.concat ""

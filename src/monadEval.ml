@@ -20,10 +20,17 @@ module Result = struct
     imports : Import.t list;
     use_unsafe_fixpoints : bool;
     value : 'a;
+    warnings : Error.t list;
   }
 
   let success (value : 'a) : 'a t =
-    { errors = []; imports = []; use_unsafe_fixpoints = false; value }
+    {
+      errors = [];
+      imports = [];
+      use_unsafe_fixpoints = false;
+      value;
+      warnings = [];
+    }
 end
 
 module EnvStack = struct
@@ -274,6 +281,19 @@ module Command = struct
           else []
         in
         { result with errors }
+    | Warn message ->
+        let result = Result.success () in
+        {
+          result with
+          warnings =
+            [
+              {
+                Error.category = Error.Category.Unexpected;
+                loc = Loc.of_location context.loc;
+                message;
+              };
+            ];
+        }
     | Use import ->
         let result = Result.success () in
         let mli =
@@ -339,6 +359,7 @@ let rec eval : type a. a Monad.t -> a Interpret.t =
         imports = imports_x;
         use_unsafe_fixpoints = use_unsafe_fixpoints_x;
         value = value_x;
+        warnings = warnings_x;
       } =
         eval x context
       in
@@ -347,6 +368,7 @@ let rec eval : type a. a Monad.t -> a Interpret.t =
         imports = imports_y;
         use_unsafe_fixpoints = use_unsafe_fixpoints_y;
         value = value_y;
+        warnings = warnings_y;
       } =
         eval (f value_x) context
       in
@@ -355,6 +377,7 @@ let rec eval : type a. a Monad.t -> a Interpret.t =
         imports = imports_x @ imports_y;
         use_unsafe_fixpoints = use_unsafe_fixpoints_x || use_unsafe_fixpoints_y;
         value = value_y;
+        warnings = warnings_x @ warnings_y;
       }
   | Command command -> Command.eval command context
   | RetrieveUnsafeFixpoints x ->
