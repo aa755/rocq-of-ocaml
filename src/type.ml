@@ -302,6 +302,113 @@ and typ_args_of_typs (typs : t list) : Name.Set.t =
     (fun args typ -> Name.Set.union args (typ_args_of_typ typ))
     Name.Set.empty typs
 
+let is_unit (typ : t) : bool =
+  match typ with
+  | Apply (MixedPath.PathName { PathName.path = []; base }, []) ->
+      Name.equal base (Name.of_string_raw "unit")
+  | _ -> false
+
+let rec arrow_result (typ : t) : t =
+  match typ with
+  | Arrow (_, result) -> arrow_result result
+  | ForallTyps (_, body) | FunTyps (_, body) -> arrow_result body
+  | _ -> typ
+
+let rec subst_variables (substitutions : (Name.t * t) list) (typ : t) : t =
+  let without names =
+    substitutions
+    |> List.filter (fun (name, _) ->
+           not (List.exists (Name.equal name) names))
+  in
+  let recurse = subst_variables substitutions in
+  match typ with
+  | Variable name -> (
+      match
+        List.find_opt
+          (fun (source, _) -> Name.equal source name)
+          substitutions
+      with
+      | Some (_, target) -> target
+      | None -> typ)
+  | Kind _ | String _ | Error _ -> typ
+  | Arrow (left, right) -> Arrow (recurse left, recurse right)
+  | Eq (left, right) -> Eq (recurse left, recurse right)
+  | Tuple types -> Tuple (List.map recurse types)
+  | Apply (constructor, arguments) ->
+      Apply
+        ( constructor,
+          List.map (fun (argument, tag) -> (recurse argument, tag)) arguments )
+  | Signature (path, parameters) ->
+      Signature
+        ( path,
+          List.map
+            (fun (name, value) -> (name, Option.map recurse value))
+            parameters )
+  | InferModule value -> InferModule (recurse value)
+  | ForallModule (name, parameter, result) ->
+      ForallModule
+        ( name,
+          recurse parameter,
+          subst_variables (without [ name ]) result )
+  | ExistTyps (parameters, body) ->
+      ExistTyps
+        ( parameters,
+          subst_variables (without (List.map fst parameters)) body )
+  | ForallTyps (parameters, body) ->
+      ForallTyps
+        ( parameters,
+          subst_variables (without (List.map fst parameters)) body )
+  | FunTyps (parameters, body) ->
+      FunTyps (parameters, subst_variables (without parameters) body)
+  | Let (name, value, body) ->
+      Let
+        ( name,
+          recurse value,
+          subst_variables (without [ name ]) body )
+
+(** Match variables in [pattern] against [actual].  This small structural
+    matcher is used to instantiate generated class requirements at calls to
+    translated functions. *)
+let match_variables ?(relaxed_constructors = false) (pattern : t)
+    (actual : t) : (Name.t * t) list option =
+  let add_binding substitutions name value =
+    match
+      List.find_opt
+        (fun (existing, _) -> Name.equal existing name)
+        substitutions
+    with
+    | None -> Some ((name, value) :: substitutions)
+    | Some (_, existing) ->
+        if compare existing value = 0 then Some substitutions else None
+  in
+  let rec match_list substitutions patterns actuals =
+    match (patterns, actuals) with
+    | [], [] -> Some substitutions
+    | pattern :: patterns, actual :: actuals -> (
+        match match_typ substitutions pattern actual with
+        | None -> None
+        | Some substitutions -> match_list substitutions patterns actuals)
+    | _ -> None
+  and match_typ substitutions pattern actual =
+    match (pattern, actual) with
+    | Variable name, actual -> add_binding substitutions name actual
+    | Arrow (p1, p2), Arrow (a1, a2)
+    | Eq (p1, p2), Eq (a1, a2) ->
+        match_list substitutions [ p1; p2 ] [ a1; a2 ]
+    | Tuple patterns, Tuple actuals ->
+        match_list substitutions patterns actuals
+    | Apply (p_path, p_args), Apply (a_path, a_args)
+      when
+        (relaxed_constructors || compare p_path a_path = 0)
+        && List.length p_args = List.length a_args ->
+        match_list substitutions (List.map fst p_args) (List.map fst a_args)
+    | InferModule pattern, InferModule actual ->
+        match_typ substitutions pattern actual
+    | _ ->
+        if compare pattern actual = 0 then Some substitutions else None
+  in
+  match_typ [] pattern actual
+
 let subst_path (source : Name.t list) (target : Name.t) (typ : t) : t =
   let names_are_equal (left : Name.t list) (right : Name.t list) : bool =
     List.length left = List.length right

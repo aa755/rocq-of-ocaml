@@ -22,8 +22,8 @@ Module Make.
   
   Module Make_result.
     Record signature `{_fargs : FArgs} : Set := {
-      identity : forall {A : Set}, A -> A;
-      pair_value : forall {A B : Set}, A -> B -> int * A * B;
+      identity : forall {A : Set} , A -> A;
+      pair_value : forall {A B : Set} , A -> B -> int * A * B;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.

@@ -5,7 +5,7 @@ Require Import RocqOfOCaml.Settings.
 Module BASE.
   Record signature {t : Set -> Set} : Set := {
     t := t;
-    _return : forall {a : Set}, a -> t a;
+    _return : forall {a : Set} , a -> t a;
   }.
 End BASE.
 Definition BASE := @BASE.signature.
@@ -28,8 +28,8 @@ Module Extend.
   Module Extend_result.
     Record signature `{_fargs : FArgs} : Set := {
       t := fun (a : Set) => M.(BASE.t) a;
-      _return : forall {a : Set}, a -> M.(BASE.t) a;
-      map : forall {A B : Set}, (A -> B) -> A -> M.(BASE.t) B;
+      _return : forall {a : Set} , a -> M.(BASE.t) a;
+      map : forall {A B : Set} , (A -> B) -> A -> M.(BASE.t) B;
     }.
   End Extend_result.
   Definition Extend_result `{_fargs : FArgs} := @Extend_result.signature _ _.
@@ -59,7 +59,7 @@ Module Nested.
   Module BASE.
     Record signature {t : Set -> Set} : Set := {
       t := t;
-      _return : forall {a : Set}, a -> t a;
+      _return : forall {a : Set} , a -> t a;
       get : t int;
     }.
   End BASE.
@@ -98,8 +98,8 @@ Module Nested.
     Module Make_result.
       Record signature `{_fargs : FArgs} : Set := {
         t := fun (a : Set) => M.(BASE.t) a;
-        _return : forall {a : Set}, a -> M.(BASE.t) a;
-        map : forall {A B : Set}, (A -> B) -> A -> M.(BASE.t) B;
+        _return : forall {a : Set} , a -> M.(BASE.t) a;
+        map : forall {A B : Set} , (A -> B) -> A -> M.(BASE.t) B;
       }.
     End Make_result.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.

@@ -375,7 +375,8 @@ Fixpoint init_aux {A : Set}
   else
     Nil.
 
-Definition init {A : Set} (n_value : int) (f_value : int -> A) : t A :=
+Definition init {A : Set} `{Unreachable (t A)}
+  (n_value : int) (f_value : int -> A) : t A :=
   if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.init"
   else
@@ -458,13 +459,12 @@ Fixpoint take_aux {A : Set} (n_value : int) (xs : t A) {struct n_value} : t A :=
       | Cons x_value xs => Cons x_value (take_aux (Z.sub n_value 1) xs)
       end.
 
-Definition take {A : Set} (n_value : int) (xs : t A) : t A :=
-  let '_ :=
-    if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
-      RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.take"
-    else
-      tt in
-  take_aux n_value xs.
+Definition take {A : Set} `{Unreachable (t A)}
+  (n_value : int) (xs : t A) : t A :=
+  if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
+    RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.take"
+  else
+    take_aux n_value xs.
 
 #[bypass_check(guard)]
 Fixpoint force_drop {A : Set} (n_value : int) (xs : t A) {struct n_value}
@@ -479,7 +479,8 @@ Fixpoint force_drop {A : Set} (n_value : int) (xs : t A) {struct n_value}
       force_drop n_value xs
   end.
 
-Definition drop {A : Set} (n_value : int) (xs : t A) : t A :=
+Definition drop {A : Set} `{Unreachable (t A)}
+  (n_value : int) (xs : t A) : t A :=
   if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.drop"
   else
@@ -546,11 +547,13 @@ Module Suspension.
   Definition memoize {a : Set} (s_value : suspension a) : suspension a :=
     from_lazy (to_lazy s_value).
 
-  Definition failure {A : Set} (function_parameter : unit) : A :=
+  Definition failure {A : Set} `{Unreachable A}
+    (function_parameter : unit) : A :=
     let '_ := function_parameter in
     RocqOfOCaml.Basics.Stdlib.raise (Build_extensible "Forced_twice" unit tt).
 
-  Definition once {a : Set} (f_value : suspension a) : suspension a :=
+  Definition once {a : Set} `{Unreachable a}
+    (f_value : suspension a) : suspension a :=
     let action := RocqOfOCaml.Basics.Stdlib.Atomic.make f_value in
     fun (function_parameter : unit) =>
       let '_ := function_parameter in
@@ -570,9 +573,12 @@ Fixpoint memoize {A : Set} `{_rocq_guard : GeneralRecursionGuard} (xs : t A)
       end).
 
 #[bypass_check(guard)]
-Fixpoint once {A : Set} `{_rocq_guard : GeneralRecursionGuard} (xs : t A)
+Fixpoint once {A : Set} `{Unreachable (t A)}
+  `{_rocq_guard : GeneralRecursionGuard} (xs : t A)
   {struct _rocq_guard} : t A :=
-  Suspension.once
+  let unreachable_node : Unreachable (node A) :=
+    {| unreachable := unreachable tt |} in
+  @Suspension.once (node A) unreachable_node
     (fun (function_parameter : unit) =>
       let '_ := function_parameter in
       match xs tt with
@@ -716,13 +722,17 @@ Definition partition {A : Set} (p_value : A -> bool) (xs : t A) : t A * t A :=
 Definition peel {A : Set} (xss : t (unit -> node A)) : t A * t (t A) :=
   unzip (filter_map uncons xss).
 
+#[local] Instance unreachable_transpose : Unreachable unit.
+Admitted.
+
 #[bypass_check(guard)]
 Fixpoint transpose {A : Set} (xss : t (t A)) (function_parameter : unit)
   {struct function_parameter} : node (t A) :=
   let '_ := function_parameter in
   let '(heads, tails) := peel xss in
   if is_empty heads then
-    let '_ := assert unit (is_empty tails) in
+    let '_ :=
+      if is_empty tails then tt else RocqOfOCaml.Basics.unreachable in
     Nil
   else
     Cons heads (transpose tails).

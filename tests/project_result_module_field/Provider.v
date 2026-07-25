@@ -120,7 +120,7 @@ Module Base.
   Module Base_result.
     Record signature `{_fargs : FArgs} : Set := {
       t := int;
-      identity : forall {A : Set}, A -> A;
+      identity : forall {A : Set} , A -> A;
     }.
   End Base_result.
   Definition Base_result `{_fargs : FArgs} := @Base_result.signature _.
@@ -162,7 +162,7 @@ Module Outer.
     Record signature `{_fargs : FArgs} {Namespace_Repr_Map_t : Set} : Set := {
       Included : Base.Base_result (_fargs := Included_fargs);
       Namespace_t := int;
-      Namespace_identity : forall {A : Set}, A -> A;
+      Namespace_identity : forall {A : Set} , A -> A;
       Namespace_Repr :
         Fixed.Fixed_result (_fargs := Namespace.Repr_fargs)
           (Map_t := Namespace_Repr_Map_t);

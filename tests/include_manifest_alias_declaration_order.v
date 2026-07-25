@@ -5,7 +5,7 @@ Require Import RocqOfOCaml.Settings.
 Module CORE.
   Record signature {t : Set -> Set} : Set := {
     t := t;
-    _return : forall {a : Set}, a -> t a;
+    _return : forall {a : Set} , a -> t a;
   }.
 End CORE.
 Definition CORE := @CORE.signature.
@@ -36,7 +36,7 @@ Definition Extend {Monad_t : Set -> Set} (Monad : CORE (t := Monad_t)) :=
 Module WITH_GET.
   Record signature {t : Set -> Set} : Set := {
     t := t;
-    _return : forall {a : Set}, a -> t a;
+    _return : forall {a : Set} , a -> t a;
     get : t int;
   }.
 End WITH_GET.

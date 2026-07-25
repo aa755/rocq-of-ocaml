@@ -275,6 +275,16 @@ class NoInputTest < Test
   end
 end
 
+class AssumptionWarningTest < Test
+  def check
+    output, error, status = Open3.capture3(*rocq_of_ocaml_cmd)
+    status.success? &&
+      error.include?('assertion failure is represented by an Unreachable result') &&
+      output.include?('RocqOfOCaml.Basics.Unreachable int') &&
+      !output.match?(/forall.*Unreachable/)
+  end
+end
+
 class Tests
   def initialize(source_files)
     @tests =
@@ -351,6 +361,7 @@ negative_tests.check
 cli_tests = Tests.new([
   DefaultOutputTest.new('tests/top_level_definition.ml'),
   DefaultOutputTest.new('tests/functor.mli'),
+  AssumptionWarningTest.new('tests/assert.ml'),
   NoInputTest.new
 ])
 cli_tests.check

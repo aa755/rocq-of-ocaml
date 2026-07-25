@@ -2,7 +2,9 @@
 Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
-Definition repeat {A : Set} (char : A) (count : int) : list A :=
+Definition repeat {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (list A)} (char : A)
+  (count : int) : list A :=
   RocqOfOCaml.OCamlList.init count
     (fun (function_parameter : int) =>
       let '_ := function_parameter in

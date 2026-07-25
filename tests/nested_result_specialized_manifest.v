@@ -20,8 +20,8 @@ End Lens.
 Module SIG.
   Record signature {t : Set -> Set} : Set := {
     t := t;
-    _return : forall {a : Set}, a -> t a;
-    op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
+    _return : forall {a : Set} , a -> t a;
+    op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
   }.
 End SIG.
 Definition SIG := @SIG.signature.
@@ -55,13 +55,13 @@ Module Make.
   Module Make_result.
     Record signature `{_fargs : FArgs} : Set := {
       t := fun (a : Set) => M.(SIG_MONAD.t) a;
-      _return : forall {a : Set}, a -> M.(SIG_MONAD.t) a;
+      _return : forall {a : Set} , a -> M.(SIG_MONAD.t) a;
       op_gtgteq :
-        forall {a b : Set},
-        M.(SIG_MONAD.t) a -> (a -> M.(SIG_MONAD.t) b) -> M.(SIG_MONAD.t) b;
+        forall {a b : Set} ,
+          M.(SIG_MONAD.t) a -> (a -> M.(SIG_MONAD.t) b) -> M.(SIG_MONAD.t) b;
       op_letdollar :
-        forall {A B : Set},
-        M.(SIG_MONAD.t) A -> (A -> M.(SIG_MONAD.t) B) -> M.(SIG_MONAD.t) B;
+        forall {A B : Set} ,
+          M.(SIG_MONAD.t) A -> (A -> M.(SIG_MONAD.t) B) -> M.(SIG_MONAD.t) B;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
@@ -144,8 +144,8 @@ Module State.
   Module SIG.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
       t := t;
-      _return : forall {a : Set}, a -> t a;
-      op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
+      _return : forall {a : Set} , a -> t a;
+      op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
       get : t state;
       put : state -> t unit;
     }.
@@ -215,19 +215,19 @@ Module State.
         get : S.(SIG.t) T.(State_T_signature.t);
         put : T.(State_T_signature.t) -> S.(SIG.t) unit;
         t := fun (a : Set) => S.(SIG.t) a;
-        _return : forall {a : Set}, a -> t a;
-        op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
+        _return : forall {a : Set} , a -> t a;
+        op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
         op_letdollar :
-          forall {A B : Set}, S.(SIG.t) A -> (A -> S.(SIG.t) B) -> S.(SIG.t) B;
+          forall {A B : Set} , S.(SIG.t) A -> (A -> S.(SIG.t) B) -> S.(SIG.t) B;
         update : (T.(State_T_signature.t) -> T.(State_T_signature.t)) -> t unit;
         op_coloneq :
-          forall {a : Set},
-          Lens.t T.(State_T_signature.t) a -> a -> S.(SIG.t) unit;
+          forall {a : Set} ,
+            Lens.t T.(State_T_signature.t) a -> a -> S.(SIG.t) unit;
         op_exclamation :
-          forall {a : Set}, Lens.t T.(State_T_signature.t) a -> t a;
+          forall {a : Set} , Lens.t T.(State_T_signature.t) a -> t a;
         update_field :
-          forall {a : Set},
-          Lens.t T.(State_T_signature.t) a -> (a -> a) -> t unit;
+          forall {a : Set} ,
+            Lens.t T.(State_T_signature.t) a -> (a -> a) -> t unit;
       }.
     End Make_result.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _ _ _.
@@ -287,9 +287,9 @@ Module Result.
   Module SIG.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
       t := t;
-      _return : forall {a : Set}, a -> t a;
-      op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
-      fail : forall {a : Set}, _error -> t a;
+      _return : forall {a : Set} , a -> t a;
+      op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
+      fail : forall {a : Set} , _error -> t a;
     }.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _.
@@ -337,12 +337,12 @@ Module Result.
     
     Module Make_result.
       Record signature `{_fargs : FArgs} : Set := {
-        fail : forall {a : Set}, T.(State_T_signature.t) -> S.(SIG.t) a;
+        fail : forall {a : Set} , T.(State_T_signature.t) -> S.(SIG.t) a;
         t := fun (a : Set) => S.(SIG.t) a;
-        _return : forall {a : Set}, a -> t a;
-        op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
+        _return : forall {a : Set} , a -> t a;
+        op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
         op_letdollar :
-          forall {A B : Set}, S.(SIG.t) A -> (A -> S.(SIG.t) B) -> S.(SIG.t) B;
+          forall {A B : Set} , S.(SIG.t) A -> (A -> S.(SIG.t) B) -> S.(SIG.t) B;
       }.
     End Make_result.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _ _ _.
@@ -425,11 +425,11 @@ Module Result_state.
   Module SIG.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
       t := t;
-      _return : forall {a : Set}, a -> t a;
-      op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
+      _return : forall {a : Set} , a -> t a;
+      op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
       get : t T.(Result_state_T_signature.state);
       put : T.(Result_state_T_signature.state) -> t unit;
-      fail : forall {a : Set}, T.(Result_state_T_signature._error) -> t a;
+      fail : forall {a : Set} , T.(Result_state_T_signature._error) -> t a;
     }.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _ _.
@@ -554,22 +554,22 @@ Module Result_state.
           (T.(Result_state_T_signature.state) ->
           T.(Result_state_T_signature.state)) -> S.(SIG.t) unit;
         op_coloneq :
-          forall {a : Set},
-          Lens.t T.(Result_state_T_signature.state) a -> a -> S.(SIG.t) unit;
+          forall {a : Set} ,
+            Lens.t T.(Result_state_T_signature.state) a -> a -> S.(SIG.t) unit;
         op_exclamation :
-          forall {a : Set},
-          Lens.t T.(Result_state_T_signature.state) a -> S.(SIG.t) a;
+          forall {a : Set} ,
+            Lens.t T.(Result_state_T_signature.state) a -> S.(SIG.t) a;
         update_field :
-          forall {a : Set},
-          Lens.t T.(Result_state_T_signature.state) a -> (a -> a) ->
-          S.(SIG.t) unit;
+          forall {a : Set} ,
+            Lens.t T.(Result_state_T_signature.state) a -> (a -> a) ->
+            S.(SIG.t) unit;
         fail :
-          forall {a : Set}, T.(Result_state_T_signature._error) -> S.(SIG.t) a;
+          forall {a : Set} , T.(Result_state_T_signature._error) -> S.(SIG.t) a;
         t := fun (a : Set) => S.(SIG.t) a;
-        _return : forall {a : Set}, a -> t a;
-        op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
+        _return : forall {a : Set} , a -> t a;
+        op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
         op_letdollar :
-          forall {A B : Set}, S.(SIG.t) A -> (A -> S.(SIG.t) B) -> S.(SIG.t) B;
+          forall {A B : Set} , S.(SIG.t) A -> (A -> S.(SIG.t) B) -> S.(SIG.t) B;
       }.
     End Make_result.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _ _ _
@@ -880,33 +880,33 @@ Module Result_state.
             (sum unit T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state));
         op_coloneq :
-          forall {a : Set},
-          Lens.t T.(Result_state_T_signature.state) a -> a ->
-          T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum unit T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state));
+          forall {a : Set} ,
+            Lens.t T.(Result_state_T_signature.state) a -> a ->
+            T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum unit T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state));
         op_exclamation :
-          forall {a : Set},
-          Lens.t T.(Result_state_T_signature.state) a ->
-          T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum a T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state));
+          forall {a : Set} ,
+            Lens.t T.(Result_state_T_signature.state) a ->
+            T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum a T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state));
         update_field :
-          forall {a : Set},
-          Lens.t T.(Result_state_T_signature.state) a -> (a -> a) ->
-          T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum unit T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state));
+          forall {a : Set} ,
+            Lens.t T.(Result_state_T_signature.state) a -> (a -> a) ->
+            T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum unit T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state));
         fail :
-          forall {a : Set},
-          T.(Result_state_T_signature._error) ->
-          T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum a T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state));
+          forall {a : Set} ,
+            T.(Result_state_T_signature._error) ->
+            T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum a T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state));
         t :=
           fun (a : Set) =>
             T.(Result_state_T_signature.state) ->
@@ -914,39 +914,39 @@ Module Result_state.
               (sum a T.(Result_state_T_signature._error) *
                 T.(Result_state_T_signature.state));
         _return :
-          forall {a : Set},
-          a -> T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum a T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state));
+          forall {a : Set} ,
+            a -> T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum a T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state));
         op_gtgteq :
-          forall {a b : Set},
-          (T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum a T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state))) ->
-          (a -> T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum b T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state))) ->
-          T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum b T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state));
+          forall {a b : Set} ,
+            (T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum a T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state))) ->
+            (a -> T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum b T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state))) ->
+            T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum b T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state));
         op_letdollar :
-          forall {A B : Set},
-          (T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum A T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state))) ->
-          (A -> T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum B T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state))) ->
-          T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum B T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state));
+          forall {A B : Set} ,
+            (T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum A T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state))) ->
+            (A -> T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum B T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state))) ->
+            T.(Result_state_T_signature.state) ->
+            Inner_parameter.(SIG_MONAD.t)
+              (sum B T.(Result_state_T_signature._error) *
+                T.(Result_state_T_signature.state));
       }.
     End Trans_result.
     Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _ _ _
@@ -1108,10 +1108,10 @@ Module Result_state.
       
       
       Inner_t := fun (a : Set) => Identity.t a;
-      Inner_return : forall {a : Set}, a -> Inner_t a;
+      Inner_return : forall {a : Set} , a -> Inner_t a;
       op_Inner_gtgteq :
-        forall {a b : Set}, Inner_t a -> (a -> Inner_t b) -> Inner_t b;
-      op_Inner_letdollar : forall {A B : Set}, A -> (A -> B) -> B;
+        forall {a b : Set} , Inner_t a -> (a -> Inner_t b) -> Inner_t b;
+      op_Inner_letdollar : forall {A B : Set} , A -> (A -> B) -> B;
       get :
         T.(Result_state_T_signature.state) ->
         Inner_t
@@ -1125,45 +1125,45 @@ Module Result_state.
           (sum unit T.(Result_state_T_signature._error) *
             T.(Result_state_T_signature.state));
       fail :
-        forall {a : Set},
-        T.(Result_state_T_signature._error) ->
-        T.(Result_state_T_signature.state) ->
-        Inner_t
-          (sum a T.(Result_state_T_signature._error) *
-            T.(Result_state_T_signature.state));
+        forall {a : Set} ,
+          T.(Result_state_T_signature._error) ->
+          T.(Result_state_T_signature.state) ->
+          Inner_t
+            (sum a T.(Result_state_T_signature._error) *
+              T.(Result_state_T_signature.state));
       t :=
         fun (a : Set) =>
           T.(Result_state_T_signature.state) ->
           Inner_t
             (sum a T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state));
-      _return : forall {a : Set}, a -> t a;
-      op_gtgteq : forall {a b : Set}, t a -> (a -> t b) -> t b;
+      _return : forall {a : Set} , a -> t a;
+      op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
       op_letdollar :
-        forall {A B : Set},
-        (T.(Result_state_T_signature.state) ->
-        Inner_t
-          (sum A T.(Result_state_T_signature._error) *
-            T.(Result_state_T_signature.state))) ->
-        (A -> T.(Result_state_T_signature.state) ->
-        Inner_t
-          (sum B T.(Result_state_T_signature._error) *
-            T.(Result_state_T_signature.state))) ->
-        T.(Result_state_T_signature.state) ->
-        Inner_t
-          (sum B T.(Result_state_T_signature._error) *
-            T.(Result_state_T_signature.state));
+        forall {A B : Set} ,
+          (T.(Result_state_T_signature.state) ->
+          Inner_t
+            (sum A T.(Result_state_T_signature._error) *
+              T.(Result_state_T_signature.state))) ->
+          (A -> T.(Result_state_T_signature.state) ->
+          Inner_t
+            (sum B T.(Result_state_T_signature._error) *
+              T.(Result_state_T_signature.state))) ->
+          T.(Result_state_T_signature.state) ->
+          Inner_t
+            (sum B T.(Result_state_T_signature._error) *
+              T.(Result_state_T_signature.state));
       update :
         (T.(Result_state_T_signature.state) ->
         T.(Result_state_T_signature.state)) -> t unit;
       op_exclamation :
-        forall {a : Set}, Lens.t T.(Result_state_T_signature.state) a -> t a;
+        forall {a : Set} , Lens.t T.(Result_state_T_signature.state) a -> t a;
       op_coloneq :
-        forall {a : Set},
-        Lens.t T.(Result_state_T_signature.state) a -> a -> t unit;
+        forall {a : Set} ,
+          Lens.t T.(Result_state_T_signature.state) a -> a -> t unit;
       update_field :
-        forall {a : Set},
-        Lens.t T.(Result_state_T_signature.state) a -> (a -> a) -> t unit;
+        forall {a : Set} ,
+          Lens.t T.(Result_state_T_signature.state) a -> (a -> a) -> t unit;
     }.
   End Result_state_result.
   Definition Result_state_result `{_fargs : FArgs} :=

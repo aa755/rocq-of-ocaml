@@ -52,6 +52,105 @@ type dependent_pattern_match = {
   args : Type.t list;
 }
 
+type assumption_kind = Unreachable | Unimplemented
+
+let partial_operation_names =
+  [
+    "List.hd";
+    "List.tl";
+    "List.nth";
+    "List.nth_opt";
+    "List.init";
+    "List.map2";
+    "List.rev_map2";
+    "List.iter2";
+    "List.fold_left2";
+    "List.fold_right2";
+    "List.for_all2";
+    "List.exists2";
+    "List._exists2";
+    "List.assoc";
+    "List.assq";
+    "List.find";
+    "List.combine";
+    "Seq.init";
+    "Seq.take";
+    "Seq.drop";
+    "Seq.once";
+    "Hashtbl.find";
+  ]
+
+let string_ends_with (value : string) (suffix : string) : bool =
+  let value_length = String.length value in
+  let suffix_length = String.length suffix in
+  value_length >= suffix_length
+  && String.sub value (value_length - suffix_length) suffix_length = suffix
+
+let rec drop_closing_parentheses path =
+  let length = String.length path in
+  if length > 0 && path.[length - 1] = ')' then
+    drop_closing_parentheses (String.sub path 0 (length - 1))
+  else path
+
+let target_partial_operation_name (name : string) : string =
+  let replace_prefix source target value =
+    let source_length = String.length source in
+    if
+      String.length value >= source_length
+      && String.sub value 0 source_length = source
+    then
+      target
+      ^ String.sub value source_length (String.length value - source_length)
+    else value
+  in
+  name
+  |> replace_prefix "List." "OCamlList."
+  |> replace_prefix "Seq." "OCamlSeq."
+  |> replace_prefix "Hashtbl." "OCamlHashtbl."
+
+let is_partial_operation_name (path : string) : bool =
+  let path = drop_closing_parentheses path in
+  List.exists
+    (fun name ->
+      let target_name = target_partial_operation_name name in
+      let target_signature_name =
+        match String.rindex_opt target_name '.' with
+        | None -> target_name
+        | Some separator ->
+            String.sub target_name 0 separator
+            ^ ".S"
+            ^ String.sub target_name separator
+                (String.length target_name - separator)
+      in
+      path = name
+      || path = "Stdlib." ^ name
+      || string_ends_with path ("." ^ name)
+      || path = target_name
+      || string_ends_with path ("." ^ target_name)
+      || path = target_signature_name
+      || string_ends_with path ("." ^ target_signature_name))
+    partial_operation_names
+
+let is_partial_operation_field_name (path : string) : bool =
+  let path = drop_closing_parentheses path in
+  List.exists
+    (fun name ->
+      let flattened =
+        String.map (function '.' -> '_' | character -> character) name
+      in
+      path = flattened
+      || string_ends_with path ("." ^ flattened)
+      || string_ends_with path ("_" ^ flattened))
+    partial_operation_names
+
+let is_generated_map_of_yojson_name (path : string) : bool =
+  let path = drop_closing_parentheses path in
+  path = "Map_signature.of_yojson"
+  || string_ends_with path ".Map_signature.of_yojson"
+
+let is_partial_operation_path (path : Path.t) : bool =
+  is_partial_operation_name (Path.name path)
+
 (** The simplified OCaml AST we use. We do not use a mutualy recursive type to
     simplify the importation in Rocq. *)
 type t =
@@ -65,6 +164,9 @@ type t =
   | ConstructorVariant of string * (Type.t * t) option
       (** A constructor of polymorphic variant, with a tag and a payload. *)
   | Apply of t * t option list  (** An application. *)
+  | SourceApply of t * t option list * Type.t
+      (** An application from the typed OCaml tree, retaining its result type
+          for propagation of generated type-class requirements. *)
   | Return of string * t  (** Application specialized for a return operation. *)
   | InfixOperator of string * t * t
       (** Application specialized for an infix operator.
@@ -85,9 +187,10 @@ type t =
       * dependent_pattern_match option
       * (Pattern.t * match_existential_cast option * t) list
       * bool  (** Match an expression to a list of patterns. *)
-  | MatchExtensible of t * ((string * Pattern.t * Type.t) option * t) list
+  | MatchExtensible of
+      t * Type.t * ((string * Pattern.t * Type.t) option * t) list
       (** Match an expression on a list of extensible type patterns. *)
-  | MatchVariant of t * (Pattern.dynamic_variant * t) list
+  | MatchVariant of t * Type.t * (Pattern.dynamic_variant * t) list
       (** Match an unmapped polymorphic variant through its dynamic tag. *)
   | Record of (PathName.t * int * t) list
       (** Construct a record giving an expression for each field. *)
@@ -100,6 +203,12 @@ type t =
   | Cast of t * Type.t  (** Force the cast to a type (with an axiom). *)
   | TypAnnotation of t * Type.t  (** Annotate an expression by its type. *)
   | Assert of Type.t * t  (** The assert keyword. *)
+  | Assumption of assumption_kind * Type.t * t list
+      (** Evaluate the arguments of an OCaml failure primitive, then obtain its
+          result from a type-indexed, explicitly declared assumption. *)
+  | RequiresAssumption of assumption_kind * Type.t * t
+      (** Record the trusted result required by a partial operation whose
+          ordinary translated application remains in the output. *)
   | Error of string  (** An error message for unhandled expressions. *)
   | ErrorArray of t list  (** An error produced by an array of elements. *)
   | ErrorTyp of Type.t  (** An error composed of a type. *)
@@ -501,7 +610,7 @@ let rec free_existential_typs (e : t) : Name.Set.t =
           Name.Set.union
             (Type.local_typ_constructors_of_typ typ)
             (free_existential_typs e))
-  | Apply (e, es) ->
+  | Apply (e, es) | SourceApply (e, es, _) ->
       let es = e :: List.filter_map (fun x -> x) es in
       of_list es
   | Return (_, e) -> free_existential_typs e
@@ -549,22 +658,24 @@ let rec free_existential_typs (e : t) : Name.Set.t =
       in
       List.fold_left Name.Set.union Name.Set.empty
         (free_existential_typs e :: cast_typs)
-  | MatchExtensible (e1, cases) ->
+  | MatchExtensible (e1, result_typ, cases) ->
       let es = e1 :: List.map snd cases in
       let typs =
-        cases
+        result_typ
+        :: (cases
         |> List.filter_map (fun (pattern, _) ->
-               match pattern with None -> None | Some (_, _, typ) -> Some typ)
+               match pattern with None -> None | Some (_, _, typ) -> Some typ))
       in
       Name.Set.union (of_list es) (Type.local_typ_constructors_of_typs typs)
-  | MatchVariant (e1, cases) ->
+  | MatchVariant (e1, result_typ, cases) ->
       let es = e1 :: List.map snd cases in
       let typs =
-        cases
+        result_typ
+        :: (cases
         |> List.filter_map (fun (pattern, _) ->
                match pattern with
                | Pattern.VariantCase (_, _, typ, _) -> Some typ
-               | Pattern.VariantDefault _ -> None)
+               | Pattern.VariantDefault _ -> None))
       in
       Name.Set.union (of_list es) (Type.local_typ_constructors_of_typs typs)
   | Record items ->
@@ -592,6 +703,14 @@ let rec free_existential_typs (e : t) : Name.Set.t =
       Name.Set.union
         (Type.local_typ_constructors_of_typ typ)
         (free_existential_typs e)
+  | Assumption (_, typ, es) ->
+      Name.Set.union
+        (Type.local_typ_constructors_of_typ typ)
+        (of_list es)
+  | RequiresAssumption (_, typ, e) ->
+      Name.Set.union
+        (Type.local_typ_constructors_of_typ typ)
+        (free_existential_typs e)
   | Error _ -> Name.Set.empty
   | ErrorArray es -> of_list es
   | ErrorTyp typ -> Type.local_typ_constructors_of_typ typ
@@ -616,7 +735,7 @@ let rec get_free_vars (e : t) : Name.Set.t =
   | ConstructorExtensible (_, _, e) -> get_free_vars e
   | ConstructorVariant (_, typ_e) -> (
       match typ_e with None -> Name.Set.empty | Some (_, e) -> get_free_vars e)
-  | Apply (e, es) ->
+  | Apply (e, es) | SourceApply (e, es, _) ->
       let es = e :: List.filter_map (fun x -> x) es in
       get_free_vars_of_list es
   | Return (_, e) -> get_free_vars e
@@ -656,7 +775,7 @@ let rec get_free_vars (e : t) : Name.Set.t =
            |> List.map (fun (pattern, _, e) ->
                   Name.Set.diff (get_free_vars e)
                     (Pattern.get_free_vars pattern))))
-  | MatchExtensible (e, entries) ->
+  | MatchExtensible (e, _, entries) ->
       Name.Set.union (get_free_vars e)
         (List.fold_left Name.Set.union Name.Set.empty
            (entries
@@ -667,7 +786,7 @@ let rec get_free_vars (e : t) : Name.Set.t =
                     | None -> Name.Set.empty
                   in
                   Name.Set.diff (get_free_vars e) free_vars_of_pattern)))
-  | MatchVariant (e, entries) ->
+  | MatchVariant (e, _, entries) ->
       Name.Set.union (get_free_vars e)
         (List.fold_left Name.Set.union Name.Set.empty
            (entries
@@ -691,11 +810,368 @@ let rec get_free_vars (e : t) : Name.Set.t =
   | Cast (e, _) -> get_free_vars e
   | TypAnnotation (e, _) -> get_free_vars e
   | Assert (_, e) -> get_free_vars e
+  | Assumption (_, _, es) -> get_free_vars_of_list es
+  | RequiresAssumption (_, _, e) -> get_free_vars e
   | Error _ -> Name.Set.empty
   | ErrorArray es -> get_free_vars_of_list es
   | ErrorTyp _ -> Name.Set.empty
   | ErrorMessage (e, _) -> get_free_vars e
   | Ltac _ -> Name.Set.empty
+
+type assumption_requirement = assumption_kind * Type.t
+
+let compare_assumption_requirement : assumption_requirement -> assumption_requirement -> int =
+ fun left right -> compare left right
+
+let sort_uniq_assumptions (requirements : assumption_requirement list) :
+    assumption_requirement list =
+  List.sort_uniq compare_assumption_requirement requirements
+
+(** Collect every trusted result requested by an expression.  The result is
+    used both to add polymorphic class parameters and to emit concrete,
+    type-specific instances next to the translated definition. *)
+let rec assumption_requirements (e : t) : assumption_requirement list =
+  let collect es = List.concat_map assumption_requirements es in
+  let collect_cases cases =
+    collect (List.map (fun (_, _, body) -> body) cases)
+  in
+  match e with
+  | Constant _ | Variable _ | Error _ | ErrorTyp _ | Ltac _ -> []
+  | Tuple es | ErrorArray es -> collect es
+  | Constructor (_, _, es) -> collect es
+  | ConstructorExtensible (_, _, e)
+  | Return (_, e)
+  | Function (_, _, e)
+  | Functions (_, e)
+  | LetTyp (_, _, _, e)
+  | LetModuleUnpack (_, _, e)
+  | Field (e, _)
+  | ModulePack (_, e)
+  | Functor (_, _, e)
+  | Cast (e, _)
+  | TypAnnotation (e, _)
+  | ErrorMessage (e, _) ->
+      assumption_requirements e
+  | ConstructorVariant (_, None) -> []
+  | ConstructorVariant (_, Some (_, e)) -> assumption_requirements e
+  | Apply (f, args) | SourceApply (f, args, _) ->
+      collect
+        (f :: List.filter_map (fun argument -> argument) args)
+  | InfixOperator (_, left, right) -> collect [ left; right ]
+  | LetVar (_, _, _, value, body) -> collect [ value; body ]
+  | LetFun (definition, body) ->
+      let definition_bodies =
+        definition.cases
+        |> List.filter_map (fun (_, body) -> body)
+      in
+      collect (body :: definition_bodies)
+  | Match (scrutinee, _, cases, _) ->
+      assumption_requirements scrutinee @ collect_cases cases
+  | MatchExtensible (scrutinee, result_typ, cases) ->
+      let propagated_exception =
+        if List.exists (fun (pattern, _) -> Option.is_none pattern) cases then []
+        else [ (Unreachable, result_typ) ]
+      in
+      assumption_requirements scrutinee
+      @ collect (List.map snd cases)
+      @ propagated_exception
+  | MatchVariant (scrutinee, result_typ, cases) ->
+      let default =
+        if
+          List.exists
+            (fun (pattern, _) ->
+              match pattern with Pattern.VariantDefault _ -> true | _ -> false)
+            cases
+        then []
+        else [ (Unreachable, result_typ) ]
+      in
+      assumption_requirements scrutinee
+      @ collect (List.map snd cases)
+      @ default
+  | Record fields | Module (_, fields) ->
+      collect (List.map (fun (_, _, value) -> value) fields)
+  | IfThenElse (condition, then_, else_) ->
+      collect [ condition; then_; else_ ]
+  | Assert (typ, condition) ->
+      (Unreachable, typ) :: assumption_requirements condition
+  | Assumption (kind, typ, arguments) ->
+      (kind, typ) :: collect arguments
+  | RequiresAssumption (kind, typ, body) ->
+      (kind, typ) :: assumption_requirements body
+
+let assumption_class_type ((kind, typ) : assumption_requirement) : Type.t =
+  let class_name =
+    match kind with
+    | Unreachable -> "Unreachable"
+    | Unimplemented -> "Unimplemented"
+  in
+  Type.Apply
+    ( MixedPath.PathName
+        {
+          PathName.path =
+            [
+              Name.of_string_raw "RocqOfOCaml";
+              Name.of_string_raw "Basics";
+            ];
+          base = Name.of_string_raw class_name;
+        },
+      [ (typ, false) ] )
+
+let assumption_requirement_of_class_type (typ : Type.t) :
+    assumption_requirement option =
+  match typ with
+  | Type.Apply
+      ( MixedPath.PathName { PathName.base; _ },
+        [ (result_typ, _) ] ) -> (
+      match Name.to_string base with
+      | "Unreachable" -> Some (Unreachable, result_typ)
+      | "Unimplemented" -> Some (Unimplemented, result_typ)
+      | _ -> None)
+  | _ -> None
+
+let concrete_assumption_requirements (e : t) : assumption_requirement list =
+  assumption_requirements e
+  |> List.filter (fun (_, typ) -> Name.Set.is_empty (Type.typ_args_of_typ typ))
+  |> sort_uniq_assumptions
+
+(** Add explicit class parameters for assumptions whose result depends on a
+    translated OCaml type parameter.  Concrete assumptions are declared by
+    [Structure.Value.to_coq] instead. *)
+let add_assumption_instance_args (definition : t option Definition.t) :
+    t option Definition.t =
+  let add_case (header, body) =
+    match body with
+    | None -> (header, body)
+    | Some body ->
+        let header_typ_vars =
+          header.Header.typ_vars |> List.map fst |> Name.Set.of_list
+        in
+        let requirements =
+          assumption_requirements body
+          |> List.filter (fun (_, typ) ->
+                 let free_vars = Type.typ_args_of_typ typ in
+                 (not (Name.Set.is_empty free_vars))
+                 && Name.Set.subset free_vars header_typ_vars)
+          |> sort_uniq_assumptions
+        in
+        let generated_args =
+          requirements
+          |> List.mapi (fun index requirement ->
+                 ( Name.of_string_raw
+                     ("_rocq_assumption_" ^ string_of_int index),
+                   assumption_class_type requirement ))
+        in
+        let existing_args =
+          header.Header.instance_args
+          |> List.filter (fun (name, _) ->
+                 let name = Name.to_string name in
+                 not
+                   (String.length name >= 17
+                   && String.sub name 0 17 = "_rocq_assumption_"))
+        in
+        ( { header with
+            Header.instance_args =
+              existing_args @ generated_args;
+          },
+          Some body )
+  in
+  { definition with Definition.cases = List.map add_case definition.cases }
+
+type assumption_call_spec = {
+  result_typ : Type.t;
+  requirements : assumption_requirement list;
+}
+
+type assumption_call_specs = assumption_call_spec Name.Map.t
+
+let assumption_call_spec_for_field (specs : assumption_call_specs)
+    (field : PathName.t) : assumption_call_spec option =
+  match Name.Map.find_opt field.PathName.base specs with
+  | Some spec -> Some spec
+  | None ->
+      let field_name = Name.to_string field.PathName.base in
+      specs
+      |> Name.Map.bindings
+      |> List.find_map (fun (name, spec) ->
+             let suffix = "_" ^ Name.to_string name in
+             if string_ends_with field_name suffix then Some spec else None)
+
+(** Add the extra binders needed when a generated module-record constructor
+    stores translated functions that acquired assumption class parameters.
+    Known standard-library partial fields are handled by the renderer because
+    their flattened nested-module names do not always have a local call spec. *)
+let add_root_record_field_assumption_arities (specs : assumption_call_specs)
+    (expression : t) : t =
+  let update_field (field, arity, value) =
+    if is_partial_operation_field_name (PathName.to_string field) then
+      (field, arity, value)
+    else
+      let extra =
+        match assumption_call_spec_for_field specs field with
+        | None -> 0
+        | Some spec -> List.length spec.requirements
+      in
+      (field, arity + extra, value)
+  in
+  match expression with
+  | Record fields -> Record (List.map update_field fields)
+  | Module (typ, fields) -> Module (typ, List.map update_field fields)
+  | expression -> expression
+
+let assumption_call_specs_of_definition (definition : t option Definition.t) :
+    assumption_call_specs =
+  definition.cases
+  |> List.fold_left
+       (fun specs (header, _) ->
+         let requirements =
+           header.Header.instance_args
+           |> List.filter_map (fun (_, typ) ->
+                  assumption_requirement_of_class_type typ)
+           |> sort_uniq_assumptions
+         in
+         match requirements with
+         | [] -> specs
+         | _ :: _ ->
+             Name.Map.add header.Header.name
+               { result_typ = header.Header.typ; requirements }
+               specs)
+       Name.Map.empty
+
+(** Propagate a callee's generated class requirements to a source-level call.
+    Matching the callee's declared result against the typed call result
+    instantiates polymorphic requirements without inventing a universal
+    instance. *)
+let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
+    : t =
+  let map_option f = Option.map f in
+  let rec map_definition (definition : t option Definition.t) =
+    {
+      definition with
+      Definition.cases =
+        definition.cases
+        |> List.map (fun (header, body) ->
+               (header, Option.map (transform false) body));
+    }
+  and transform covered expression =
+    let recurse = transform false in
+    match expression with
+    | Constant _ | Variable _ | Error _ | ErrorTyp _ | Ltac _ -> expression
+    | Tuple values -> Tuple (List.map recurse values)
+    | Constructor (name, implicits, values) ->
+        Constructor (name, implicits, List.map recurse values)
+    | ConstructorExtensible (tag, typ, value) ->
+        ConstructorExtensible (tag, typ, recurse value)
+    | ConstructorVariant (tag, value) ->
+        ConstructorVariant
+          (tag, Option.map (fun (typ, value) -> (typ, recurse value)) value)
+    | Apply (f, arguments) ->
+        Apply (recurse f, List.map (map_option recurse) arguments)
+    | SourceApply (f, arguments, result_typ) ->
+        let f = recurse f in
+        let arguments = List.map (map_option recurse) arguments in
+        let application = SourceApply (f, arguments, result_typ) in
+        if covered then application
+        else
+          let callee =
+            match f with
+            | Variable
+                ( MixedPath.PathName { PathName.path = []; base },
+                  _ ) ->
+                Name.Map.find_opt base specs
+            | _ -> None
+          in
+          (match callee with
+          | None -> application
+          | Some { result_typ = declared_result; requirements } ->
+              let substitutions =
+                match Type.match_variables declared_result result_typ with
+                | Some substitutions -> substitutions
+                | None -> []
+              in
+              List.fold_right
+                (fun (kind, required_typ) body ->
+                  RequiresAssumption
+                    ( kind,
+                      Type.subst_variables substitutions required_typ,
+                      body ))
+                requirements application)
+    | Return (operator, value) -> Return (operator, recurse value)
+    | InfixOperator (operator, left, right) ->
+        InfixOperator (operator, recurse left, recurse right)
+    | Function (name, typ, body) -> Function (name, typ, recurse body)
+    | Functions (names, body) -> Functions (names, recurse body)
+    | LetVar (operator, name, typ_vars, value, body) ->
+        LetVar
+          (operator, name, typ_vars, recurse value, recurse body)
+    | LetFun (definition, body) ->
+        LetFun (map_definition definition, recurse body)
+    | LetTyp (name, parameters, typ, body) ->
+        LetTyp (name, parameters, typ, recurse body)
+    | LetModuleUnpack (name, path, body) ->
+        LetModuleUnpack (name, path, recurse body)
+    | Match (scrutinee, dependent, cases, default) ->
+        Match
+          ( recurse scrutinee,
+            dependent,
+            List.map
+              (fun (pattern, cast, body) ->
+                (pattern, cast, recurse body))
+              cases,
+            default )
+    | MatchExtensible (scrutinee, typ, cases) ->
+        MatchExtensible
+          ( recurse scrutinee,
+            typ,
+            List.map
+              (fun (pattern, body) -> (pattern, recurse body))
+              cases )
+    | MatchVariant (scrutinee, typ, cases) ->
+        MatchVariant
+          ( recurse scrutinee,
+            typ,
+            List.map
+              (fun (pattern, body) -> (pattern, recurse body))
+              cases )
+    | Record fields ->
+        Record
+          (List.map
+             (fun (name, arity, value) -> (name, arity, recurse value))
+             fields)
+    | Field (value, name) -> Field (recurse value, name)
+    | IfThenElse (condition, then_, else_) ->
+        IfThenElse (recurse condition, recurse then_, recurse else_)
+    | Module (typ, fields) ->
+        Module
+          ( typ,
+            List.map
+              (fun (name, arity, value) -> (name, arity, recurse value))
+              fields )
+    | ModulePack (arity, value) -> ModulePack (arity, recurse value)
+    | Functor (name, typ, body) -> Functor (name, typ, recurse body)
+    | Cast (value, typ) -> Cast (recurse value, typ)
+    | TypAnnotation (value, typ) -> TypAnnotation (recurse value, typ)
+    | Assert (typ, condition) -> Assert (typ, recurse condition)
+    | Assumption (kind, typ, arguments) ->
+        Assumption (kind, typ, List.map recurse arguments)
+    | RequiresAssumption (kind, typ, body) ->
+        RequiresAssumption (kind, typ, transform true body)
+    | ErrorArray values -> ErrorArray (List.map recurse values)
+    | ErrorMessage (body, message) -> ErrorMessage (recurse body, message)
+  in
+  transform false expression
+
+let propagate_definition_call_assumptions (specs : assumption_call_specs)
+    (definition : t option Definition.t) : t option Definition.t =
+  let definition =
+    {
+      definition with
+      Definition.cases =
+        definition.cases
+        |> List.map (fun (header, body) ->
+               (header, Option.map (propagate_call_assumptions specs) body));
+    }
+  in
+  add_assumption_instance_args definition
 
 (** Infer the instantiated OCaml type parameters of a polymorphic value
     projected from a translated module record.
@@ -871,7 +1347,22 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                        "polymorphic_not_equal")
                 else x
               in
-              return (Variable (x, implicits))
+              let variable = Variable (x, implicits) in
+              if not (is_partial_operation_path path) then return variable
+              else
+                let* typ, _, _ =
+                  Type.of_typ_expr false typ_vars e.exp_type
+                in
+                let required_typ = Type.arrow_result typ in
+                let* () =
+                  warn
+                    "a partial OCaml library operation requires an Unreachable \
+                     result; prove that its exceptional precondition cannot \
+                     occur"
+                in
+                return
+                  (RequiresAssumption
+                     (Unreachable, required_typ, variable))
           | Texp_constant constant ->
               Constant.of_constant constant >>= fun constant ->
               return (Constant constant)
@@ -1054,8 +1545,76 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               List.fold_right
                 (fun param body -> body >>= fun body -> of_param body param)
                 params (return body)
+          | Texp_apply
+              ( { exp_desc = Texp_ident (path, _, _); _ },
+                e_xs )
+            when
+              List.mem (Path.name path)
+                [
+                  "Stdlib.failwith";
+                  "Pervasives.failwith";
+                  "Stdlib.invalid_arg";
+                  "Pervasives.invalid_arg";
+                  "Stdlib.raise";
+                  "Pervasives.raise";
+                ] ->
+              let* arguments =
+                e_xs
+                |> Monad.List.filter_map (fun (_, argument) ->
+                       match argument with
+                       | Arg argument ->
+                           let* argument = of_expression typ_vars argument in
+                           return (Some argument)
+                       | Omitted () -> return None)
+              in
+              let is_todo =
+                match arguments with
+                | Constant (Constant.String message) :: _ ->
+                    String.length message >= 5
+                    && String.sub message 0 5 = "todo "
+                | _ -> false
+              in
+              let kind =
+                if
+                  List.mem (Path.name path)
+                    [ "Stdlib.failwith"; "Pervasives.failwith" ]
+                  && is_todo
+                then Unimplemented
+                else Unreachable
+              in
+              let* typ, _, _ =
+                Type.of_typ_expr false typ_vars e.exp_type
+              in
+              let* () =
+                match kind with
+                | Unreachable ->
+                    warn
+                      "an OCaml exception primitive is represented by an \
+                       Unreachable result; prove that this call cannot return"
+                | Unimplemented ->
+                    warn
+                      "an explicitly unimplemented OCaml operation is \
+                       represented by an Unimplemented result"
+              in
+              return (Assumption (kind, typ, arguments))
           | Texp_apply (source_e_f, e_xs) -> (
+              let partial_operation =
+                match source_e_f.exp_desc with
+                | Texp_ident (path, _, _) -> is_partial_operation_path path
+                | _ -> false
+              in
               of_expression typ_vars source_e_f >>= fun e_f ->
+              let rec peel_requirements requirements = function
+                | RequiresAssumption (kind, typ, body) ->
+                    peel_requirements ((kind, typ) :: requirements) body
+                | body -> (List.rev requirements, body)
+              in
+              let inherited_requirements, e_f =
+                peel_requirements [] e_f
+              in
+              let partial_operation_already_warned =
+                partial_operation && inherited_requirements <> []
+              in
               infer_projection_implicits typ_vars source_e_f e_f
               >>= fun e_f ->
               e_xs
@@ -1167,9 +1726,33 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                   apply_with_infix_operator;
                 ]
               in
-              match List.find_map (fun x -> x) applies with
-              | Some apply -> return apply
-              | None -> return (Apply (e_f, e_xs)))
+              let* application_typ, _, _ =
+                Type.of_typ_expr false typ_vars e.exp_type
+              in
+              let apply =
+                match List.find_map (fun x -> x) applies with
+                | Some apply -> apply
+                | None -> SourceApply (e_f, e_xs, application_typ)
+              in
+              let apply =
+                List.fold_right
+                  (fun (kind, typ) body ->
+                    RequiresAssumption (kind, typ, body))
+                  inherited_requirements apply
+              in
+              if not partial_operation then return apply
+              else
+                let* () =
+                  if partial_operation_already_warned then return ()
+                  else
+                    warn
+                      "a partial OCaml library operation requires an \
+                       Unreachable result; prove that its exceptional \
+                       precondition cannot occur"
+                in
+                return
+                  (RequiresAssumption
+                     (Unreachable, application_typ, apply)))
           | Texp_match (e, cases, [], _) ->
               let is_gadt_match =
                 Attribute.has_match_gadt attributes
@@ -1441,6 +2024,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
           | Texp_assert (e',_) ->
               Type.of_typ_expr false typ_vars e.exp_type >>= fun (typ, _, _) ->
               of_expression typ_vars e' >>= fun e' ->
+              warn
+                "an OCaml assertion failure is represented by an Unreachable \
+                 result; prove that the assertion cannot fail"
+              >>= fun () ->
               return (Assert (typ, e'))
           | Texp_lazy e ->
               of_expression typ_vars e >>= fun e ->
@@ -1534,8 +2121,16 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                   error_message (Error "let_op_and") NotSupported
                     "We do not support let operators with and")
           | Texp_unreachable ->
-              error_message (Error "unreachable") NotSupported
-                "Unreachable expressions are not supported"
+              let* typ, _, _ =
+                Type.of_typ_expr false typ_vars e.exp_type
+              in
+              let* () =
+                warn
+                  "an OCaml unreachable expression is represented by an \
+                   Unreachable result; prove that this expression cannot be \
+                   evaluated"
+              in
+              return (Assumption (Unreachable, typ, []))
           | Texp_extension_constructor _ ->
               error_message (Error "extension") NotSupported
                 "Construction of extensions is not handled"
@@ -1931,6 +2526,15 @@ and of_match :
 and of_match_extensible :
     type kind. Name.t Name.Map.t -> t -> kind case list -> t Monad.t =
  fun (typ_vars : Name.t Name.Map.t) (e : t) (cases : kind case list) ->
+  let* result_typ =
+    match cases with
+    | [] -> return (Type.Error "empty_extensible_match")
+    | { c_rhs; _ } :: _ ->
+        let* typ, _, _ =
+          Type.of_typ_expr false typ_vars c_rhs.exp_type
+        in
+        return typ
+  in
   let* cases =
     cases
     |> Monad.List.map (fun { c_lhs; c_rhs; _ } ->
@@ -1939,11 +2543,28 @@ and of_match_extensible :
               let* e = of_expression typ_vars c_rhs in
               return (p, e)))
   in
-  return (MatchExtensible (e, cases))
+  let* () =
+    if List.exists (fun (pattern, _) -> Option.is_none pattern) cases then
+      return ()
+    else
+      warn
+        "an unmatched OCaml exception is represented by an Unreachable \
+         result; prove that this propagation path cannot occur"
+  in
+  return (MatchExtensible (e, result_typ, cases))
 
 and of_match_variant :
     type kind. Name.t Name.Map.t -> t -> kind case list -> t Monad.t =
  fun (typ_vars : Name.t Name.Map.t) (e : t) (cases : kind case list) ->
+  let* result_typ =
+    match cases with
+    | [] -> return (Type.Error "empty_dynamic_variant_match")
+    | { c_rhs; _ } :: _ ->
+        let* typ, _, _ =
+          Type.of_typ_expr false typ_vars c_rhs.exp_type
+        in
+        return typ
+  in
   let* nested_cases =
     cases
     |> Monad.List.map (fun { c_lhs; c_guard; c_rhs; _ } ->
@@ -1959,7 +2580,21 @@ and of_match_variant :
                     NotSupported
                     "Guards on polymorphic-variant matches are not supported"))
   in
-  return (MatchVariant (e, List.concat nested_cases))
+  let nested_cases = List.concat nested_cases in
+  let has_default =
+    List.exists
+      (fun (pattern, _) ->
+        match pattern with Pattern.VariantDefault _ -> true | _ -> false)
+      nested_cases
+  in
+  let* () =
+    if has_default then return ()
+    else
+      warn
+        "a dynamic polymorphic-variant default is represented by an \
+         Unreachable result; prove that no other tag can occur"
+  in
+  return (MatchVariant (e, result_typ, nested_cases))
 
 (** Generate a variable and a "match" on this variable from a list of
     patterns. *)
@@ -3129,6 +3764,19 @@ let to_coq_implicit (implicit : string * string) : SmartPrint.t =
   let name, value = implicit in
   nest (parens (!^name ^^ !^":=" ^^ !^value))
 
+let to_coq_assumed_value (kind : assumption_kind) (typ : Type.t) :
+    SmartPrint.t =
+  let projection =
+    match kind with
+    | Unreachable -> "@RocqOfOCaml.Basics.unreachable"
+    | Unimplemented -> "@RocqOfOCaml.Basics.unimplemented"
+  in
+  parens
+    (nest
+       (!^projection
+       ^^ Type.to_coq None (Some Type.Context.Apply) typ
+       ^^ !^"_"))
+
 let to_coq_record_fields
     (field_implicits : (Name.t * SmartPrint.t) list)
     (render_expression : t -> SmartPrint.t)
@@ -3145,6 +3793,14 @@ let to_coq_record_fields
     ^^ separate space
          (fields
          |> List.map (fun (field, arity, expression) ->
+                let arity =
+                  arity
+                  +
+                  if
+                    is_partial_operation_field_name (PathName.to_string field)
+                  then 1
+                  else 0
+                in
                 nest
                   (nest
                      (PathName.to_coq field
@@ -3169,6 +3825,15 @@ let to_coq_module_fields
          (separate (!^";" ^^ newline)
             (fields
             |> List.map (fun (field, arity, expression) ->
+                   let arity =
+                     arity
+                     +
+                     if
+                       is_partial_operation_field_name
+                         (PathName.to_string field)
+                     then 1
+                     else 0
+                   in
                    nest
                      (group
                         (nest
@@ -3259,6 +3924,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
                 | _ :: _ ->
                     !^"fun" ^^ separate space missing_args ^^ !^"=>" ^^ space)
                ^-^ nest (separate space (to_coq true e_f :: all_args)))))
+  | SourceApply (e_f, e_xs, _) -> to_coq paren (Apply (e_f, e_xs))
   | Return ("", e) -> to_coq paren e
   | Return (operator, e) ->
       Pp.parens paren @@ nest @@ !^operator ^^ to_coq true e
@@ -3421,7 +4087,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
                   ^^ newline
                else empty)
             ^^ !^"end"))
-  | MatchExtensible (e, cases) -> (
+  | MatchExtensible (e, result_typ, cases) -> (
       match cases with
       | [ (None, body) ] ->
           Pp.parens paren
@@ -3431,11 +4097,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
       | _ ->
           let rec dispatch = function
             | [] ->
-                nest
-                  (!^"RocqOfOCaml.Basics.Stdlib.raise"
-                  ^^ parens
-                       (!^"Build_extensible" ^^ !^"tag" ^^ !^"_"
-                      ^^ !^"payload"))
+                to_coq_assumed_value Unreachable result_typ
             | (None, body) :: _ -> to_coq false body
             | (Some (tag, p, typ), body) :: rest ->
                 nest
@@ -3475,7 +4137,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
                    ^^ !^"payload" ^^ !^"=>")
                  ^^ nest (dispatch cases))
             ^^ newline ^^ !^"end"))
-  | MatchVariant (e, cases) ->
+  | MatchVariant (e, result_typ, cases) ->
       let variant_name = Name.of_string_raw "_variant_value" in
       let tag_name = Name.of_string_raw "_variant_tag" in
       let payload_name = Name.of_string_raw "_variant_payload" in
@@ -3495,7 +4157,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
         bind_pattern_doc value pattern (to_coq false body)
       in
       let rec dispatch = function
-        | [] -> !^"unreachable"
+        | [] -> to_coq_assumed_value Unreachable result_typ
         | (Pattern.VariantDefault pattern, body) :: _ ->
             bind_pattern (Name.to_coq variant_name) pattern body
         | (Pattern.VariantCase (tag, pattern, typ, whole), body) :: rest ->
@@ -3577,10 +4239,24 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
       parens @@ nest (to_coq true e ^^ !^":" ^^ Type.to_coq None None typ)
   | Assert (typ, e) ->
       Pp.parens paren
-      @@ nest
-           (!^"assert"
-           ^^ Type.to_coq None (Some Type.Context.Apply) typ
-           ^^ to_coq true e)
+      @@
+      if Type.is_unit typ then
+        nest
+          (!^"if" ^^ to_coq false e ^^ !^"then" ^^ !^"tt"
+         ^^ !^"else" ^^ to_coq_assumed_value Unreachable typ)
+      else
+        nest
+          (!^"let" ^^ !^"'_" ^^ !^":=" ^^ to_coq false e ^^ !^"in"
+         ^^ newline ^^ to_coq_assumed_value Unreachable typ)
+  | Assumption (kind, typ, arguments) ->
+      Pp.parens paren
+      @@ List.fold_right
+           (fun argument body ->
+             nest
+               (!^"let" ^^ !^"'_" ^^ !^":=" ^^ to_coq false argument
+              ^^ !^"in" ^^ newline ^^ body))
+           arguments (to_coq_assumed_value kind typ)
+  | RequiresAssumption (_, _, body) -> to_coq paren body
   | Error message -> !^message
   | ErrorArray es -> OCaml.list (to_coq false) es
   | ErrorTyp typ -> Pp.parens paren @@ Type.to_coq None None typ

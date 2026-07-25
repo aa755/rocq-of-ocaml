@@ -8,7 +8,7 @@ Module Source.
     t := t;
     (** The description of [x] *)
     x_value : t;
-    id : forall {a : Set}, a -> a;
+    id : forall {a : Set} , a -> a;
   }.
 End Source.
 Definition Source := @Source.signature.

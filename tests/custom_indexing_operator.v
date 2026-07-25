@@ -2,8 +2,10 @@
 Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
-Definition op_pointdollarlparenrparen {A : Set} (values : list A) (index : int)
-  : A := RocqOfOCaml.OCamlList.nth values index.
+Definition op_pointdollarlparenrparen {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
+  (index : int) : A := RocqOfOCaml.OCamlList.nth values index.
 
-Definition get {A : Set} (values : list A) (index : int) : A :=
-  op_pointdollarlparenrparen values index.
+Definition get {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
+  (index : int) : A := op_pointdollarlparenrparen values index.

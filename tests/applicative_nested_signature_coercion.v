@@ -97,7 +97,7 @@ Module Produce.
   
   Module Produce_result.
     Record signature `{_fargs : FArgs} : Set := {
-      apply : forall {A : Set}, A -> A;
+      apply : forall {A : Set} , A -> A;
       extra : int;
     }.
   End Produce_result.

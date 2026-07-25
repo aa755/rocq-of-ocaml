@@ -2,11 +2,21 @@
 Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
+#[local] Instance _rocq_assumption_checked_identity_0 :
+  RocqOfOCaml.Basics.Unreachable unit.
+Admitted.
+
 Definition checked_identity {A : Set} (x_value : A) : A :=
   let '_ :=
-    assert unit (RocqOfOCaml.Basics.Stdlib.polymorphic_equal x_value x_value) in
+    if RocqOfOCaml.Basics.Stdlib.polymorphic_equal x_value x_value then tt else
+      (@RocqOfOCaml.Basics.unreachable unit _) in
   x_value.
+
+#[local] Instance _rocq_assumption_unreachable_0 :
+  RocqOfOCaml.Basics.Unreachable int.
+Admitted.
 
 Definition unreachable (function_parameter : unit) : int :=
   let '_ := function_parameter in
-  assert int false.
+  let '_ := false in
+  (@RocqOfOCaml.Basics.unreachable int _).

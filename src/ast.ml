@@ -48,7 +48,7 @@ let of_typedtree (typedtree : Mtyper.typedtree) (typedtree_errors : exn list) :
   match typedtree with
   | `Implementation structure ->
       Structure.of_structure structure >>= fun structure ->
-      return (Structure structure)
+      return (Structure (Structure.propagate_assumption_calls structure))
   | `Interface signature ->
       SignatureAxioms.of_signature signature >>= fun signature ->
       return (SignatureAxioms signature))

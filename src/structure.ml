@@ -11,6 +11,14 @@ module Value = struct
     definition : Exp.t option Exp.Definition.t;
   }
 
+  let concrete_assumptions ({ definition; _ } : t) =
+    definition.Exp.Definition.cases
+    |> List.concat_map (fun (_, body) ->
+           match body with
+           | None -> []
+           | Some body -> Exp.concrete_assumption_requirements body)
+    |> Exp.sort_uniq_assumptions
+
   let to_coq_typ_vars (header : Exp.Header.t) : SmartPrint.t =
     let { Exp.Header.typ_vars; _ } = header in
     Type.typ_vars_to_coq braces empty empty typ_vars
@@ -51,18 +59,52 @@ module Value = struct
                   else (axiom_cases, notation_cases, (header, e) :: cases))
             definition.Exp.Definition.cases ([], [], [])
         in
-        separate (newline ^^ newline)
+        let concrete_assumptions = concrete_assumptions value in
+        let definition_name =
+          match definition.Exp.Definition.cases with
+          | (header, _) :: _ -> Name.to_string header.Exp.Header.name
+          | [] -> "value"
+        in
+        let use_assumption_section =
+          concrete_assumptions <> [] && Option.is_some fargs
+        in
+        let definition_fargs =
+          if use_assumption_section then None else fargs
+        in
+        let definition_type typ =
+          if use_assumption_section then
+            !^"RocqOfOCaml.Basics.with_context" ^^ !^"_fargs"
+            ^^ parens (Type.to_coq None None typ)
+          else Type.to_coq None None typ
+        in
+        let assumption_declarations =
+          concrete_assumptions
+          |> List.mapi (fun index requirement ->
+                 let instance_name =
+                   Printf.sprintf "_rocq_assumption_%s_%d" definition_name
+                     index
+                 in
+                 nest
+                   (!^"#[local] Instance" ^^ !^instance_name
+                  ^^ FArgs.to_coq definition_fargs ^^ !^":"
+                  ^^ Type.to_coq None None
+                       (Exp.assumption_class_type requirement)
+                  ^-^ !^"." ^^ newline ^^ !^"Admitted."))
+        in
+        let rendered_definitions =
           ((* The axiomatized definitions *)
            (axiom_cases
            |> List.map (fun header ->
                   let { Exp.Header.name; typ_vars; typ; _ } = header in
                   nest
                     (!^"Axiom" ^^ Name.to_coq name ^^ !^":"
-                    ^^ (match fargs with
-                       | Some _ -> !^"forall" ^^ FArgs.to_coq fargs ^-^ !^","
+                    ^^ (match definition_fargs with
+                       | Some _ ->
+                           !^"forall" ^^ FArgs.to_coq definition_fargs
+                           ^-^ !^","
                        | None -> empty)
                     ^^ Type.typ_vars_to_coq braces !^"forall" !^"," typ_vars
-                    ^^ Type.to_coq None None typ ^-^ !^".")))
+                    ^^ definition_type typ ^-^ !^".")))
           (* Reserve the notation keywords *)
           @ (match notation_cases with
             | [] -> []
@@ -102,10 +144,10 @@ module Value = struct
                       else !^"with")
                      ^^
                      let { Exp.Header.name; typ; _ } = header in
-                     Name.to_coq name ^^ FArgs.to_coq fargs
+                     Name.to_coq name ^^ FArgs.to_coq definition_fargs
                      ^^ to_coq_typ_vars header ^^ to_coq_args header
                      ^^ Exp.Header.to_coq_structs header
-                     ^^ !^": " ^-^ Type.to_coq None None typ ^-^ !^" :="
+                     ^^ !^": " ^-^ definition_type typ ^-^ !^" :="
                      ^^ group
                           (separate space
                              (notation_cases
@@ -146,7 +188,7 @@ module Value = struct
                                      | [] -> !^"=>"
                                      | _ :: _ ->
                                          Exp.Header.to_coq_structs header
-                                         ^^ !^": " ^-^ Type.to_coq None None typ
+                                         ^^ !^": " ^-^ definition_type typ
                                          ^-^ !^" :=")
                                   ^^ group
                                        (separate space
@@ -186,6 +228,22 @@ module Value = struct
                                 )
                            ^-^ !^".")));
               ])
+        in
+        let rendered =
+          separate (newline ^^ newline)
+            (assumption_declarations @ rendered_definitions)
+        in
+        if not use_assumption_section then rendered
+        else
+          let section_name =
+            "_rocq_assumptions_" ^ definition_name
+          in
+          !^"Section" ^^ !^section_name ^-^ !^"." ^^ newline
+          ^^ indent
+               (nest
+                  (!^"Context" ^^ FArgs.to_coq fargs ^-^ !^".")
+               ^^ newline ^^ newline ^^ rendered)
+          ^^ newline ^^ !^"End" ^^ !^section_name ^-^ !^"."
 end
 
 type functor_parameters =
@@ -217,6 +275,7 @@ type t =
       * Name.t list
       * Type.t option
       * MixedPath.t
+      * Exp.assumption_requirement list
   | TypeSynonym of Name.t * Type.t
   | ModuleSynonym of Name.t * PathName.t * bool
   | Signature of Name.t * Signature.t
@@ -229,6 +288,330 @@ let value_defines (name : Name.t) ({ Value.definition; _ } : Value.t) : bool =
   definition.Exp.Definition.cases
   |> List.exists (fun (header, _) ->
          Name.equal header.Exp.Header.name name)
+
+let module_include_assumptions kind typ_vars typ mixed_path =
+  match (kind, typ) with
+  | (IncludeValue | IncludeProjectedValue), Some typ
+    when
+      Exp.is_partial_operation_name (MixedPath.to_string mixed_path)
+      || Exp.is_partial_operation_field_name
+           (MixedPath.to_string mixed_path) ->
+      [ (Exp.Unreachable, Type.arrow_result typ) ]
+  | (IncludeValue | IncludeProjectedValue), Some typ
+    when
+      Exp.is_generated_map_of_yojson_name
+        (MixedPath.to_string mixed_path) ->
+      let element_requirement =
+        match typ_vars with
+        | element :: _ ->
+            [ (Exp.Unreachable, Type.Variable element) ]
+        | [] -> []
+      in
+      element_requirement
+      @ [ (Exp.Unreachable, Type.arrow_result typ) ]
+      |> Exp.sort_uniq_assumptions
+  | _ -> []
+
+(** Propagate generated assumption parameters through calls between values in
+    the same OCaml structure.  The pass reaches a fixed point because adding a
+    requirement to one value may make its callers require the same
+    type-specific class. *)
+let propagate_assumption_calls (definitions : t list) : t list =
+  let merge_specs left right =
+    Name.Map.union (fun _ _ right -> Some right) left right
+  in
+  let rec specs_of_definitions definitions =
+    definitions
+    |> List.fold_left
+         (fun specs definition ->
+           match definition with
+           | Value { Value.definition; _ } ->
+               merge_specs specs
+                 (Exp.assumption_call_specs_of_definition definition)
+           | ModuleIncludeItem
+               (kind, name, typ_vars, typ, mixed_path, stored_requirements) -> (
+               let requirements =
+                 match stored_requirements with
+                 | _ :: _ -> stored_requirements
+                 | [] ->
+                     module_include_assumptions kind typ_vars typ mixed_path
+               in
+               match requirements with
+               | [] -> specs
+               | (_, first_required_type) :: _ ->
+                   let result_typ =
+                     match typ with
+                     | Some typ -> Type.arrow_result typ
+                     | None -> first_required_type
+                   in
+                   Name.Map.add name
+                     {
+                       Exp.result_typ;
+                       requirements;
+                     }
+                     specs)
+           | Signature (_, signature) ->
+               merge_specs specs
+                 (Signature.assumption_call_specs signature)
+           | Module (module_name, _, nested, _) ->
+               let nested_specs = specs_of_definitions nested in
+               Name.Map.fold
+                 (fun nested_name spec specs ->
+                   Name.Map.add
+                     (Name.of_string_raw
+                        (Name.to_string module_name ^ "_"
+                       ^ Name.to_string nested_name))
+                     spec specs)
+                 nested_specs specs
+           | Documentation (_, nested)
+           | ErrorMessage (_, Documentation (_, nested)) ->
+               merge_specs specs (specs_of_definitions nested)
+           | ErrorMessage (_, nested) ->
+               merge_specs specs (specs_of_definitions [ nested ])
+           | _ -> specs)
+         Name.Map.empty
+  in
+  let rec transform specs definition =
+    match definition with
+    | Value value ->
+        Value
+          {
+            value with
+            Value.definition =
+              Exp.propagate_definition_call_assumptions specs
+                value.Value.definition;
+          }
+    | Module (name, parameters, nested, expression) ->
+        Module
+          ( name,
+            parameters,
+            fixed_point nested,
+            expression )
+    | Documentation (text, nested) ->
+        Documentation (text, List.map (transform specs) nested)
+    | ErrorMessage (message, nested) ->
+        ErrorMessage (message, transform specs nested)
+    | definition -> definition
+  and fixed_point definitions =
+    let before = specs_of_definitions definitions in
+    let transformed = List.map (transform before) definitions in
+    let after = specs_of_definitions transformed in
+    if
+      Name.Map.equal
+        (fun left right -> compare left right = 0)
+        before after
+    then transformed
+    else fixed_point transformed
+  in
+  let rec update_signatures_scope definitions =
+    let specs = specs_of_definitions definitions in
+    List.map (update_signature_definition specs) definitions
+  and update_signature_definition specs = function
+    | Module (name, parameters, nested, expression) ->
+        Module
+          ( name,
+            parameters,
+            update_signatures_scope nested,
+            expression )
+    | Signature (name, signature) ->
+        Signature
+          (name, Signature.add_assumption_requirements specs signature)
+    | Documentation (text, nested) ->
+        Documentation
+          (text, List.map (update_signature_definition specs) nested)
+    | ErrorMessage (message, nested) ->
+        ErrorMessage
+          (message, update_signature_definition specs nested)
+    | definition -> definition
+  in
+  let normalize_projection_path path =
+    path |> String.to_seq
+    |> Seq.filter (fun character -> character <> '(' && character <> ')')
+    |> String.of_seq
+  in
+  let qualified_path_contains value substring =
+    let value_length = String.length value in
+    let substring_length = String.length substring in
+    let rec search index =
+      if index + substring_length > value_length then false
+      else
+        let preceding_boundary =
+          index = 0 || value.[index - 1] = '.'
+        in
+        let end_index = index + substring_length in
+        let following_boundary =
+          end_index = value_length || value.[end_index] = '.'
+        in
+        if
+          preceding_boundary
+          && following_boundary
+          && String.sub value index substring_length = substring
+        then true
+        else search (index + 1)
+    in
+    substring_length = 0 || search 0
+  in
+  let rec qualified_signature_specs prefix definitions =
+    definitions
+    |> List.concat_map (function
+         | Module (name, _, nested, _) ->
+             qualified_signature_specs
+               (prefix @ [ Name.to_string name ])
+               nested
+         | Signature (name, signature) ->
+             Signature.assumption_call_specs signature
+             |> Name.Map.bindings
+             |> List.map (fun (field, spec) ->
+                    ( String.concat "."
+                        (prefix
+                        @ [ Name.to_string name; Name.to_string field ]),
+                      spec ))
+         | Documentation (_, nested) ->
+             qualified_signature_specs prefix nested
+         | ErrorMessage (_, nested) ->
+             qualified_signature_specs prefix [ nested ]
+         | _ -> [])
+  in
+  let find_projected_spec qualified_specs mixed_path =
+    let target =
+      normalize_projection_path (MixedPath.to_string mixed_path)
+    in
+    let generated_signature_suffix path =
+      match List.rev (String.split_on_char '.' path) with
+      | field :: signature :: _
+        when String.ends_with ~suffix:"_signature" signature ->
+          Some (signature ^ "." ^ field)
+      | _ -> None
+    in
+    qualified_specs
+    |> List.filter_map (fun (path, spec) ->
+           if qualified_path_contains target path then
+             Some (2, String.length path, spec)
+           else
+             match generated_signature_suffix path with
+             | Some suffix
+               when qualified_path_contains target suffix ->
+                 Some (1, String.length suffix, spec)
+             | Some _ | None -> None)
+    |> List.sort (fun (left_kind, left_length, _)
+                         (right_kind, right_length, _) ->
+           match Int.compare right_kind left_kind with
+           | 0 -> Int.compare right_length left_length
+           | comparison -> comparison)
+    |> List.find_map (fun (_, _, spec) -> Some spec)
+  in
+  let instantiate_requirements typ
+      ({ Exp.result_typ = declared_result; requirements } :
+        Exp.assumption_call_spec) =
+    match typ with
+    | None -> requirements
+    | Some typ ->
+        let actual_result = Type.arrow_result typ in
+        let substitutions =
+          match
+            Type.match_variables ~relaxed_constructors:true
+              declared_result actual_result
+          with
+          | Some substitutions -> substitutions
+          | None -> []
+        in
+        requirements
+        |> List.map (fun (kind, required_typ) ->
+               ( kind,
+                 if compare required_typ declared_result = 0 then
+                   actual_result
+                 else
+                   Type.subst_variables substitutions required_typ ))
+        |> Exp.sort_uniq_assumptions
+  in
+  let rec annotate_projected_requirements qualified_specs definitions =
+    definitions
+    |> List.map (function
+         | ModuleIncludeItem
+             (kind, name, typ_vars, typ, mixed_path, []) ->
+             let requirements =
+               match find_projected_spec qualified_specs mixed_path with
+               | None -> []
+               | Some spec -> instantiate_requirements typ spec
+             in
+             ModuleIncludeItem
+               (kind, name, typ_vars, typ, mixed_path, requirements)
+         | Module (name, parameters, nested, expression) ->
+             Module
+               ( name,
+                 parameters,
+                 annotate_projected_requirements qualified_specs nested,
+                 expression )
+         | Documentation (text, nested) ->
+             Documentation
+               ( text,
+                 annotate_projected_requirements qualified_specs nested )
+         | ErrorMessage (message, nested) ->
+             let nested =
+               match
+                 annotate_projected_requirements qualified_specs [ nested ]
+               with
+               | nested :: _ -> nested
+               | [] -> nested
+             in
+             ErrorMessage (message, nested)
+         | definition -> definition)
+  in
+  let rec close_assumptions definitions =
+    let updated =
+      definitions |> fixed_point |> update_signatures_scope
+    in
+    let qualified_specs = qualified_signature_specs [] updated in
+    let updated =
+      annotate_projected_requirements qualified_specs updated
+    in
+    if compare definitions updated = 0 then updated
+    else close_assumptions updated
+  in
+  let rec finalize_scope definitions =
+    let specs = specs_of_definitions definitions in
+    List.map (finalize_definition specs) definitions
+  and finalize_definition specs definition =
+    match definition with
+    | Value value ->
+        let definition =
+          {
+            value.Value.definition with
+            Exp.Definition.cases =
+              value.Value.definition.Exp.Definition.cases
+              |> List.map (fun (header, body) ->
+                     ( header,
+                       Option.map
+                         (Exp.add_root_record_field_assumption_arities specs)
+                         body ));
+          }
+        in
+        Value { value with Value.definition }
+    | Module (name, parameters, nested, expression) ->
+        let nested = finalize_scope nested in
+        let nested_specs = specs_of_definitions nested in
+        let expression =
+          Option.map
+            (fun (body, typ) ->
+              ( Exp.add_root_record_field_assumption_arities nested_specs body,
+                typ ))
+            expression
+        in
+        Module (name, parameters, nested, expression)
+    | ModuleExpression (name, typ, fargs, expression) ->
+        ModuleExpression
+          ( name,
+            typ,
+            fargs,
+            Exp.add_root_record_field_assumption_arities specs expression )
+    | Documentation (text, nested) ->
+        Documentation
+          (text, List.map (finalize_definition specs) nested)
+    | ErrorMessage (message, nested) ->
+        ErrorMessage (message, finalize_definition specs nested)
+    | definition -> definition
+  in
+  definitions |> close_assumptions |> finalize_scope
 
 (** Whether the definition reached by a local access is printed with the
     enclosing functor's [_fargs] parameter. *)
@@ -250,7 +633,7 @@ let local_access_uses_fargs (definitions : t list) (access : Name.t list) :
           | Value value :: _
             when fields = [] && value_defines name value ->
               true
-          | ModuleIncludeItem (_, field, _, _, _) :: _
+          | ModuleIncludeItem (_, field, _, _, _, _) :: _
             when fields = [] && Name.equal name field ->
               true
           | ModuleExpression (module_name, _, _, _) :: _
@@ -294,6 +677,10 @@ let top_level_evaluation (e : expression) : t list Monad.t =
          is_notation = false;
        }
      in
+     let definition =
+       Exp.add_assumption_instance_args
+         { Exp.Definition.is_rec = false; cases = [ (header, Some e) ] }
+     in
      let documentation = "Init function; without side-effects in Rocq" in
      return
        [
@@ -303,7 +690,7 @@ let top_level_evaluation (e : expression) : t list Monad.t =
                Value
                  {
                    use_unsafe_fixpoints = false;
-                   definition = { is_rec = false; cases = [ (header, Some e) ] };
+                   definition;
                  };
              ] );
        ])
@@ -649,7 +1036,8 @@ let rec of_structure ?(has_functor_parameters = false)
                            name,
                            List.map fst new_typ_vars,
                            Some typ,
-                           access );
+                           access,
+                           [] );
                      ]
                | Types.Sig_type (ident, { type_params; _ }, _, _) ->
                    let* name = Name.of_ident false ident in
@@ -667,7 +1055,8 @@ let rec of_structure ?(has_functor_parameters = false)
                            name,
                            List.map fst typ_vars,
                            None,
-                           access );
+                           access,
+                           [] );
                      ]
                | Types.Sig_module
                    (ident, _, { md_type; _ }, _, _) -> (
@@ -724,7 +1113,12 @@ let rec of_structure ?(has_functor_parameters = false)
     let namespace_item (kind : module_include_item_kind) (name : Name.t)
         (typ_vars : Name.t list) (typ : Type.t option) : t =
       ModuleIncludeItem
-        (kind, name, typ_vars, typ, MixedPath.PathName (field_reference name))
+        ( kind,
+          name,
+          typ_vars,
+          typ,
+          MixedPath.PathName (field_reference name),
+          [] )
     in
     let* is_first_class =
       IsFirstClassModule.is_module_typ_first_class mod_type module_path
@@ -1093,7 +1487,8 @@ let rec of_structure ?(has_functor_parameters = false)
                                    List.map fst new_typ_vars,
                                    Some typ,
                                    MixedPath.Access
-                                     (reference, record_fields @ [ field ]) );
+                                     (reference, record_fields @ [ field ]),
+                                   [] );
                              ]
                        | Types.Sig_type
                            (ident, { type_params; _ }, _, _) ->
@@ -1116,7 +1511,8 @@ let rec of_structure ?(has_functor_parameters = false)
                                    List.map fst typ_vars,
                                    None,
                                    MixedPath.Access
-                                     (reference, record_fields @ [ field ]) );
+                                     (reference, record_fields @ [ field ]),
+                                   [] );
                              ]
                        | Types.Sig_module
                            (ident, _, { md_type; _ }, _, _) -> (
@@ -1181,7 +1577,8 @@ let rec of_structure ?(has_functor_parameters = false)
                                            [],
                                            None,
                                            MixedPath.Access
-                                             (reference, record_fields) )
+                                             (reference, record_fields),
+                                           [] )
                                      in
                                      return (nested_items, Some alias)
                                  | IsFirstClassModule.Not_found _ ->
@@ -1399,8 +1796,11 @@ let rec of_structure ?(has_functor_parameters = false)
             | Tstr_value (is_rec, cases) ->
                 push_env
                   (let* use_unsafe_fixpoints, definition =
-                     retrieve_unsafe_fixpoints
+                   retrieve_unsafe_fixpoints
                        (Exp.import_let_fun Name.Map.empty true is_rec cases)
+                   in
+                   let definition =
+                     Exp.add_assumption_instance_args definition
                    in
                    return [ Value { use_unsafe_fixpoints; definition } ])
             | Tstr_type (_, typs) ->
@@ -2018,7 +2418,7 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                           |> first_some (fun name ->
                                  candidate (prefix @ [ name ]))
                       | AbstractValue (name, _, _)
-                      | ModuleIncludeItem (_, name, _, _, _)
+                      | ModuleIncludeItem (_, name, _, _, _, _)
                       | TypeSynonym (name, _)
                       | ModuleExpression (name, _, _, _)
                       | ModuleSynonym (name, _, _)
@@ -2418,7 +2818,7 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                              (_, { Types.val_type; _ }, _)
                            when not signature_is_type_only ->
                              let* name = Name.of_ident true ident in
-                             let* _, _, typ_vars =
+                             let* typ, _, typ_vars =
                                Type.of_typ_expr true Name.Map.empty
                                  val_type
                              in
@@ -2436,9 +2836,10 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                    ( IncludeProjectedValue,
                                      name,
                                      List.map fst typ_vars,
-                                     None,
+                                     Some typ,
                                      MixedPath.Access
-                                       (reference, record_fields @ [ field ]) );
+                                       (reference, record_fields @ [ field ]),
+                                     [] );
                                ]
                          | Types.Sig_value _ -> return []
                          | Types.Sig_type
@@ -2516,7 +2917,8 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                          None,
                                          MixedPath.Access
                                            ( reference,
-                                             projection_fields @ [ field ] ) );
+                                             projection_fields @ [ field ] ),
+                                         [] );
                                    ])
                          | Types.Sig_module
                              (ident, _, { Types.md_type; _ }, _, _) -> (
@@ -2741,7 +3143,8 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                                   None,
                                                   MixedPath.Access
                                                     ( reference,
-                                                      record_fields ) )) )
+                                                      record_fields ),
+                                                  [] )) )
                                    | IsFirstClassModule.Not_found _ ->
                                        let* nested_included_record =
                                          match
@@ -2827,7 +3230,8 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                                                  [],
                                                  None,
                                                  MixedPath.Access
-                                                   (reference, fields) ))
+                                                   (reference, fields),
+                                                 [] ))
                                            nested_included_record
                                        in
                                        return (nested_items, module_value)
@@ -3376,7 +3780,26 @@ let rec to_coq (fargs : FArgs.t) (defs : t list) : SmartPrint.t =
              ^^ !^":=" ^^ Exp.to_coq false e ^-^ !^".")
     | ModuleInclude reference ->
         nest (!^"Include" ^^ PathName.to_coq reference ^-^ !^".")
-    | ModuleIncludeItem (kind, name, typ_vars, typ, mixed_path) ->
+    | ModuleIncludeItem
+        (kind, name, typ_vars, typ, mixed_path, stored_requirements) ->
+        let requirements =
+          match stored_requirements with
+          | _ :: _ -> stored_requirements
+          | [] ->
+              module_include_assumptions kind typ_vars typ mixed_path
+        in
+        let assumption_arguments =
+          requirements
+          |> List.mapi (fun index requirement ->
+                 !^"`"
+                 ^-^ braces
+                      (nest
+                         (!^(Printf.sprintf "_rocq_assumption_%d" index)
+                         ^^ !^":"
+                         ^^ Type.to_coq None None
+                              (Exp.assumption_class_type requirement))))
+          |> separate space
+        in
         nest
           (!^"Definition" ^^ Name.to_coq name ^^ FArgs.to_coq fargs
           ^^ Name.to_coq_list_or_empty typ_vars (fun typ_vars ->
@@ -3385,6 +3808,7 @@ let rec to_coq (fargs : FArgs.t) (defs : t list) : SmartPrint.t =
                  | IncludeValue | IncludeProjectedValue ->
                      nest (braces binder)
                  | IncludeType -> nest (parens binder))
+          ^^ assumption_arguments
           ^^
           (match (kind, typ) with
           | IncludeValue, Some typ -> !^":" ^^ Type.to_coq None None typ

@@ -34,12 +34,13 @@ Module State.
       m :=
         fun (a : Set) => T.(State_T_signature.t) -> a * T.(State_T_signature.t);
       _return :
-        forall {a : Set},
-        a -> T.(State_T_signature.t) -> a * T.(State_T_signature.t);
+        forall {a : Set} ,
+          a -> T.(State_T_signature.t) -> a * T.(State_T_signature.t);
       map :
-        forall {a b : Set},
-        (a -> b) -> (T.(State_T_signature.t) -> a * T.(State_T_signature.t)) ->
-        T.(State_T_signature.t) -> b * T.(State_T_signature.t);
+        forall {a b : Set} ,
+          (a -> b) ->
+          (T.(State_T_signature.t) -> a * T.(State_T_signature.t)) ->
+          T.(State_T_signature.t) -> b * T.(State_T_signature.t);
     }.
   End State_result.
   Definition State_result `{_fargs : FArgs} := @State_result.signature _ _.

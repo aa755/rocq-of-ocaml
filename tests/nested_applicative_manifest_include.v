@@ -22,8 +22,8 @@ Module Base.
       Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
         t := t;
         make :
-          forall {A : Set},
-          Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> t A;
+          forall {A : Set} ,
+            Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> t A;
       }.
     End Inner_result.
     Definition Inner_result `{_fargs : FArgs} := @Inner_result.signature _ _.
@@ -62,8 +62,8 @@ Module Base.
       Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
         t := t;
         make :
-          forall {A : Set},
-          Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> t A;
+          forall {A : Set} ,
+            Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> t A;
       }.
     End Wrapped_result.
     Definition Wrapped_result `{_fargs : FArgs} := @Wrapped_result.signature _
@@ -107,12 +107,12 @@ Module Outer.
     Record signature `{_fargs : FArgs} {Nested_t : Set -> Set} : Set := {
       Nested_t := Nested_t;
       Nested_make :
-        forall {A : Set},
-        Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> Nested_t A;
+        forall {A : Set} ,
+          Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> Nested_t A;
       Nested_duplicate :
-        forall {A : Set},
-        Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A ->
-        Nested_t A * Nested_t A;
+        forall {A : Set} ,
+          Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A ->
+          Nested_t A * Nested_t A;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.

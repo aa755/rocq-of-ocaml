@@ -20,7 +20,9 @@ Definition recover_any (value : int) : int :=
       let '_ := _exception_value in
       0).
 
-Definition recover_only {A : Set} (f_value : unit -> A) : sum A string :=
+Definition recover_only {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (sum A string)}
+  (f_value : unit -> A) : sum A string :=
   try_with (fun _ => ((inl (f_value tt)) : sum A string))
     (fun _exception_value =>
       match _exception_value with
@@ -29,5 +31,5 @@ Definition recover_only {A : Set} (f_value : unit -> A) : sum A string :=
           let message := cast string payload in
           ((inr message) : sum A string)
         else
-          RocqOfOCaml.Basics.Stdlib.raise (Build_extensible tag _ payload)
+          (@RocqOfOCaml.Basics.unreachable (sum A string) _)
       end).

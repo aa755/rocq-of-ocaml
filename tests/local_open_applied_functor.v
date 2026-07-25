@@ -22,7 +22,7 @@ Module Operations.
   Module Operations_result.
     Record signature `{_fargs : FArgs} : Set := {
       get : int;
-      op_letdollar : forall {A B : Set}, A -> (A -> B) -> B;
+      op_letdollar : forall {A B : Set} , A -> (A -> B) -> B;
     }.
   End Operations_result.
   Definition Operations_result `{_fargs : FArgs} := @Operations_result.signature

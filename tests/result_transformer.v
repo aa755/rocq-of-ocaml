@@ -5,8 +5,8 @@ Require Import RocqOfOCaml.Settings.
 Module MONAD.
   Record signature {t : Set -> Set} : Set := {
     t := t;
-    _return : forall {a : Set}, a -> t a;
-    bind : forall {a b : Set}, t a -> (a -> t b) -> t b;
+    _return : forall {a : Set} , a -> t a;
+    bind : forall {a b : Set} , t a -> (a -> t b) -> t b;
   }.
 End MONAD.
 Definition MONAD := @MONAD.signature.
@@ -101,13 +101,13 @@ Module Result.
           fun (a : Set) =>
             Inner_parameter.(MONAD.t) (sum a T.(Result_T_signature.t));
         _return :
-          forall {A : Set},
-          A -> Inner_parameter.(MONAD.t) (sum A T.(Result_T_signature.t));
+          forall {A : Set} ,
+            A -> Inner_parameter.(MONAD.t) (sum A T.(Result_T_signature.t));
         bind :
-          forall {A B : Set},
-          Inner_parameter.(MONAD.t) (sum A T.(Result_T_signature.t)) ->
-          (A -> Inner_parameter.(MONAD.t) (sum B T.(Result_T_signature.t))) ->
-          Inner_parameter.(MONAD.t) (sum B T.(Result_T_signature.t));
+          forall {A B : Set} ,
+            Inner_parameter.(MONAD.t) (sum A T.(Result_T_signature.t)) ->
+            (A -> Inner_parameter.(MONAD.t) (sum B T.(Result_T_signature.t))) ->
+            Inner_parameter.(MONAD.t) (sum B T.(Result_T_signature.t));
       }.
     End Trans_result.
     Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _ _

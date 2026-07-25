@@ -19,8 +19,8 @@ Definition Int_order := Int_order.module.
 Definition Int_map := RocqOfOCaml.OCamlMap.Make Int_order.
 
 Definition example : Int_map.(RocqOfOCaml.OCamlMap.S.t) string :=
-  Int_map.(RocqOfOCaml.OCamlMap.S.add) 1 "one"
-    (Int_map.(RocqOfOCaml.OCamlMap.S.add) 2 "two"
+  (Int_map.(RocqOfOCaml.OCamlMap.S.add) 1 "one")
+    ((Int_map.(RocqOfOCaml.OCamlMap.S.add) 2 "two")
       Int_map.(RocqOfOCaml.OCamlMap.S.empty)).
 
 Definition lookup_one : option string :=
@@ -203,138 +203,143 @@ Module Extended.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
       key := Ord.(RocqOfOCaml.OCamlMap.OrderedType.t);
       t := t;
-      empty : forall {a : Set}, t a;
+      empty : forall {a : Set} , t a;
       add :
-        forall {a : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t a -> t a;
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t a -> t a;
       add_to_list :
-        forall {a : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t (list a) ->
-        t (list a);
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t (list a) ->
+          t (list a);
       update :
-        forall {a : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> (option a -> option a) ->
-        t a -> t a;
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> (option a -> option a) ->
+          t a -> t a;
       singleton :
-        forall {a : Set}, Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t a;
+        forall {a : Set} , Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t a;
       remove :
-        forall {a : Set}, Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> t a;
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> t a;
       merge :
-        forall {a b c : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> option a -> option b ->
-        option c) -> t a -> t b -> t c;
+        forall {a b c : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> option a -> option b ->
+          option c) -> t a -> t b -> t c;
       union :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> a -> option a) ->
-        t a -> t a -> t a;
-      cardinal : forall {a : Set}, t a -> int;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> a -> option a) ->
+          t a -> t a -> t a;
+      cardinal : forall {a : Set} , t a -> int;
       bindings :
-        forall {a : Set},
-        t a -> list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          t a -> list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       min_binding :
-        forall {a : Set}, t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set} , t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       min_binding_opt :
-        forall {a : Set},
-        t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       max_binding :
-        forall {a : Set}, t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set} , t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       max_binding_opt :
-        forall {a : Set},
-        t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       choose :
-        forall {a : Set}, t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set} , t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       choose_opt :
-        forall {a : Set},
-        t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       find :
-        forall {a : Set}, Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> a;
+        forall {a : Set} , Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> a;
       find_opt :
-        forall {a : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> option a;
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> option a;
       find_first :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       find_first_opt :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-        option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
+          option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       find_last :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       find_last_opt :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-        option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
+          option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       iter :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> unit) -> t a -> unit;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> unit) -> t a -> unit;
       fold :
-        forall {a acc : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> acc -> acc) -> t a ->
-        acc -> acc;
-      map : forall {a b : Set}, (a -> b) -> t a -> t b;
+        forall {a acc : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> acc -> acc) ->
+          t a -> acc -> acc;
+      map : forall {a b : Set} , (a -> b) -> t a -> t b;
       mapi :
-        forall {a b : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> b) -> t a -> t b;
+        forall {a b : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> b) -> t a -> t b;
       filter :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> t a;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> t a;
       filter_map :
-        forall {a b : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> option b) -> t a ->
-        t b;
+        forall {a b : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> option b) -> t a ->
+          t b;
       partition :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a ->
-        t a * t a;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a ->
+          t a * t a;
       split :
-        forall {a : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> t a * option a * t a;
-      is_empty : forall {a : Set}, t a -> bool;
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a ->
+          t a * option a * t a;
+      is_empty : forall {a : Set} , t a -> bool;
       mem :
-        forall {a : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> bool;
-      equal : forall {a : Set}, (a -> a -> bool) -> t a -> t a -> bool;
-      compare : forall {a : Set}, (a -> a -> int) -> t a -> t a -> int;
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> bool;
+      equal : forall {a : Set} , (a -> a -> bool) -> t a -> t a -> bool;
+      compare : forall {a : Set} , (a -> a -> int) -> t a -> t a -> int;
       for_all :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> bool;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> bool;
       _exists :
-        forall {a : Set},
-        (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> bool;
+        forall {a : Set} ,
+          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> bool;
       to_list :
-        forall {a : Set},
-        t a -> list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          t a -> list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       of_list :
-        forall {a : Set},
-        list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a) -> t a;
+        forall {a : Set} ,
+          list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a) -> t a;
       to_seq :
-        forall {a : Set},
-        t a -> unit ->
-        RocqOfOCaml.OCamlSeq.node (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          t a -> unit ->
+          RocqOfOCaml.OCamlSeq.node
+            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       to_rev_seq :
-        forall {a : Set},
-        t a -> unit ->
-        RocqOfOCaml.OCamlSeq.node (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          t a -> unit ->
+          RocqOfOCaml.OCamlSeq.node
+            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       to_seq_from :
-        forall {a : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> unit ->
-        RocqOfOCaml.OCamlSeq.node (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> unit ->
+          RocqOfOCaml.OCamlSeq.node
+            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       add_seq :
-        forall {a : Set},
-        (unit ->
-        RocqOfOCaml.OCamlSeq.node (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a))
-        -> t a -> t a;
+        forall {a : Set} ,
+          (unit ->
+          RocqOfOCaml.OCamlSeq.node
+            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)) -> t a -> t a;
       of_seq :
-        forall {a : Set},
-        (unit ->
-        RocqOfOCaml.OCamlSeq.node (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a))
-        -> t a;
+        forall {a : Set} ,
+          (unit ->
+          RocqOfOCaml.OCamlSeq.node
+            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)) -> t a;
       lookup :
-        forall {A : Set},
-        Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t A -> option A;
+        forall {A : Set} ,
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t A -> option A;
     }.
   End Extended_result.
   Definition Extended_result `{_fargs : FArgs} := @Extended_result.signature _

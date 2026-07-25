@@ -19,7 +19,7 @@ Definition recover {A : Set} (function_parameter : sum int A) : int :=
 Module RETURN.
   Record signature {t : Set -> Set} : Set := {
     t := t;
-    _return : forall {a : Set}, a -> t a;
+    _return : forall {a : Set} , a -> t a;
   }.
 End RETURN.
 Definition RETURN := @RETURN.signature.

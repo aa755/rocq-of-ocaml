@@ -73,7 +73,22 @@ Fixpoint recursive_module_fix {A : Set} (f : A -> A)
     `{guard : GeneralRecursionGuard} {struct guard} : A :=
   f (recursive_module_fix f).
 
-Parameter assert : forall (A : Set), bool -> A.
+Class Unreachable (T : Type) := {
+  unreachable : T;
+}.
+
+Class Unimplemented (T : Type) := {
+  unimplemented : T;
+}.
+
+Arguments unreachable {T} {_}.
+Arguments unimplemented {T} {_}.
+
+(** Keep a section variable as an explicit parameter of a generated
+    definition even when Rocq can erase every computational use of it. *)
+Definition with_context {Context : Type}
+    (_ : Context) (Result : Set) : Set :=
+  Result.
 
 Axiom cast : forall {A : Set} (B : Set), A -> B.
 
@@ -96,8 +111,6 @@ Ltac rewrite_cast_exists_eval_eq vs :=
   end.
 
 Parameter unreachable_gadt_branch : forall {A : Set}, A.
-
-Parameter unreachable : forall {A : Set}, A.
 
 (** Mutation of a record field. *)
 Parameter set_record_field : forall {A B : Set}, A -> string -> B -> unit.
@@ -205,12 +218,17 @@ End Z.
     possible. *)
 Module Stdlib.
   (** OCaml exception-raising operations are partial in the pure Gallina
-      embedding.  Well-defined executions never observe these values. *)
-  Definition failwith {a : Set} (_ : string) : a := axiom.
+      embedding.  Each translated use must supply a type-specific
+      [Unreachable] instance and prove separately that execution cannot use
+      its value. *)
+  Definition failwith {a : Set} `{Unreachable a} (_ : string) : a :=
+    unreachable.
 
-  Definition invalid_arg {a : Set} (_ : string) : a := axiom.
+  Definition invalid_arg {a : Set} `{Unreachable a} (_ : string) : a :=
+    unreachable.
 
-  Definition raise {a : Set} (_ : extensible_type) : a := axiom.
+  Definition raise {a : Set} `{Unreachable a} (_ : extensible_type) : a :=
+    unreachable.
 
   (** OCaml implements these operations by inspecting runtime
       representations.  Parametric Gallina code cannot reproduce that

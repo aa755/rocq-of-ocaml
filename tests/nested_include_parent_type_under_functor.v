@@ -30,7 +30,7 @@ Module Make.
     Record signature `{_fargs : FArgs} : Set := {
       t := fun (a : Set) => M.(S.t) a;
       List_t := fun (a : Set) => list a;
-      List_lift : forall {a : Set}, M.(S.t) a -> M.(S.t) a;
+      List_lift : forall {a : Set} , M.(S.t) a -> M.(S.t) a;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
@@ -98,9 +98,9 @@ Module Outer.
         t := fun (a : Set) => Inner.(S.t) (sum a T.(Outer_T_signature._error));
         List_t := fun (a : Set) => list a;
         List_lift :
-          forall {a : Set},
-          Inner.(S.t) (sum a T.(Outer_T_signature._error)) ->
-          Inner.(S.t) (sum a T.(Outer_T_signature._error));
+          forall {a : Set} ,
+            Inner.(S.t) (sum a T.(Outer_T_signature._error)) ->
+            Inner.(S.t) (sum a T.(Outer_T_signature._error));
       }.
     End Trans_result.
     Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _ _

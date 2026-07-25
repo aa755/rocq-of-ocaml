@@ -11,7 +11,7 @@ type item =
   | ModuleWithSignature of item list
   | TypExistential of Name.t
   | TypSynonym of Name.t * Type.t
-  | Value of Name.t * Type.t
+  | Value of Name.t * Type.t * Exp.assumption_requirement list
   | ModuleWithTypeParams of Name.t * Type.t * (Name.t * int) list
 
 type t = { items : item list; typ_params : (Name.t * int) list }
@@ -25,6 +25,82 @@ type let_in_type = (Name.t list * let_in_type_target) list
 let type_of_let_in_type_target = function
   | LocalConstructor target -> Type.Variable target
   | ManifestConstructor target -> target
+
+let add_assumption_requirements (specs : Exp.assumption_call_specs)
+    (signature : t) : t =
+  let rec add_to_item = function
+    | Value (name, typ, existing_requirements) ->
+        let requirements =
+          match Name.Map.find_opt name specs with
+          | None -> existing_requirements
+          | Some
+              {
+                Exp.result_typ = declared_result;
+                requirements = inferred_requirements;
+              } ->
+              let actual_result = Type.arrow_result typ in
+              let substitutions =
+                match
+                  Type.match_variables ~relaxed_constructors:true
+                    declared_result actual_result
+                with
+                | Some substitutions -> substitutions
+                | None -> []
+              in
+              existing_requirements
+              @ List.map
+                  (fun (kind, required_typ) ->
+                    ( kind,
+                      if compare required_typ declared_result = 0 then
+                        actual_result
+                      else
+                        Type.subst_variables substitutions required_typ ))
+                  inferred_requirements
+              |> Exp.sort_uniq_assumptions
+        in
+        Value (name, typ, requirements)
+    | ModuleWithSignature items ->
+        ModuleWithSignature (List.map add_to_item items)
+    | item -> item
+  in
+  { signature with items = List.map add_to_item signature.items }
+
+let assumption_call_specs (signature : t) : Exp.assumption_call_specs =
+  let rec collect specs = function
+    | Value (name, typ, (_ :: _ as requirements)) ->
+        Name.Map.add name
+          {
+            Exp.result_typ = Type.arrow_result typ;
+            requirements;
+          }
+          specs
+    | ModuleWithSignature items -> List.fold_left collect specs items
+    | _ -> specs
+  in
+  List.fold_left collect Name.Map.empty signature.items
+
+let partial_value_requirements (prefix : string list) (name : string)
+    (typ : Type.t) : Exp.assumption_requirement list =
+  let path = String.concat "." (prefix @ [ name ]) in
+  if Exp.is_partial_operation_name path then
+    [ (Exp.Unreachable, Type.arrow_result typ) ]
+  else if
+    path = "Map.of_yojson"
+    || Exp.string_ends_with path ".Map.of_yojson"
+  then
+    let rec first_type_parameter = function
+      | Type.ForallTyps ((parameter, _) :: _, _) ->
+          Some (Type.Variable parameter)
+      | Type.ForallTyps ([], body) -> first_type_parameter body
+      | _ -> None
+    in
+    Option.to_list
+      (Option.map
+         (fun element -> (Exp.Unreachable, element))
+         (first_type_parameter typ))
+    @ [ (Exp.Unreachable, Type.arrow_result typ) ]
+    |> Exp.sort_uniq_assumptions
+  else []
 
 let rec type_is_self_reference (name : Name.t) (typ : Type.t) : bool =
   match typ with
@@ -373,7 +449,13 @@ let rec items_of_types_signature
         let typ_with_let_in_type =
           apply_let_in_type let_in_type typ
         in
-        return (Value (prefixed_name, typ_with_let_in_type), let_in_type)
+        let requirements =
+          partial_value_requirements prefix (Ident.name ident)
+            typ_with_let_in_type
+        in
+        return
+          ( Value (prefixed_name, typ_with_let_in_type, requirements),
+            let_in_type )
     | Sig_type (ident, { type_manifest = None; _ }, _, _) ->
         let* name, let_in_type = add_new_let_in_type prefix let_in_type ident in
         return (TypExistential name, let_in_type)
@@ -1298,7 +1380,7 @@ let of_types_signature ?(abstract_functor_applications = false)
     | Module (_, typ)
     | ModuleWithTypeParams (_, typ, _)
     | TypSynonym (_, typ)
-    | Value (_, typ) ->
+    | Value (_, typ, _) ->
         Type.typ_args_of_typ typ
     | ModuleWithSignature items ->
         items
@@ -1472,8 +1554,16 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
                 let typ_with_let_in_type =
                   apply_let_in_type let_in_type typ
                 in
+                let requirements =
+                  partial_value_requirements prefix (Ident.name val_id)
+                    typ_with_let_in_type
+                in
                 return
-                  ([ Value (prefixed_name, typ_with_let_in_type) ], let_in_type))))
+                  ( [
+                      Value
+                        (prefixed_name, typ_with_let_in_type, requirements);
+                    ],
+                    let_in_type ))))
   in
   match items with
   | [] -> return []
@@ -1516,8 +1606,41 @@ let rec to_coq_item (signature_item : item) : SmartPrint.t =
       nest (Name.to_coq name ^^ !^":=" ^^ Name.to_coq name ^-^ !^";")
   | TypSynonym (name, typ) ->
       nest (Name.to_coq name ^^ !^":=" ^^ Type.to_coq None None typ ^-^ !^";")
-  | Value (name, typ) ->
-      nest (Name.to_coq name ^^ !^":" ^^ Type.to_coq None None typ ^-^ !^";")
+  | Value (name, typ, requirements) ->
+      let rec collect_type_parameters parameters typ =
+        match typ with
+        | Type.ForallTyps (new_parameters, body) ->
+            collect_type_parameters (parameters @ new_parameters) body
+        | body -> (parameters, body)
+      in
+      let parameters, body = collect_type_parameters [] typ in
+      let requirement_binders =
+        requirements
+        |> List.mapi (fun index requirement ->
+               !^"`"
+               ^-^ braces
+                    (nest
+                       (!^(Printf.sprintf "_rocq_assumption_%d" index)
+                       ^^ !^":"
+                       ^^ Type.to_coq None None
+                            (Exp.assumption_class_type requirement))))
+      in
+      let rendered_type =
+        match (parameters, requirement_binders) with
+        | [], [] -> Type.to_coq None None body
+        | _ ->
+            nest
+              (!^"forall"
+              ^^
+              (match parameters with
+              | [] -> empty
+              | _ ->
+                  Type.to_coq_grouped_typ_params Type.Braces parameters)
+              ^^ separate space requirement_binders
+              ^-^ !^","
+              ^^ Type.to_coq None None body)
+      in
+      nest (Name.to_coq name ^^ !^":" ^^ rendered_type ^-^ !^";")
 
 and to_coq_items (items : item list) : SmartPrint.t list =
   List.map to_coq_item items

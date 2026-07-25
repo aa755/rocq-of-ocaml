@@ -5,7 +5,7 @@ Require Import RocqOfOCaml.Settings.
 Module S.
   Record signature {t : Set -> Set -> Set} : Set := {
     t := t;
-    _return : forall {_error a : Set}, a -> t a _error;
+    _return : forall {_error a : Set} , a -> t a _error;
   }.
 End S.
 Definition S := @S.signature.
@@ -38,11 +38,11 @@ Module Make.
   Module Make_result.
     Record signature `{_fargs : FArgs} : Set := {
       t := fun (a _error : Set) => M.(S.t) a _error;
-      _return : forall {_error a : Set}, a -> M.(S.t) a _error;
+      _return : forall {_error a : Set} , a -> M.(S.t) a _error;
       Option_t := fun (a : Set) => option a;
       Option_iterM :
-        forall {_error a : Set},
-        option a -> (a -> M.(S.t) unit _error) -> M.(S.t) unit _error;
+        forall {_error a : Set} ,
+          option a -> (a -> M.(S.t) unit _error) -> M.(S.t) unit _error;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.

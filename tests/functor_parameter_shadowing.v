@@ -5,7 +5,7 @@ Require Import RocqOfOCaml.Settings.
 Module MONAD.
   Record signature {t : Set -> Set} : Set := {
     t := t;
-    _return : forall {a : Set}, a -> t a;
+    _return : forall {a : Set} , a -> t a;
   }.
 End MONAD.
 Definition MONAD := @MONAD.signature.
@@ -32,9 +32,9 @@ Module Enrich.
   Module Enrich_result.
     Record signature `{_fargs : FArgs} : Set := {
       t := fun (a : Set) => M.(MONAD.t) a;
-      _return : forall {A : Set}, A -> M.(MONAD.t) A;
-      map : forall {A B : Set}, (A -> B) -> A -> M.(MONAD.t) B;
-      Nested_identity : forall {A : Set}, A -> A;
+      _return : forall {A : Set} , A -> M.(MONAD.t) A;
+      map : forall {A B : Set} , (A -> B) -> A -> M.(MONAD.t) B;
+      Nested_identity : forall {A : Set} , A -> A;
     }.
   End Enrich_result.
   Definition Enrich_result `{_fargs : FArgs} := @Enrich_result.signature _ _.
@@ -79,7 +79,7 @@ Module Trans.
   Module Trans_result.
     Record signature `{_fargs : FArgs} : Set := {
       Inner : Enrich_alias.Enrich_result (_fargs := Inner_fargs);
-      lift : forall {A : Set}, A -> Inner_parameter.(MONAD.t) A;
+      lift : forall {A : Set} , A -> Inner_parameter.(MONAD.t) A;
     }.
   End Trans_result.
   Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _.

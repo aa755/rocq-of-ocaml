@@ -25,25 +25,27 @@ Definition cons {A : Set} (a_value : A) (l_value : list A) : t A :=
 Definition singleton {A : Set} (a_value : A) : t A :=
   Datatypes.cons a_value nil.
 
-Definition hd {A : Set} (function_parameter : t A) : A :=
+Definition hd {A : Set} `{Unreachable A} (function_parameter : t A) : A :=
   match function_parameter with
   | [] => RocqOfOCaml.Basics.Stdlib.failwith "hd"
   | Datatypes.cons a_value _ => a_value
   end.
 
-Definition tl {A : Set} (function_parameter : t A) : list A :=
+Definition tl {A : Set} `{Unreachable (list A)}
+  (function_parameter : t A) : list A :=
   match function_parameter with
   | [] => RocqOfOCaml.Basics.Stdlib.failwith "tl"
   | Datatypes.cons _ l_value => l_value
   end.
 
 #[bypass_check(guard)]
-Definition nth {A : Set} (l_value : t A) (n_value : int) : A :=
+Definition nth {A : Set} `{Unreachable A}
+  (l_value : t A) (n_value : int) : A :=
   if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "List.nth"
   else
-    let fix nth_aux {B : Set} (l_value : t B) (n_value : int) {struct l_value}
-      : B :=
+    let fix nth_aux (l_value : t A) (n_value : int) {struct l_value}
+      : A :=
       match l_value with
       | [] => RocqOfOCaml.Basics.Stdlib.failwith "nth"
       | Datatypes.cons a_value l_value =>
@@ -55,7 +57,8 @@ Definition nth {A : Set} (l_value : t A) (n_value : int) : A :=
     nth_aux l_value n_value.
 
 #[bypass_check(guard)]
-Definition nth_opt {A : Set} (l_value : t A) (n_value : int) : option A :=
+Definition nth_opt {A : Set} `{Unreachable (option A)}
+  (l_value : t A) (n_value : int) : option A :=
   if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "List.nth"
   else
@@ -98,7 +101,8 @@ Fixpoint init_shadow1 {A : Set}
       Datatypes.cons r1
         (Datatypes.cons r2 (init_shadow1 (Z.add i_value 2) last f_value)).
 
-Definition init {A : Set} (len : int) (f_value : int -> A) : t A :=
+Definition init {A : Set} `{Unreachable (t A)}
+  (len : int) (f_value : int -> A) : t A :=
   if RocqOfOCaml.Basics.Stdlib.lt len 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "List.init"
   else
@@ -201,7 +205,8 @@ Fixpoint fold_right {A B : Set}
   end.
 
 #[bypass_check(guard)]
-Fixpoint map2 {A B C : Set} (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
+Fixpoint map2 {A B C : Set} `{Unreachable (t C)}
+  (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
   {struct l1} : t C :=
   match (l1, l2) with
   | ([], []) => nil
@@ -218,7 +223,8 @@ Fixpoint map2 {A B C : Set} (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
   end.
 
 #[bypass_check(guard)]
-Definition rev_map2 {A B C : Set} (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
+Definition rev_map2 {A B C : Set} `{Unreachable (t C)}
+  (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
   : t C :=
   let fix rmap2_f (accu : t C) (l1 : t A) (l2 : t B) {struct accu} : t C :=
     match (l1, l2) with
@@ -230,7 +236,8 @@ Definition rev_map2 {A B C : Set} (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
   rmap2_f nil l1 l2.
 
 #[bypass_check(guard)]
-Fixpoint iter2 {A B C : Set} (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
+Fixpoint iter2 {A B C : Set} `{Unreachable unit}
+  (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
   {struct l1} : unit :=
   match (l1, l2) with
   | ([], []) => tt
@@ -241,7 +248,7 @@ Fixpoint iter2 {A B C : Set} (f_value : A -> B -> C) (l1 : t A) (l2 : t B)
   end.
 
 #[bypass_check(guard)]
-Fixpoint fold_left2 {A B C : Set}
+Fixpoint fold_left2 {A B C : Set} `{Unreachable A}
   (f_value : A -> B -> C -> A) (accu : A) (l1 : t B) (l2 : t C) {struct l1}
   : A :=
   match (l1, l2) with
@@ -252,7 +259,7 @@ Fixpoint fold_left2 {A B C : Set}
   end.
 
 #[bypass_check(guard)]
-Fixpoint fold_right2 {A B C : Set}
+Fixpoint fold_right2 {A B C : Set} `{Unreachable C}
   (f_value : A -> B -> C -> C) (l1 : t A) (l2 : t B) (accu : C) {struct l1}
   : C :=
   match (l1, l2) with
@@ -281,7 +288,8 @@ Fixpoint _exists {A : Set} (p_value : A -> bool) (function_parameter : t A)
   end.
 
 #[bypass_check(guard)]
-Fixpoint for_all2 {A B : Set} (p_value : A -> B -> bool) (l1 : t A) (l2 : t B)
+Fixpoint for_all2 {A B : Set} `{Unreachable bool}
+  (p_value : A -> B -> bool) (l1 : t A) (l2 : t B)
   {struct l1} : bool :=
   match (l1, l2) with
   | ([], []) => true
@@ -291,7 +299,8 @@ Fixpoint for_all2 {A B : Set} (p_value : A -> B -> bool) (l1 : t A) (l2 : t B)
   end.
 
 #[bypass_check(guard)]
-Fixpoint _exists2 {A B : Set} (p_value : A -> B -> bool) (l1 : t A) (l2 : t B)
+Fixpoint _exists2 {A B : Set} `{Unreachable bool}
+  (p_value : A -> B -> bool) (l1 : t A) (l2 : t B)
   {struct l1} : bool :=
   match (l1, l2) with
   | ([], []) => false
@@ -323,7 +332,8 @@ Fixpoint memq {A : Set} (x_value : A) (function_parameter : t A)
   end.
 
 #[bypass_check(guard)]
-Fixpoint assoc {A B : Set} (x_value : A) (function_parameter : t (A * B))
+Fixpoint assoc {A B : Set} `{Unreachable B}
+  (x_value : A) (function_parameter : t (A * B))
   {struct function_parameter} : B :=
   match function_parameter with
   | [] => RocqOfOCaml.Basics.Stdlib.raise (Build_extensible "Not_found" unit tt)
@@ -353,7 +363,8 @@ Fixpoint assoc_opt {A B : Set} (x_value : A) (function_parameter : t (A * B))
   end.
 
 #[bypass_check(guard)]
-Fixpoint assq {A B : Set} (x_value : A) (function_parameter : t (A * B))
+Fixpoint assq {A B : Set} `{Unreachable B}
+  (x_value : A) (function_parameter : t (A * B))
   {struct function_parameter} : B :=
   match function_parameter with
   | [] => RocqOfOCaml.Basics.Stdlib.raise (Build_extensible "Not_found" unit tt)
@@ -426,7 +437,8 @@ Fixpoint remove_assq {A B : Set} (x_value : A) (function_parameter : t (A * B))
   end.
 
 #[bypass_check(guard)]
-Fixpoint find {A : Set} (p_value : A -> bool) (function_parameter : t A)
+Fixpoint find {A : Set} `{Unreachable A}
+  (p_value : A -> bool) (function_parameter : t A)
   {struct function_parameter} : A :=
   match function_parameter with
   | [] => RocqOfOCaml.Basics.Stdlib.raise (Build_extensible "Not_found" unit tt)
@@ -666,7 +678,8 @@ Fixpoint split {A B : Set} (function_parameter : t (A * B))
   end.
 
 #[bypass_check(guard)]
-Fixpoint combine {A B : Set} (l1 : t A) (l2 : t B) {struct l1} : t (A * B) :=
+Fixpoint combine {A B : Set} `{Unreachable (t (A * B))}
+  (l1 : t A) (l2 : t B) {struct l1} : t (A * B) :=
   match (l1, l2) with
   | ([], []) => nil
   | (Datatypes.cons a1 l1, Datatypes.cons a2 l2) =>

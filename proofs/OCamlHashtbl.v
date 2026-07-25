@@ -36,7 +36,7 @@ Module S.
     copy : forall {a : Set}, t a -> t a;
     add : forall {a : Set}, t a -> key -> a -> unit;
     remove : forall {a : Set}, t a -> key -> unit;
-    find : forall {a : Set}, t a -> key -> a;
+    find : forall {a : Set} `{Unreachable a}, t a -> key -> a;
     find_opt : forall {a : Set}, t a -> key -> option a;
     find_all : forall {a : Set}, t a -> key -> list a;
     replace : forall {a : Set}, t a -> key -> a -> unit;
@@ -111,7 +111,7 @@ Definition Make {key : Set} (hashed : HashedType (t := key)) :
      S.copy _ table := table;
      S.add _ _ _ _ := tt;
      S.remove _ _ _ := tt;
-     S.find _ table wanted :=
+     S.find _ _ table wanted :=
        match assoc_find_opt equal wanted table with
        | Some value => value
        | None => unreachable

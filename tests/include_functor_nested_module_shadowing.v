@@ -28,7 +28,7 @@ Module F.
     Record signature `{_fargs : FArgs} : Set := {
       Map_key := X.(F_X_signature.t);
       Map_t := fun (a : Set) => list (Map_key * a);
-      Map_empty : forall {A : Set}, list A;
+      Map_empty : forall {A : Set} , list A;
     }.
   End F_result.
   Definition F_result `{_fargs : FArgs} := @F_result.signature _ _.

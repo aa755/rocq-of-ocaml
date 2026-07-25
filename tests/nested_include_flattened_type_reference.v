@@ -29,8 +29,8 @@ Module Make.
   Module Make_result.
     Record signature `{_fargs : FArgs} : Set := {
       Option_t := fun (a : Set) => option a;
-      Option_none : forall {A : Set}, option A;
-      Option_return : forall {A : Set}, A -> option A;
+      Option_none : forall {A : Set} , option A;
+      Option_return : forall {A : Set} , A -> option A;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.

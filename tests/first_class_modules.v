@@ -21,7 +21,7 @@ Module S.
       subset : t -> t -> bool;
       iter : (elt -> unit) -> t -> unit;
       map : (elt -> elt) -> t -> t;
-      fold : forall {a : Set}, (elt -> a -> a) -> t -> a -> a;
+      fold : forall {a : Set} , (elt -> a -> a) -> t -> a -> a;
       for_all : (elt -> bool) -> t -> bool;
       _exists : (elt -> bool) -> t -> bool;
       filter : (elt -> bool) -> t -> t;
@@ -212,9 +212,9 @@ Module MAP.
   Record signature {key : Set} {t : Set -> Set} : Set := {
     key := key;
     t := t;
-    empty : forall {a : Set}, t a;
-    is_empty : forall {a : Set}, t a -> bool;
-    mem : forall {a : Set}, key -> t a -> bool;
+    empty : forall {a : Set} , t a;
+    is_empty : forall {a : Set} , t a -> bool;
+    mem : forall {a : Set} , key -> t a -> bool;
   }.
 End MAP.
 Definition MAP := @MAP.signature.

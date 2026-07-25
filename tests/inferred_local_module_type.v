@@ -20,7 +20,7 @@ Module Outer.
   Module Local.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
       t := t;
-      inject : forall {a : Set}, X.(Input.t) -> a -> t a;
+      inject : forall {a : Set} , X.(Input.t) -> a -> t a;
     }.
   End Local.
   Definition Local `{_fargs : FArgs} := @Local.signature _ _.
