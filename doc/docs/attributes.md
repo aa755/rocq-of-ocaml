@@ -558,6 +558,20 @@ We use the concept of shape to find the name of a signature for Rocq.
 ```
 Indeed, by default, we only compare signatures based on the names of their fields. With the `[@rocq_precise_signature]` we also use a heuristic to distinguish the types of the values.
 
+## rocq.partial
+
+The `[@rocq.partial]` attribute marks a recursive definition whose source
+evaluation may diverge. Such a definition must be translated to an explicit
+partial computation type, and that effect must be propagated through strict
+callers and exported signatures.
+
+The translator currently recognizes this annotation but rejects it with a
+source-located error because this effect propagation is not implemented yet.
+It never turns possibly non-terminating recursion into an unchecked Gallina
+`Fixpoint`.
+
+The underscore spelling `[@rocq_partial]` is also accepted.
+
 ## rocq_struct
 For recursive definitions, we can force the name of the parameter on which we do structural recursion using the attribute `[@rocq_struct "name"]`. This has the same effect as the `{struct name}` keyword in Rocq. For example, we translate:
 ```ocaml
@@ -576,6 +590,40 @@ Fixpoint length {A : Set} (l : list A) (accumulator : Z) {struct accumulator}
   end.
 ```
 which is invalid in Rocq as the decreasing argument is `l`.
+
+## rocq.wf
+
+The `[@rocq.wf]` attribute marks a recursive definition as total by a
+well-founded argument that Rocq's structural guard checker cannot establish.
+For example:
+
+```ocaml
+let[@rocq.wf] rec gcd left right =
+  if right = 0 then left else gcd right (left mod right)
+```
+
+The current implementation emits an abstract `nat`-valued measure, a
+`Program Fixpoint`, and admitted decrease and well-foundedness obligations:
+
+```rocq
+Parameter _rocq_measure_gcd : Z -> Z -> nat.
+
+Program Fixpoint gcd (left right : Z)
+    {measure (@_rocq_measure_gcd left right)} : Z :=
+  if ... then left else gcd right (Z.modulo left right).
+Admit Obligations.
+```
+
+This is an explicit temporary trust boundary. The generated measure and every
+admitted obligation must be replaced before relying on the definition in a
+sound development. The translator emits a source-located warning for it.
+
+This initial implementation supports one top-level recursive function per
+annotated group. Local and mutually recursive well-founded definitions are
+rejected. The attribute cannot be combined with `[@rocq_struct]` or
+`[@rocq_axiom_with_reason]`.
+
+The underscore spelling `[@rocq_wf]` is also accepted.
 
 ## rocq_tag_gadt
 We use this tag in order to generate GADTs with a closer semantics to OCaml. Using this tag we translate the following code:

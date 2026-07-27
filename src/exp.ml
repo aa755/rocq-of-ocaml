@@ -34,7 +34,13 @@ module Header = struct
 end
 
 module Definition = struct
-  type 'a t = { is_rec : Recursivity.t; cases : (Header.t * 'a) list }
+  type recursion_strategy = Structural | WellFounded
+
+  type 'a t = {
+    is_rec : Recursivity.t;
+    recursion_strategy : recursion_strategy;
+    cases : (Header.t * 'a) list;
+  }
 end
 
 type match_existential_cast = {
@@ -2630,18 +2636,67 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
         true
     | _ -> false
   in
-  let* destructuring_cases =
+  let* cases_with_attributes =
     cases
+    |> Monad.List.map (fun case ->
+           let* attributes = Attribute.of_attributes case.vb_attributes in
+           return (case, attributes))
+  in
+  let find_annotated predicate =
+    List.find_opt
+      (fun (_, attributes) -> predicate attributes)
+      cases_with_attributes
+  in
+  let well_founded_case = find_annotated Attribute.has_well_founded in
+  let partial_case = find_annotated Attribute.has_partial in
+  let* recursion_strategy =
+    match (well_founded_case, partial_case) with
+    | Some (case, _), Some _ ->
+        set_loc case.vb_pat.pat_loc
+          (raise Definition.Structural Unexpected
+             "A recursive group cannot be both @rocq.wf and @rocq.partial.")
+    | _, Some (case, _) ->
+        set_loc case.vb_pat.pat_loc
+          (raise Definition.Structural NotSupported
+             "@rocq.partial requires Delay effect propagation through callers, \
+              which is not implemented yet.")
+    | Some (case, attributes), None ->
+        set_loc case.vb_pat.pat_loc
+          (if not is_rec then
+             raise Definition.Structural Unexpected
+               "@rocq.wf can only annotate a recursive definition."
+           else if not at_top_level then
+             raise Definition.Structural NotSupported
+               "Local @rocq.wf definitions are not supported yet because \
+                Program Fixpoint is a top-level command."
+           else if List.length cases <> 1 then
+             raise Definition.Structural NotSupported
+               "Mutually recursive @rocq.wf definitions are not supported yet."
+           else if Attribute.get_structs attributes <> [] then
+             raise Definition.Structural Unexpected
+               "@rocq.wf cannot be combined with @rocq_struct."
+           else if Attribute.has_axiom_with_reason attributes then
+             raise Definition.Structural Unexpected
+               "@rocq.wf cannot be combined with @rocq_axiom_with_reason."
+           else
+             let* () =
+               warn
+                 "@rocq.wf introduces an abstract measure and admitted Program \
+                  Fixpoint obligations; replace both before relying on this \
+                  definition."
+             in
+             return Definition.WellFounded)
+    | None, None -> return Definition.Structural
+  in
+  let* destructuring_cases =
+    cases_with_attributes
     |> Monad.List.concat_map
-         (fun { vb_pat; vb_expr; vb_attributes; _ } ->
+         (fun ({ vb_pat; vb_expr; _ }, attributes) ->
            if is_simple_binding_pattern vb_pat then return []
            else
              set_env vb_expr.exp_env
                (set_loc vb_pat.pat_loc
-                  (let* attributes =
-                     Attribute.of_attributes vb_attributes
-                   in
-                   let* pattern = Pattern.of_pattern vb_pat in
+                  (let* pattern = Pattern.of_pattern vb_pat in
                    match pattern with
                    | None | Some Pattern.Any -> return []
                    | Some pattern ->
@@ -2703,12 +2758,11 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
   in
   let simple_cases =
     List.filter
-      (fun { vb_pat; _ } -> is_simple_binding_pattern vb_pat)
-      cases
+      (fun ({ vb_pat; _ }, _) -> is_simple_binding_pattern vb_pat)
+      cases_with_attributes
   in
   simple_cases
-  |> Monad.List.filter_map (fun { vb_pat = p; vb_expr; vb_attributes; _ } ->
-         Attribute.of_attributes vb_attributes >>= fun attributes ->
+  |> Monad.List.filter_map (fun ({ vb_pat = p; vb_expr; _ }, attributes) ->
          let is_axiom = Attribute.has_axiom_with_reason attributes in
          let source_structs = Attribute.get_structs attributes in
          set_env vb_expr.exp_env
@@ -2769,28 +2823,34 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                     in
                     let* configuration = get_configuration in
                     let structs, instance_args =
-                      match (source_structs, is_rec) with
-                      | [], true
-                        when Configuration.is_without_guard_checking
-                               configuration ->
-                          let guard =
-                            Name.of_string_raw "_rocq_guard"
-                          in
-                          ( [ Name.to_string guard ],
-                            [
-                              ( guard,
-                                Type.Apply
-                                  ( MixedPath.of_name
-                                      (Name.of_string_raw
-                                         "GeneralRecursionGuard"),
-                                    [] ) );
-                            ] )
-                      | _ -> (source_structs, [])
+                      match recursion_strategy with
+                      | Definition.WellFounded -> ([], [])
+                      | Definition.Structural -> (
+                          match (source_structs, is_rec) with
+                          | [], true
+                            when Configuration.is_without_guard_checking
+                                   configuration ->
+                              let guard =
+                                Name.of_string_raw "_rocq_guard"
+                              in
+                              ( [ Name.to_string guard ],
+                                [
+                                  ( guard,
+                                    Type.Apply
+                                      ( MixedPath.of_name
+                                          (Name.of_string_raw
+                                             "GeneralRecursionGuard"),
+                                        [] ) );
+                                ] )
+                          | _ -> (source_structs, []))
                     in
                     let* _ =
-                      match structs with
-                      | [] -> return ()
-                      | _ :: _ -> use_unsafe_fixpoint
+                      match recursion_strategy with
+                      | Definition.WellFounded -> return ()
+                      | Definition.Structural -> (
+                          match structs with
+                          | [] -> return ()
+                          | _ :: _ -> use_unsafe_fixpoint)
                     in
                     let header =
                       {
@@ -2806,8 +2866,12 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                     in
                     return (Some (header, e_body)) )))
   >>= fun cases ->
-  let _ = at_top_level in
-  return { Definition.is_rec; cases = cases @ destructuring_cases }
+  return
+    {
+      Definition.is_rec;
+      recursion_strategy;
+      cases = cases @ destructuring_cases;
+    }
 
 and of_let (typ_vars : Name.t Name.Map.t) (is_rec : Asttypes.rec_flag)
     (cases : Typedtree.value_binding list) (e2 : t) : t Monad.t =

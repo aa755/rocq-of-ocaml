@@ -54,6 +54,13 @@ mechanisms below.
 Remove blanket `Unset Guard Checking` and classify every recursive
 definition before translating it.
 
+The translator now accepts an explicit `[@rocq.wf]` strategy for a single
+top-level recursive function. It emits an abstract measure and
+`Program Fixpoint`, warns about the resulting trust boundary, and admits the
+generated obligations. It also recognizes `[@rocq.partial]` but rejects it
+until the partial computation effect can be propagated through callers and
+signatures.
+
 ### Actually terminating
 
 - Emit ordinary `Fixpoint` definitions for structurally recursive functions.

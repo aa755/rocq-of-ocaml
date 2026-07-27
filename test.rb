@@ -190,7 +190,10 @@ class NegativeTest < Test
   end
 
   def normalize(output)
-    output.force_encoding('utf-8').gsub(/\e\[[0-9;]*m/, '')
+    output
+      .force_encoding('utf-8')
+      .gsub(/\e\[[0-9;]*m/, '')
+      .gsub(/[ \t]+(?=\n|\z)/, '')
   end
 
   def rocq_of_ocaml_error
@@ -211,7 +214,7 @@ class NegativeTest < Test
 
   def reference
     FileUtils.touch snapshot_name unless File.exist?(snapshot_name)
-    File.read(snapshot_name, :encoding => 'utf-8')
+    normalize(File.read(snapshot_name, :encoding => 'utf-8'))
   end
 
   def update
@@ -285,6 +288,16 @@ class AssumptionWarningTest < Test
   end
 end
 
+class WellFoundedWarningTest < Test
+  def check
+    output, error, status = Open3.capture3(*rocq_of_ocaml_cmd)
+    status.success? &&
+      error.include?('@rocq.wf introduces an abstract measure') &&
+      output.include?('Program Fixpoint gcd') &&
+      output.include?('Admit Obligations.')
+  end
+end
+
 class Tests
   def initialize(source_files)
     @tests =
@@ -352,6 +365,7 @@ tests.rocq
 negative_tests = Tests.new([
   NegativeTest.new('tests/errors/legacy_attribute.ml'),
   NegativeTest.new('tests/errors/lazy_pattern.ml'),
+  NegativeTest.new('tests/errors/partial_recursion.ml'),
   NegativeTest.new('tests/errors/unsupported_expressions.ml'),
   NegativeTest.new('tests/errors/unsupported_signature.mli'),
   NegativeTest.new('tests/errors/unknown_attribute_json.ml', true)
@@ -362,6 +376,7 @@ cli_tests = Tests.new([
   DefaultOutputTest.new('tests/top_level_definition.ml'),
   DefaultOutputTest.new('tests/functor.mli'),
   AssumptionWarningTest.new('tests/assert.ml'),
+  WellFoundedWarningTest.new('tests/well_founded_recursion.ml'),
   NoInputTest.new
 ])
 cli_tests.check

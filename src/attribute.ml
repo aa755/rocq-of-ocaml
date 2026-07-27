@@ -12,12 +12,14 @@ type t =
   | MatchGadtWithResult
   | MatchWithDefault
   | MutualAsNotation
+  | Partial
   | Phantom
   | PlainModule
   | Struct of string
   | TaggedGadt
   | TaggedMatch
   | TypAnnotation
+  | WellFounded
 
 let of_payload_string (error_message : string) (id : string)
     (payload : Parsetree.payload) : string Monad.t =
@@ -186,6 +188,7 @@ let of_attributes (attributes : Typedtree.attributes) : t list Monad.t =
             | "rocq_match_gadt_with_result" -> return (Some MatchGadtWithResult)
             | "rocq_match_with_default" -> return (Some MatchWithDefault)
             | "rocq_mutual_as_notation" -> return (Some MutualAsNotation)
+            | "rocq_partial" | "rocq.partial" -> return (Some Partial)
             | "rocq_plain_module" -> return (Some PlainModule)
             | "rocq_phantom" -> return (Some Phantom)
             | "rocq_struct" ->
@@ -198,8 +201,12 @@ let of_attributes (attributes : Typedtree.attributes) : t list Monad.t =
                 return (Some (Struct payload))
             | "rocq_tagged_match" -> return (Some TaggedMatch)
             | "rocq_type_annotation" -> return (Some TypAnnotation)
+            | "rocq_wf" | "rocq.wf" -> return (Some WellFounded)
             | _ ->
-                if Util.String.starts_with "rocq_" id then
+                if
+                  Util.String.starts_with "rocq_" id
+                  || Util.String.starts_with "rocq." id
+                then
                   raise None Unexpected "Unknown attribute starting with @rocq_."
                 else return None))
 
@@ -247,6 +254,9 @@ let has_phantom (attributes : t list) : bool =
 let has_plain_module (attributes : t list) : bool =
   attributes |> List.exists (function PlainModule -> true | _ -> false)
 
+let has_partial (attributes : t list) : bool =
+  attributes |> List.exists (function Partial -> true | _ -> false)
+
 let has_tagged_match (attributes : t list) : bool =
   attributes |> List.exists (function TaggedMatch -> true | _ -> false)
 
@@ -267,3 +277,6 @@ let get_structs (attributes : t list) : string list =
 
 let has_typ_annotation (attributes : t list) : bool =
   attributes |> List.exists (function TypAnnotation -> true | _ -> false)
+
+let has_well_founded (attributes : t list) : bool =
+  attributes |> List.exists (function WellFounded -> true | _ -> false)

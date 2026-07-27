@@ -77,6 +77,46 @@ module Value = struct
             ^^ parens (Type.to_coq None None typ)
           else Type.to_coq None None typ
         in
+        let is_well_founded =
+          match definition.Exp.Definition.recursion_strategy with
+          | Exp.Definition.Structural -> false
+          | Exp.Definition.WellFounded -> true
+        in
+        let measure_name (header : Exp.Header.t) : Name.t =
+          Name.of_string_raw
+            ("_rocq_measure_" ^ Name.to_string header.Exp.Header.name)
+        in
+        let measure_arguments (header : Exp.Header.t) : Name.t list =
+          (match definition_fargs with
+          | Some _ -> [ Name.of_string_raw "_fargs" ]
+          | None -> [])
+          @ List.map fst header.Exp.Header.typ_vars
+          @ List.map fst header.Exp.Header.instance_args
+          @ List.map fst header.Exp.Header.args
+        in
+        let measure_application (header : Exp.Header.t) : SmartPrint.t =
+          parens
+            (nest
+               ((!^"@" ^-^ Name.to_coq (measure_name header))
+               ^^ separate space
+                    (List.map Name.to_coq (measure_arguments header))))
+        in
+        let measure_declaration (header : Exp.Header.t) : SmartPrint.t =
+          let has_arguments =
+            Option.is_some definition_fargs
+            || header.Exp.Header.typ_vars <> []
+            || header.Exp.Header.instance_args <> []
+            || header.Exp.Header.args <> []
+          in
+          nest
+            (!^"Parameter" ^^ Name.to_coq (measure_name header) ^^ !^":"
+            ^^
+            (if has_arguments then
+               !^"forall" ^^ FArgs.to_coq definition_fargs
+               ^^ to_coq_typ_vars header ^^ to_coq_args header ^-^ !^","
+             else empty)
+            ^^ !^"nat" ^-^ !^".")
+        in
         let assumption_declarations =
           concrete_assumptions
           |> List.mapi (fun index requirement ->
@@ -119,6 +159,15 @@ module Value = struct
                              ^^ double_quotes (!^"'" ^-^ Name.to_coq name)
                              ^-^ !^".")));
                 ])
+          (* The abstract measure for explicitly well-founded recursion. *)
+          @ (if not is_well_founded then []
+             else
+               match cases with
+               | [ (header, _) ] -> [ measure_declaration header ]
+               | _ ->
+                   failwith
+                     "well-founded recursion must contain exactly one concrete \
+                      definition")
           (* The definitions *)
           @ (cases
             |> List.mapi (fun index (header, e) ->
@@ -135,18 +184,25 @@ module Value = struct
                      ((if not definition.Exp.Definition.is_rec then
                        !^"Definition"
                       else if first_case then
-                       (if use_unsafe_fixpoints then
-                        !^"#[bypass_check(guard)]" ^^ newline
-                       else empty)
-                       ^^
-                       if definition.Exp.Definition.is_rec then !^"Fixpoint"
-                       else !^"Definition"
+                       if is_well_founded then !^"Program Fixpoint"
+                       else
+                         (if use_unsafe_fixpoints then
+                          !^"#[bypass_check(guard)]" ^^ newline
+                         else empty)
+                         ^^
+                         if definition.Exp.Definition.is_rec then !^"Fixpoint"
+                         else !^"Definition"
                       else !^"with")
                      ^^
                      let { Exp.Header.name; typ; _ } = header in
                      Name.to_coq name ^^ FArgs.to_coq definition_fargs
                      ^^ to_coq_typ_vars header ^^ to_coq_args header
-                     ^^ Exp.Header.to_coq_structs header
+                     ^^
+                     (if is_well_founded then
+                        braces
+                          (nest
+                             (!^"measure" ^^ measure_application header))
+                      else Exp.Header.to_coq_structs header)
                      ^^ !^": " ^-^ definition_type typ ^-^ !^" :="
                      ^^ group
                           (separate space
@@ -159,7 +215,14 @@ module Value = struct
                                       to_coq_notation_synonym name typ_vars
                                     else empty))
                           ^^ Exp.to_coq false e)
-                     ^-^ if last_case then !^"." else empty)))
+                     ^-^
+                     (if last_case then
+                        !^"."
+                        ^^
+                        (if is_well_founded then
+                           newline ^^ newline ^^ !^"Admit Obligations."
+                         else empty)
+                      else empty))))
           (* Define the notations *)
           @ snd
               (List.fold_left
@@ -283,6 +346,19 @@ type t =
   | Documentation of string * t list
   | Error of string
   | ErrorMessage of string * t
+
+let rec uses_well_founded_recursion (definitions : t list) : bool =
+  definitions
+  |> List.exists (function
+       | Value { Value.definition; _ } -> (
+           match definition.Exp.Definition.recursion_strategy with
+           | Exp.Definition.Structural -> false
+           | Exp.Definition.WellFounded -> true)
+       | Module (_, _, definitions, _) | Documentation (_, definitions) ->
+           uses_well_founded_recursion definitions
+       | ErrorMessage (_, definition) ->
+           uses_well_founded_recursion [ definition ]
+       | _ -> false)
 
 let value_defines (name : Name.t) ({ Value.definition; _ } : Value.t) : bool =
   definition.Exp.Definition.cases
@@ -679,7 +755,11 @@ let top_level_evaluation (e : expression) : t list Monad.t =
      in
      let definition =
        Exp.add_assumption_instance_args
-         { Exp.Definition.is_rec = false; cases = [ (header, Some e) ] }
+         {
+           Exp.Definition.is_rec = false;
+           recursion_strategy = Exp.Definition.Structural;
+           cases = [ (header, Some e) ];
+         }
      in
      let documentation = "Init function; without side-effects in Rocq" in
      return
