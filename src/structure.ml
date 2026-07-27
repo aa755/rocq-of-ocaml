@@ -42,6 +42,198 @@ module Value = struct
       ^^ separate space (List.map Name.to_coq (List.map fst typ_vars))
       ^^ !^"in" ^^ newline)
 
+  (** Encode a mutually recursive well-founded group as one dependent [Fix]
+      over a sum of the functions' argument tuples. *)
+  let render_well_founded_mutual (definition_name : string)
+      (fargs : FArgs.t) (cases : (Exp.Header.t * Exp.t) list) :
+      SmartPrint.t =
+    if
+      List.exists
+        (fun ({ Exp.Header.typ_vars; instance_args; is_notation; _ }, _) ->
+          typ_vars <> [] || instance_args <> [] || is_notation)
+        cases
+    then
+      failwith
+        "mutual well-founded recursion with polymorphic, instance, or \
+         notation parameters is not supported"
+    else
+      let tuple_type (arguments : (Name.t * Type.t) list) : Type.t =
+        match List.map snd arguments with
+        | [] ->
+            Type.Apply
+              (MixedPath.of_name (Name.of_string_raw "unit"), [])
+        | [ typ ] -> typ
+        | typs -> Type.Tuple typs
+      in
+      let tuple_value (arguments : (Name.t * Type.t) list) : SmartPrint.t =
+        match List.map (fun (name, _) -> Name.to_coq name) arguments with
+        | [] -> !^"tt"
+        | [ value ] -> value
+        | values -> parens (separate (!^"," ^^ space) values)
+      in
+      let rec sum_type = function
+        | [] -> failwith "empty mutual well-founded definition"
+        | [ typ ] -> typ
+        | typ :: typs ->
+            Type.Apply
+              ( MixedPath.of_name (Name.of_string_raw "sum"),
+                [ (typ, false); (sum_type typs, false) ] )
+      in
+      let call_types =
+        List.map (fun (header, _) -> tuple_type header.Exp.Header.args) cases
+      in
+      let call_type = sum_type call_types in
+      let inject index value =
+        let rec go current remaining =
+          if current = 0 then
+            if remaining = 1 then value else parens (!^"inl" ^^ value)
+          else parens (!^"inr" ^^ go (current - 1) (remaining - 1))
+        in
+        go index (List.length cases)
+      in
+      let pattern index state =
+        let rec go current remaining =
+          if current = 0 then
+            if remaining = 1 then Name.to_coq state
+            else !^"inl" ^^ Name.to_coq state
+          else !^"inr" ^^ parens (go (current - 1) (remaining - 1))
+        in
+        go index (List.length cases)
+      in
+      let render_arguments (header : Exp.Header.t) =
+        header.Exp.Header.args
+        |> List.map (fun (argument, argument_typ) ->
+               parens
+                 (nest
+                    (Name.to_coq argument ^^ !^":"
+                    ^^ Type.to_coq None None argument_typ)))
+        |> separate space
+      in
+      let state_name = Name.of_string_raw "_rocq_state" in
+      let call_name = Name.of_string_raw "_rocq_call" in
+      let recurse_name = Name.of_string_raw "_rocq_recurse" in
+      let measure_name = Name.of_string_raw "_rocq_measure" in
+      let first_name =
+        match cases with
+        | ({ Exp.Header.name; _ }, _) :: _ -> Name.to_string name
+        | [] -> "mutual"
+      in
+      let result_name =
+        Name.of_string_raw ("_rocq_mutual_result_" ^ first_name)
+      in
+      let dispatch_name =
+        Name.of_string_raw ("_rocq_mutual_dispatch_" ^ first_name)
+      in
+      let result_definition =
+        !^"Definition" ^^ Name.to_coq result_name
+        ^^ parens
+             (Name.to_coq call_name ^^ !^":"
+             ^^ Type.to_coq None None call_type)
+        ^^ !^":" ^^ !^"Set" ^^ !^":=" ^^ newline
+        ^^ indent
+             (!^"match" ^^ Name.to_coq call_name ^^ !^"with" ^^ newline
+             ^^ separate newline
+                  (cases
+                  |> List.mapi (fun index ({ Exp.Header.typ; _ }, _) ->
+                         !^"|" ^^ pattern index (Name.of_string_raw "_")
+                         ^^ !^"=>" ^^ Type.to_coq None None typ))
+             ^^ newline ^^ !^"end.")
+      in
+      let render_alias index (header : Exp.Header.t) =
+        !^"let" ^^ Name.to_coq header.Exp.Header.name
+        ^^ render_arguments header
+        ^^ !^":" ^^ Type.to_coq None None header.Exp.Header.typ
+        ^^ !^":=" ^^ Name.to_coq recurse_name
+        ^^ inject index (tuple_value header.Exp.Header.args)
+        ^^ !^"_" ^^ !^"in"
+      in
+      let render_branch index (header, body) =
+        let destruct_state inner =
+          match header.Exp.Header.args with
+          | [] -> inner
+          | [ (argument, _) ] ->
+              !^"let" ^^ Name.to_coq argument ^^ !^":="
+              ^^ Name.to_coq state_name ^^ !^"in" ^^ newline ^^ inner
+          | arguments ->
+              !^"let" ^^ !^"'" ^-^ tuple_value arguments ^^ !^":="
+              ^^ Name.to_coq state_name ^^ !^"in" ^^ newline ^^ inner
+        in
+        !^"|" ^^ pattern index state_name ^^ !^"=>" ^^ newline
+        ^^ indent
+             (destruct_state
+                (separate newline
+                   (cases
+                   |> List.mapi (fun alias_index (alias_header, _) ->
+                          render_alias alias_index alias_header))
+                ^^ newline ^^ Exp.to_coq false body))
+      in
+      let motive =
+        parens
+          (!^"fun" ^^ Name.to_coq call_name ^^ !^"=>" ^^ Name.to_coq result_name
+          ^^ Name.to_coq call_name)
+      in
+      let functional =
+        parens
+          (nest
+             (!^"fun" ^^ Name.to_coq call_name
+             ^^ Name.to_coq recurse_name ^^ !^"=>" ^^ newline
+             ^^ indent
+                  (!^"match" ^^ Name.to_coq call_name ^^ !^"as"
+                  ^^ Name.to_coq call_name ^^ !^"return"
+                  ^^ Name.to_coq result_name ^^ Name.to_coq call_name
+                  ^^ !^"with" ^^ newline
+                  ^^ separate newline (List.mapi render_branch cases)
+                  ^^ newline ^^ !^"end")))
+      in
+      let measure_context =
+        match fargs with
+        | None -> Name.to_coq call_name
+        | Some _ -> parens (!^"_fargs" ^^ !^"," ^^ Name.to_coq call_name)
+      in
+      let dispatch_definition =
+        !^"Program Definition" ^^ Name.to_coq dispatch_name
+        ^^ FArgs.to_coq fargs
+        ^^ parens
+             (Name.to_coq call_name ^^ !^":"
+             ^^ Type.to_coq None None call_type)
+        ^^ !^":" ^^ Name.to_coq result_name ^^ Name.to_coq call_name
+        ^^ !^":=" ^^ newline
+        ^^ indent
+             (!^"let" ^^ Name.to_coq measure_name
+             ^^ parens
+                  (Name.to_coq call_name ^^ !^":"
+                  ^^ Type.to_coq None None call_type)
+             ^^ !^":" ^^ !^"nat" ^^ !^":="
+             ^^ !^"RocqOfOCaml.Basics.well_founded_measure"
+             ^^ !^("\"" ^ String.escaped definition_name ^ "\"")
+             ^^ measure_context ^^ !^"in" ^^ newline
+             ^^ !^"@Fix"
+             ^^ Type.to_coq None (Some Type.Context.Apply) call_type
+             ^^ parens
+                  (!^"ltof"
+                  ^^ Type.to_coq None (Some Type.Context.Apply) call_type
+                  ^^ Name.to_coq measure_name)
+             ^^ parens
+                  (!^"well_founded_ltof"
+                  ^^ Type.to_coq None (Some Type.Context.Apply) call_type
+                  ^^ Name.to_coq measure_name)
+             ^^ motive ^^ functional ^^ Name.to_coq call_name)
+        ^-^ !^"." ^^ newline ^^ newline ^^ !^"Admit Obligations."
+      in
+      let wrappers =
+        cases
+        |> List.mapi (fun index (header, _) ->
+               !^"Definition" ^^ Name.to_coq header.Exp.Header.name
+               ^^ FArgs.to_coq fargs ^^ render_arguments header
+               ^^ !^":" ^^ Type.to_coq None None header.Exp.Header.typ
+               ^^ !^":=" ^^ Name.to_coq dispatch_name
+               ^^ inject index (tuple_value header.Exp.Header.args)
+               ^-^ !^".")
+        |> separate (newline ^^ newline)
+      in
+      result_definition ^^ newline ^^ newline
+      ^^ dispatch_definition ^^ newline ^^ newline ^^ wrappers
+
   (** Pretty-print a value definition to Rocq. *)
   let to_coq (fargs : FArgs.t) (value : t) : SmartPrint.t =
     let { use_unsafe_fixpoints; definition } = value in
@@ -80,7 +272,18 @@ module Value = struct
         let is_well_founded =
           match definition.Exp.Definition.recursion_strategy with
           | Exp.Definition.Structural -> false
-          | Exp.Definition.WellFounded -> true
+          | Exp.Definition.WellFounded _ -> true
+        in
+        let well_founded_name =
+          match definition.Exp.Definition.recursion_strategy with
+          | Exp.Definition.Structural -> None
+          | Exp.Definition.WellFounded name -> Some name
+        in
+        let has_local_well_founded =
+          definition.Exp.Definition.cases
+          |> List.exists (function
+               | _, Some body -> Exp.has_well_founded_recursion body
+               | _, None -> false)
         in
         let measure_name (header : Exp.Header.t) : Name.t =
           Name.of_string_raw
@@ -132,6 +335,13 @@ module Value = struct
                   ^-^ !^"." ^^ newline ^^ !^"Admitted."))
         in
         let rendered_definitions =
+          match (well_founded_name, cases) with
+          | Some definition_name, _ :: _ :: _ ->
+              [
+                render_well_founded_mutual definition_name definition_fargs
+                  cases;
+              ]
+          | _ ->
           ((* The axiomatized definitions *)
            (axiom_cases
            |> List.map (fun header ->
@@ -182,9 +392,13 @@ module Value = struct
                    let free_vars_of_e = Exp.get_free_vars e in
                    nest
                      ((if not definition.Exp.Definition.is_rec then
-                       !^"Definition"
+                       if has_local_well_founded then
+                         !^"Program Definition"
+                       else !^"Definition"
                       else if first_case then
                        if is_well_founded then !^"Program Fixpoint"
+                       else if has_local_well_founded then
+                         !^"Program Fixpoint"
                        else
                          (if use_unsafe_fixpoints then
                           !^"#[bypass_check(guard)]" ^^ newline
@@ -219,7 +433,7 @@ module Value = struct
                      (if last_case then
                         !^"."
                         ^^
-                        (if is_well_founded then
+                        (if is_well_founded || has_local_well_founded then
                            newline ^^ newline ^^ !^"Admit Obligations."
                          else empty)
                       else empty))))
@@ -353,7 +567,12 @@ let rec uses_well_founded_recursion (definitions : t list) : bool =
        | Value { Value.definition; _ } -> (
            match definition.Exp.Definition.recursion_strategy with
            | Exp.Definition.Structural -> false
-           | Exp.Definition.WellFounded -> true)
+           | Exp.Definition.WellFounded _ -> true)
+           ||
+           (definition.Exp.Definition.cases
+           |> List.exists (function
+                | _, Some body -> Exp.has_well_founded_recursion body
+                | _, None -> false))
        | Module (_, _, definitions, _) | Documentation (_, definitions) ->
            uses_well_founded_recursion definitions
        | ErrorMessage (_, definition) ->
@@ -758,6 +977,7 @@ let top_level_evaluation (e : expression) : t list Monad.t =
          {
            Exp.Definition.is_rec = false;
            recursion_strategy = Exp.Definition.Structural;
+           term_environment = [];
            cases = [ (header, Some e) ];
          }
      in
@@ -2329,7 +2549,12 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
         has_enclosing_fargs || parameters <> []
       in
       let* structure =
-        of_structure ~has_functor_parameters source_structure
+        let translation =
+          of_structure ~has_functor_parameters source_structure
+        in
+        if has_functor_parameters then
+          push_term_environment [ "_fargs" ] translation
+        else translation
       in
       let* local_module_bindings =
         source_structure.str_items

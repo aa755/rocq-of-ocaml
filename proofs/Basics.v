@@ -63,6 +63,14 @@ Existing Class GeneralRecursionGuard.
 Global Instance default_general_recursion_guard : GeneralRecursionGuard :=
   general_recursion_guard.
 
+(** A name-indexed ranking function used by generated well-founded
+    definitions.  [Program] records each recursive call's decrease as a
+    separate proof obligation; the function alone makes no termination claim.
+    Including the lexical definition name and its captured environment lets
+    unrelated local recursive definitions use independent rankings. *)
+Parameter well_founded_measure :
+  forall {A : Set}, string -> A -> nat.
+
 (** OCaml accepts recursive modules when their initialization dependencies are
     safe.  Gallina has no corresponding module-level fixed point, so translated
     recursive modules use the same trusted guard-check bypass as general OCaml

@@ -45,6 +45,7 @@ module Context = struct
     configuration : Configuration.t;
     constructor_names : ConstructorNames.t;
     definition_path : string list;
+    term_environment : string list;
     env : Env.t;
     env_stack : EnvStack.t;
     included_path_aliases : IncludedPathAliases.t;
@@ -71,6 +72,7 @@ module Context = struct
       configuration;
       constructor_names;
       definition_path = [];
+      term_environment = [];
       env = initial_env;
       env_stack = [];
       included_path_aliases;
@@ -134,6 +136,7 @@ module Command = struct
         in
         Result.success documentation
     | GetDefinitionPath -> Result.success context.definition_path
+    | GetTermEnvironment -> Result.success context.term_environment
     | GetEnv -> Result.success context.env
     | GetEnvStack -> Result.success context.env_stack
     | GetIncludedPathAlias ident ->
@@ -322,6 +325,12 @@ module Wrapper = struct
           {
             context with
             definition_path = context.definition_path @ [ name ];
+          }
+    | TermEnvironmentPush names ->
+        interpret
+          {
+            context with
+            term_environment = names @ context.term_environment;
           }
     | EnvStackPush ->
         interpret { context with env_stack = context.env :: context.env_stack }

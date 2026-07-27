@@ -34,11 +34,14 @@ module Header = struct
 end
 
 module Definition = struct
-  type recursion_strategy = Structural | WellFounded
+  type recursion_strategy =
+    | Structural
+    | WellFounded of string
 
   type 'a t = {
     is_rec : Recursivity.t;
     recursion_strategy : recursion_strategy;
+    term_environment : Name.t list;
     cases : (Header.t * 'a) list;
   }
 end
@@ -824,6 +827,45 @@ let rec get_free_vars (e : t) : Name.Set.t =
   | ErrorMessage (e, _) -> get_free_vars e
   | Ltac _ -> Name.Set.empty
 
+(** Whether an expression contains a local well-founded recursive definition.
+    The enclosing top-level command must use [Program] so that proof holes in
+    the term-level [Fix] become obligations. *)
+let rec has_well_founded_recursion (e : t) : bool =
+  let any es = List.exists has_well_founded_recursion es in
+  match e with
+  | Constant _ | Variable _ | Error _ | ErrorTyp _ | Ltac _ -> false
+  | Tuple es | Constructor (_, _, es) | Assumption (_, _, es)
+  | ErrorArray es ->
+      any es
+  | ConstructorExtensible (_, _, e) | Return (_, e) | Function (_, _, e)
+  | Functions (_, e) | LetTyp (_, _, _, e) | LetModuleUnpack (_, _, e)
+  | Field (e, _) | ModulePack (_, e) | Functor (_, _, e) | Cast (e, _)
+  | TypAnnotation (e, _) | Assert (_, e) | RequiresAssumption (_, _, e)
+  | ErrorMessage (e, _) ->
+      has_well_founded_recursion e
+  | ConstructorVariant (_, None) -> false
+  | ConstructorVariant (_, Some (_, e)) -> has_well_founded_recursion e
+  | Apply (f, args) | SourceApply (f, args, _) ->
+      any (f :: List.filter_map (fun argument -> argument) args)
+  | InfixOperator (_, left, right) -> any [ left; right ]
+  | LetVar (_, _, _, value, body) -> any [ value; body ]
+  | LetFun (definition, body) ->
+      (match definition.Definition.recursion_strategy with
+      | Definition.WellFounded _ -> true
+      | Definition.Structural -> false)
+      || has_well_founded_recursion body
+      || any (List.filter_map snd definition.Definition.cases)
+  | Match (scrutinee, _, cases, _) ->
+      has_well_founded_recursion scrutinee
+      || any (List.map (fun (_, _, body) -> body) cases)
+  | MatchExtensible (scrutinee, _, cases) ->
+      has_well_founded_recursion scrutinee || any (List.map snd cases)
+  | MatchVariant (scrutinee, _, cases) ->
+      has_well_founded_recursion scrutinee || any (List.map snd cases)
+  | Record fields | Module (_, fields) ->
+      any (List.map (fun (_, _, value) -> value) fields)
+  | IfThenElse (condition, then_, else_) -> any [ condition; then_; else_ ]
+
 type assumption_requirement = assumption_kind * Type.t
 
 let compare_assumption_requirement : assumption_requirement -> assumption_requirement -> int =
@@ -1322,6 +1364,11 @@ let infer_projection_implicits (typ_vars : Name.t Name.Map.t)
   | _ -> return translated
 
 (** Import an OCaml expression. *)
+let names_bound_by_pattern (pattern : value general_pattern) :
+    Name.t list Monad.t =
+  Typedtree.pat_bound_idents_full pattern
+  |> Monad.List.map (fun (ident, _, _, _) -> Name.of_ident true ident)
+
 let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
     t Monad.t =
   set_env e.exp_env
@@ -1373,7 +1420,14 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               Constant.of_constant constant >>= fun constant ->
               return (Constant constant)
           | Texp_let (is_rec, cases, e2) ->
-              of_expression typ_vars e2 >>= fun e2 ->
+              let* bound_names =
+                cases
+                |> Monad.List.concat_map (fun { vb_pat; _ } ->
+                       names_bound_by_pattern vb_pat)
+              in
+              push_term_environment (List.map Name.to_string bound_names)
+                (of_expression typ_vars e2)
+              >>= fun e2 ->
               of_let typ_vars is_rec cases e2
           | Texp_function (params, body) ->
               let is_gadt_match =
@@ -1389,6 +1443,14 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               in
               let is_grab_existentials =
                 Attribute.has_grab_existentials attributes
+              in
+              let* parameter_names =
+                params
+                |> Monad.List.concat_map (fun { fp_kind; _ } ->
+                       match fp_kind with
+                       | Tparam_pat pattern
+                       | Tparam_optional_default (pattern, _) ->
+                           names_bound_by_pattern pattern)
               in
               let of_param body { fp_kind; _ } =
                 let of_pat pat =
@@ -1505,7 +1567,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               in
               let* body =
                 match body with
-                | Tfunction_body e -> of_expression typ_vars e
+                | Tfunction_body e ->
+                    push_term_environment
+                      (List.map Name.to_string parameter_names)
+                      (of_expression typ_vars e)
                 | Tfunction_cases
                     {
                       cases =
@@ -1539,7 +1604,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                             pat_extra) ->
                     let* x = Name.of_ident true x in
                     let* typ, _, _ = Type.of_typ_expr true typ_vars pat_type in
-                    of_expression typ_vars e >>= fun e ->
+                    push_term_environment
+                      (List.map Name.to_string (x :: parameter_names))
+                      (of_expression typ_vars e)
+                    >>= fun e ->
                     return (Function (x, Some typ, e))
                 | Tfunction_cases { cases; _ } ->
                     let* x, typ, e =
@@ -2624,7 +2692,7 @@ and open_cases (type pattern_kind) (typ_vars : Name.t Name.Map.t)
   in
   return (name, typ, e)
 
-and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
+and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
     (is_rec : Asttypes.rec_flag) (cases : value_binding list) :
     t option Definition.t Monad.t =
   let is_rec = Recursivity.of_rec_flag is_rec in
@@ -2694,13 +2762,6 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
           (if not is_rec then
              raise Definition.Structural Unexpected
                "@rocq.wf can only annotate a recursive definition."
-           else if not at_top_level then
-             raise Definition.Structural NotSupported
-               "Local @rocq.wf definitions are not supported yet because \
-                Program Fixpoint is a top-level command."
-           else if List.length cases <> 1 then
-             raise Definition.Structural NotSupported
-               "Mutually recursive @rocq.wf definitions are not supported yet."
            else if Attribute.get_structs attributes <> [] then
              raise Definition.Structural Unexpected
                "@rocq.wf cannot be combined with @rocq_struct."
@@ -2710,11 +2771,18 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
            else
              let* () =
                warn
-                 "@rocq.wf introduces an abstract measure and admitted Program \
-                  Fixpoint obligations; replace both before relying on this \
-                  definition."
+                 "@rocq.wf introduces an abstract measure and admitted \
+                  well-founded decrease obligations; replace both before \
+                  relying on this definition."
              in
-             return Definition.WellFounded)
+             let definition_name =
+               match source_binding_name case.vb_pat with
+               | Some name ->
+                   String.concat "."
+                     (enclosing_definition_path @ [ name ])
+               | None -> "anonymous"
+             in
+             return (Definition.WellFounded definition_name))
     | None, None -> return Definition.Structural
   in
   let* destructuring_cases =
@@ -2861,7 +2929,7 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                     let* configuration = get_configuration in
                     let structs, instance_args =
                       match recursion_strategy with
-                      | Definition.WellFounded -> ([], [])
+                      | Definition.WellFounded _ -> ([], [])
                       | Definition.Structural -> (
                           match (source_structs, is_rec) with
                           | [], true
@@ -2883,7 +2951,7 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                     in
                     let* _ =
                       match recursion_strategy with
-                      | Definition.WellFounded -> return ()
+                      | Definition.WellFounded _ -> return ()
                       | Definition.Structural -> (
                           match structs with
                           | [] -> return ()
@@ -2903,10 +2971,12 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                     in
                     return (Some (header, e_body)) )))
   >>= fun cases ->
+  let* term_environment = get_term_environment in
   return
     {
       Definition.is_rec;
       recursion_strategy;
+      term_environment = List.map Name.of_string_raw term_environment;
       cases = cases @ destructuring_cases;
     }
 
@@ -4086,6 +4156,10 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
           | None -> get_default ())
       | _ -> get_default ())
   | LetFun (def, e) ->
+      (match def.Definition.recursion_strategy with
+      | Definition.WellFounded definition_name ->
+          to_coq_well_founded_let paren definition_name def e
+      | Definition.Structural ->
       let is_mutual_fixpoint =
         def.Definition.is_rec && List.length def.Definition.cases > 1
       in
@@ -4134,7 +4208,7 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
                           | None -> !^"axiom"
                           | Some e -> to_coq false e)))
            ^^ mutual_fixpoint_selector
-           ^^ !^"in" ^^ newline ^^ to_coq false e)
+           ^^ !^"in" ^^ newline ^^ to_coq false e))
   | LetTyp (x, typ_args, typ, e) ->
       Pp.parens paren
       @@ nest
@@ -4364,6 +4438,134 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
   | ErrorMessage (e, error_message) ->
       group (Error.to_comment error_message ^^ newline ^^ to_coq paren e)
   | Ltac tac -> to_coq_ltac tac
+
+(** Render local well-founded recursion with the term-level kernel [Fix].
+    The enclosing [Program] command turns each proof hole passed to
+    [_rocq_recurse] into a decrease obligation in its branch context. *)
+and to_coq_well_founded_let (paren : bool) (definition_name : string)
+    (definition : t option Definition.t) (continuation : t) : SmartPrint.t =
+  match definition.Definition.cases with
+  | [ (header, Some body) ] ->
+      if header.Header.typ_vars <> [] || header.Header.instance_args <> [] then
+        failwith
+          "local well-founded recursion with polymorphic or instance \
+           parameters is not supported"
+      else
+        let { Header.name; args; typ; _ } = header in
+        let state_name = Name.of_string_raw "_rocq_state" in
+        let recurse_name = Name.of_string_raw "_rocq_recurse" in
+        let measure_name = Name.of_string_raw "_rocq_measure" in
+        let fix_name = Name.of_string_raw "_rocq_fix" in
+        let state_typ =
+          match List.map snd args with
+          | [] ->
+              Type.Apply
+                (MixedPath.of_name (Name.of_string_raw "unit"), [])
+          | [ typ ] -> typ
+          | typs -> Type.Tuple typs
+        in
+        let tuple values =
+          match values with
+          | [] -> !^"tt"
+          | [ value ] -> value
+          | _ -> parens (separate (!^"," ^^ space) values)
+        in
+        let state_value =
+          tuple (List.map (fun (argument, _) -> Name.to_coq argument) args)
+        in
+        let defined_names =
+          definition.Definition.cases
+          |> List.map (fun ({ Header.name; _ }, _) -> name)
+          |> Name.Set.of_list
+        in
+        let bound_arguments = args |> List.map fst |> Name.Set.of_list in
+        let captures =
+          Name.Set.diff
+            (Name.Set.of_list definition.Definition.term_environment)
+            (Name.Set.union defined_names bound_arguments)
+          |> Name.Set.elements
+        in
+        let measure_input =
+          tuple (List.map Name.to_coq captures @ [ Name.to_coq state_name ])
+        in
+        let destruct_state inner =
+          match args with
+          | [] -> inner
+          | [ (argument, _) ] ->
+              !^"let" ^^ Name.to_coq argument ^^ !^":="
+              ^^ Name.to_coq state_name ^^ !^"in" ^^ newline ^^ inner
+          | _ ->
+              !^"let" ^^ !^"'"
+              ^-^ tuple
+                    (List.map
+                       (fun (argument, _) -> Name.to_coq argument)
+                       args)
+              ^^ !^":=" ^^ Name.to_coq state_name ^^ !^"in" ^^ newline
+              ^^ inner
+        in
+        let rendered_arguments =
+          args
+          |> List.map (fun (argument, argument_typ) ->
+                 parens
+                   (nest
+                      (Name.to_coq argument ^^ !^":"
+                      ^^ Type.to_coq None None argument_typ)))
+          |> separate space
+        in
+        let recursive_alias =
+          !^"let" ^^ Name.to_coq name ^^ rendered_arguments
+          ^^ !^":" ^^ Type.to_coq None None typ ^^ !^":="
+          ^^ Name.to_coq recurse_name ^^ state_value ^^ !^"_"
+          ^^ !^"in" ^^ newline ^^ to_coq false body
+        in
+        let functional =
+          parens
+            (nest
+               (!^"fun" ^^ Name.to_coq state_name
+               ^^ Name.to_coq recurse_name ^^ !^"=>" ^^ newline
+               ^^ indent (destruct_state recursive_alias)))
+        in
+        let motive =
+          parens
+            (!^"fun" ^^ !^"_" ^^ !^"=>" ^^ Type.to_coq None None typ)
+        in
+        let measure_definition =
+          !^"let" ^^ Name.to_coq measure_name
+          ^^ parens
+               (Name.to_coq state_name ^^ !^":"
+               ^^ Type.to_coq None None state_typ)
+          ^^ !^":" ^^ !^"nat" ^^ !^":="
+          ^^ !^"RocqOfOCaml.Basics.well_founded_measure"
+          ^^ !^("\"" ^ String.escaped definition_name ^ "\"")
+          ^^ measure_input ^^ !^"in"
+        in
+        let fix_definition =
+          !^"let" ^^ Name.to_coq fix_name ^^ !^":="
+          ^^ !^"@Fix" ^^ Type.to_coq None (Some Type.Context.Apply) state_typ
+          ^^ parens
+               (!^"ltof"
+               ^^ Type.to_coq None (Some Type.Context.Apply) state_typ
+               ^^ Name.to_coq measure_name)
+          ^^ parens
+               (!^"well_founded_ltof"
+               ^^ Type.to_coq None (Some Type.Context.Apply) state_typ
+               ^^ Name.to_coq measure_name)
+          ^^ motive ^^ functional ^^ !^"in"
+        in
+        let public_definition =
+          !^"let" ^^ Name.to_coq name ^^ rendered_arguments
+          ^^ !^":" ^^ Type.to_coq None None typ ^^ !^":="
+          ^^ Name.to_coq fix_name ^^ state_value ^^ !^"in"
+        in
+        Pp.parens paren
+        @@ nest
+             (measure_definition ^^ newline
+             ^^ fix_definition ^^ newline
+             ^^ public_definition ^^ newline
+             ^^ to_coq false continuation)
+  | _ ->
+      failwith
+        "local well-founded recursion must contain one concrete definition"
 
 and to_coq_ltac (tac : ltac) : SmartPrint.t =
   !^"ltac:" ^-^ parens (to_coq_tac tac)

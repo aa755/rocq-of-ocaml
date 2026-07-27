@@ -5,13 +5,13 @@ From Stdlib Require Import Program.Wf.
 
 Module Arithmetic.
   Parameter _rocq_measure_gcd : forall (_left : int) (_right : int), nat.
-
+  
   Program Fixpoint gcd (_left : int) (_right : int)
     {measure (@_rocq_measure_gcd _left _right)} : int :=
     if equiv_decb _right 0 then
       _left
     else
       gcd _right (Z.rem _left _right).
-
+  
   Admit Obligations.
 End Arithmetic.

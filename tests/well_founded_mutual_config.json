@@ -1,0 +1,5 @@
+{
+  "recursion_strategies": [
+    ["tests/well_founded_mutual_config.ml", "first", "well_founded"]
+  ]
+}
