@@ -34,7 +34,7 @@ mechanisms below.
   `Unreachable` occurrence is unreachable, and that every `Unimplemented`
   occurrence is outside the executions covered by a correctness theorem.
 
-## Coinductive types
+## Coinductive types (partial computations implemented)
 
 - Model lazy, potentially infinite types such as OCaml's `Seq.t` using
   coinduction rather than unchecked recursion or an unconditional list
@@ -48,24 +48,34 @@ mechanisms below.
   and monadic traversal.
 - Treat consumers that may inspect an unbounded number of sequence elements
   as a termination issue; coinduction alone does not make them productive.
+- Recursive functions explicitly classified as `partial` now translate to
+  `Delay.t` or monadic `Resumption.t`. Their changed result types propagate
+  through calls, module signatures, includes, and synthesized functor results.
+- A `convergent` caller can recover the source result type using an explicit
+  convergence proof. The translator currently admits that proof obligation
+  and warns at its source definition.
+- The compatibility implementation of OCaml's general `Seq` operations still
+  uses guard-check bypasses. Replacing that library with a guarded
+  observational model remains necessary.
 
 ## Termination
 
 Remove blanket `Unset Guard Checking` and classify every recursive
 definition before translating it.
 
-The translator now accepts an explicit `[@rocq.wf]` strategy for a single
-top-level recursive function. It emits an abstract measure and
-`Program Fixpoint`, warns about the resulting trust boundary, and admits the
-generated obligations. It also recognizes `[@rocq.partial]` but rejects it
-until the partial computation effect can be propagated through callers and
-signatures.
+The translator accepts explicit `structural`, `well_founded`, `partial`, and
+`convergent` recursion strategies, supplied by an attribute or configuration.
+Unclassified recursion is emitted as an ordinary `Fixpoint`, leaving Rocq's
+guard checker to accept or reject it. Well-founded definitions use an abstract
+measure and `Program Fixpoint`; partial definitions use an explicit partial
+computation; convergent definitions introduce a convergence obligation.
 
 ### Actually terminating
 
-- Emit ordinary `Fixpoint` definitions for structurally recursive functions.
-- Use a well-founded definition, such as `Program Fixpoint` or `Equations`,
-  for recursion justified by a measure.
+- Ordinary `Fixpoint` definitions are emitted for structurally recursive
+  functions and checked by Rocq.
+- Top-level, local, and mutually recursive definitions can be translated with
+  `Program Fixpoint` using a well-founded measure.
 - Generate named decreasing obligations and warnings when automation cannot
   discharge them.
 - Cover project examples such as list traversal, bytecode scanning, bounded
@@ -82,8 +92,7 @@ signatures.
   accept them as total functions.
 - Include traversal of arbitrary infinite `Seq.t` values and lookup in
   malformed cyclic graph representations in this category.
-- Choose an explicit semantics for each such function: fuel, a delay or
-  partiality monad, coinductive interaction trees, or a small-step relation.
+- Explicitly classified partial functions use `Delay.t` or `Resumption.t`.
 - Warn whenever translation changes a possibly non-terminating function's
   interface or introduces a fuel/partiality boundary.
 - Do not use an unrestricted fixed point or a false decreasing obligation to
