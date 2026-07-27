@@ -1,0 +1,10 @@
+{
+  "recursion_strategies": [
+    [
+      "tests/partial_nested_monad_signature.ml",
+      "Make.Seq.sequence",
+      "partial",
+      1
+    ]
+  ]
+}

@@ -365,8 +365,6 @@ tests.rocq
 negative_tests = Tests.new([
   NegativeTest.new('tests/errors/legacy_attribute.ml'),
   NegativeTest.new('tests/errors/lazy_pattern.ml'),
-  NegativeTest.new('tests/errors/partial_recursion.ml'),
-  NegativeTest.new('tests/errors/partial_recursion_config.ml'),
   NegativeTest.new('tests/errors/unsupported_expressions.ml'),
   NegativeTest.new('tests/errors/unsupported_signature.mli'),
   NegativeTest.new('tests/errors/unknown_attribute_json.ml', true)

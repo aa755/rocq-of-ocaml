@@ -423,7 +423,7 @@ let apply_constructor_aliases (aliases : constructor_alias list) (typ : Type.t)
 
 let rec items_of_types_signature
     ?(abstract_functor_applications = false) ?(expand_aliases = false)
-    ?signature_path
+    ?signature_path ?partial_monad_manifest
     (prefix : string list)
     (let_in_type : let_in_type) (signature : Types.signature) :
     (item list * let_in_type) Monad.t =
@@ -437,6 +437,55 @@ let rec items_of_types_signature
         ModuleTyp.get_signature_concrete_manifest signature_path type_path
     | None -> return None
   in
+  let find_partial_monad_manifest () : Type.t option Monad.t =
+    let has_monad_operations =
+      signature
+      |> List.exists (function
+           | Types.Sig_value (ident, _, _) ->
+               let name = Ident.name ident in
+               name = ">>="
+               || name = "op_gtgteq"
+               || name = "bind"
+               || name = "let$"
+           | _ -> false)
+    in
+    if not has_monad_operations then return None
+    else
+    match
+      signature
+      |> List.find_opt (function
+           | Types.Sig_type (ident, { type_manifest = Some _; _ }, _, _)
+             when String.equal (Ident.name ident) "t" ->
+               true
+           | _ -> false)
+    with
+    | Some
+        (Types.Sig_type
+          ( _,
+            { type_manifest = Some manifest; type_params; _ },
+            _,
+            _ )) ->
+        let* parameters =
+          type_params
+          |> Monad.List.map Type.of_type_expr_variable
+        in
+        let* body =
+          Type.of_type_expr_without_free_vars manifest
+        in
+        let manifest =
+          Type.FunTyps (parameters, body)
+          |> apply_constructor_aliases constructor_aliases
+          |> apply_let_in_type let_in_type
+        in
+        return (Some manifest)
+    | Some _ | None -> return None
+  in
+  let* effective_partial_monad_manifest =
+    let* local_manifest = find_partial_monad_manifest () in
+    match local_manifest with
+    | Some _ as manifest -> return manifest
+    | None -> return partial_monad_manifest
+  in
   let of_types_signature_item (signature_item : Types.signature_item) :
       (item * let_in_type) Monad.t =
     match signature_item with
@@ -444,10 +493,40 @@ let rec items_of_types_signature
         let* prefixed_name =
           Name.of_strings true (prefix @ [ Ident.name ident ])
         in
-        let* typ = quantified_value_type ~expand_aliases val_type in
+        let* configuration = get_configuration in
+        let is_partial =
+          Configuration.has_recursion_strategy_suffix configuration
+            (prefix @ [ Ident.name ident ])
+            Configuration.RecursionStrategy.Partial
+        in
+        let partial_arity =
+          Configuration.recursion_strategy_arity_suffix configuration
+            (prefix @ [ Ident.name ident ])
+            Configuration.RecursionStrategy.Partial
+        in
+        let* typ =
+          quantified_value_type
+            ~expand_aliases:(expand_aliases && not is_partial)
+            val_type
+        in
         let typ = apply_constructor_aliases constructor_aliases typ in
         let typ_with_let_in_type =
           apply_let_in_type let_in_type typ
+        in
+        let* typ_with_let_in_type =
+          if is_partial then
+            return
+              (match effective_partial_monad_manifest with
+              | Some manifest -> (
+                  match
+                    Type.partialize_with_manifest ?arity:partial_arity manifest
+                      typ_with_let_in_type
+                  with
+                  | Some typ -> typ
+                  | None -> Type.partialize typ_with_let_in_type)
+              | None ->
+                  Type.partialize typ_with_let_in_type)
+          else return typ_with_let_in_type
         in
         let requirements =
           partial_value_requirements prefix (Ident.name ident)
@@ -1143,8 +1222,10 @@ let rec items_of_types_signature
                 let prefix = prefix @ [ Ident.name ident ] in
                 let* items, nested_let_in_type =
                   items_of_types_signature ~abstract_functor_applications
-                    ~expand_aliases ?signature_path prefix let_in_type
-                    signature
+                    ~expand_aliases ?signature_path
+                    ?partial_monad_manifest:
+                      effective_partial_monad_manifest
+                    prefix let_in_type signature
                 in
                 let nested_let_in_type =
                   nested_let_in_type
@@ -1299,7 +1380,9 @@ let rec items_of_types_signature
       let* item, let_in_type = of_types_signature_item item in
       let* items, let_in_type =
         items_of_types_signature ~abstract_functor_applications ~expand_aliases
-          ?signature_path prefix let_in_type items
+          ?signature_path
+          ?partial_monad_manifest:effective_partial_monad_manifest
+          prefix let_in_type items
       in
       return (item :: items, let_in_type)
 

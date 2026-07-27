@@ -1,0 +1,5 @@
+{
+  "recursion_strategies": [
+    ["tests/partial_monadic_recursion.ml", "Make.count_down", "partial", 1]
+  ]
+}

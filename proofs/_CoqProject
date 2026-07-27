@@ -2,6 +2,7 @@
 -arg -impredicative-set
 
 Basics.v
+Partial.v
 RocqOfOCaml.v
 Libraries.v
 List.v

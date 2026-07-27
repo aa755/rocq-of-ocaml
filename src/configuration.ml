@@ -53,12 +53,13 @@ module RenamingRule = struct
 end
 
 module RecursionStrategy = struct
-  type kind = WellFounded | Partial
+  type kind = WellFounded | Partial | Convergent
 
   type t = {
     source : string;
     definition : string;
     kind : kind;
+    arity : int option;
   }
 end
 
@@ -187,6 +188,59 @@ let get_recursion_strategy (configuration : t) (definition_path : string list) :
          configured = definition
          && filename_matches configuration.file_name source)
   |> Option.map (fun { RecursionStrategy.kind; _ } -> kind)
+
+let partial_definition_names (configuration : t) : string list =
+  configuration.recursion_strategies
+  |> List.filter_map
+       (fun { RecursionStrategy.definition; kind; _ } ->
+         if kind = RecursionStrategy.Partial then Some definition else None)
+
+let recursion_definition_suffix_matches (configured : string)
+    (definition_path : string list) : bool =
+  let requested = String.concat "." definition_path in
+  let last_two path =
+    match List.rev (String.split_on_char '.' path) with
+    | value :: module_ :: _ -> Some (module_, value)
+    | _ -> None
+  in
+  configured = requested
+  || String.ends_with ~suffix:("." ^ requested) configured
+  || String.ends_with ~suffix:("." ^ configured) requested
+  ||
+  match (last_two configured, last_two requested) with
+  | Some configured, Some requested -> configured = requested
+  | _ -> false
+
+let has_recursion_strategy_suffix (configuration : t)
+    (definition_path : string list) (kind : RecursionStrategy.kind) : bool =
+  configuration.recursion_strategies
+  |> List.exists
+       (fun
+         {
+           RecursionStrategy.definition;
+           kind = configured_kind;
+           _;
+         } ->
+         configured_kind = kind
+         && recursion_definition_suffix_matches definition definition_path)
+
+let recursion_strategy_arity_suffix (configuration : t)
+    (definition_path : string list) (kind : RecursionStrategy.kind) :
+    int option =
+  configuration.recursion_strategies
+  |> List.find_map
+       (fun
+         {
+           RecursionStrategy.definition;
+           kind = configured_kind;
+           arity;
+           _;
+         } ->
+         if
+           configured_kind = kind
+           && recursion_definition_suffix_matches definition definition_path
+         then arity
+         else None)
 
 let is_in_first_class_module_path_backlist (configuration : t) (path : Path.t) :
     bool =
@@ -463,9 +517,35 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
               { configuration with operator_infix = entry }
           | "recursion_strategies" ->
               let entry =
-                entry
-                |> get_string_triple_list "recursion_strategies"
-                |> List.map (fun (source, definition, strategy) ->
+                let error_message =
+                  "Expected recursion_strategies entries to contain a source, \
+                   qualified definition, strategy, and optional integer arity"
+                in
+                let entries =
+                  match entry with
+                  | `List entries -> entries
+                  | _ -> failwith error_message
+                in
+                entries
+                |> List.map (function
+                     | `List
+                         [
+                           `String source;
+                           `String definition;
+                           `String strategy;
+                         ] ->
+                         (source, definition, strategy, None)
+                     | `List
+                         [
+                           `String source;
+                           `String definition;
+                           `String strategy;
+                           `Int arity;
+                         ]
+                       when arity >= 0 ->
+                         (source, definition, strategy, Some arity)
+                     | _ -> failwith error_message)
+                |> List.map (fun (source, definition, strategy, arity) ->
                        if definition = "" then
                          failwith
                            "Expected a qualified definition name in \
@@ -475,12 +555,13 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                          | "well_founded" ->
                              RecursionStrategy.WellFounded
                          | "partial" -> RecursionStrategy.Partial
+                         | "convergent" -> RecursionStrategy.Convergent
                          | _ ->
                              failwith
-                               "Expected recursion strategy \"well_founded\" \
-                                or \"partial\""
+                               "Expected recursion strategy \"well_founded\", \
+                                \"partial\", or \"convergent\""
                        in
-                       { RecursionStrategy.source; definition; kind })
+                       { RecursionStrategy.source; definition; kind; arity })
               in
               { configuration with recursion_strategies = entry }
           | "renaming_rules" ->

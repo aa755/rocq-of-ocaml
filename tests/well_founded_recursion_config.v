@@ -7,7 +7,7 @@ Module Arithmetic.
   Parameter _rocq_measure_gcd : forall (_left : int) (_right : int), nat.
   
   Program Fixpoint gcd (_left : int) (_right : int)
-    {measure (@_rocq_measure_gcd _left _right)} : int :=
+    {measure (_rocq_measure_gcd _left _right)} : int :=
     if equiv_decb _right 0 then
       _left
     else

@@ -6,7 +6,7 @@ From Stdlib Require Import Program.Wf.
 Parameter _rocq_measure_gcd : forall (_left : int) (_right : int), nat.
 
 Program Fixpoint gcd (_left : int) (_right : int)
-  {measure (@_rocq_measure_gcd _left _right)} : int :=
+  {measure (_rocq_measure_gcd _left _right)} : int :=
   if equiv_decb _right 0 then
     _left
   else
@@ -19,7 +19,7 @@ Parameter _rocq_measure_find_or : forall {A : Set}
 
 Program Fixpoint find_or {A : Set}
   (default : A) (predicate : A -> bool) (values : list A)
-  {measure (@_rocq_measure_find_or A default predicate values)} : A :=
+  {measure (_rocq_measure_find_or (A := A) default predicate values)} : A :=
   match values with
   | [] => default
   | Datatypes.cons value values =>

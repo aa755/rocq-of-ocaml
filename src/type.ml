@@ -314,6 +314,85 @@ let rec arrow_result (typ : t) : t =
   | ForallTyps (_, body) | FunTyps (_, body) -> arrow_result body
   | _ -> typ
 
+type partial_result =
+  | Delayed of t
+  | Resumed of {
+      monad : t;
+      value : t;
+    }
+
+let rec replace_arrow_result (replacement : t) (typ : t) : t =
+  match typ with
+  | Arrow (argument, result) ->
+      Arrow (argument, replace_arrow_result replacement result)
+  | ForallTyps (parameters, body) ->
+      ForallTyps (parameters, replace_arrow_result replacement body)
+  | FunTyps (parameters, body) ->
+      FunTyps (parameters, replace_arrow_result replacement body)
+  | _ -> replacement
+
+let partial_result (typ : t) : partial_result =
+  match arrow_result typ with
+  | Apply (path, (value, _) :: fixed_arguments)
+    when
+      let final_name =
+        match path with
+        | MixedPath.PathName { PathName.base; _ } -> base
+        | MixedPath.Access (_, accesses)
+        | MixedPath.AppliedAccess (_, _, accesses) -> (
+            match List.rev accesses with
+            | { PathName.base; _ } :: _ -> base
+            | [] -> Name.of_string_raw "")
+      in
+      Name.equal final_name (Name.of_string_raw "t") ->
+      let monad =
+        match fixed_arguments with
+        | [] -> Apply (path, [])
+        | _ :: _ ->
+            let result = Name.of_string_raw "_rocq_partial_result" in
+            FunTyps
+              ( [ result ],
+                Apply
+                  ( path,
+                    (Variable result, false) :: fixed_arguments ) )
+      in
+      Resumed { monad; value }
+  | result -> Delayed result
+
+let partialize (typ : t) : t =
+  let runtime_type module_name type_name =
+    MixedPath.PathName
+      {
+        PathName.path =
+          [
+            Name.of_string_raw "RocqOfOCaml";
+            Name.of_string_raw "Partial";
+            Name.of_string_raw module_name;
+          ];
+        base = Name.of_string_raw type_name;
+      }
+  in
+  let result =
+    match partial_result typ with
+    | Delayed value ->
+        Apply
+          ( runtime_type "Delay" "t",
+            [ (value, false) ] )
+    | Resumed { monad; value } ->
+        Apply
+          ( runtime_type "Resumption" "t",
+            [ (monad, false); (value, false) ] )
+  in
+  replace_arrow_result result typ
+
+let is_partialized (typ : t) : bool =
+  match arrow_result typ with
+  | Apply (path, _) ->
+      let path = MixedPath.to_string path in
+      String.ends_with ~suffix:"Partial.Delay.t" path
+      || String.ends_with ~suffix:"Partial.Resumption.t" path
+  | _ -> false
+
 let rec subst_variables (substitutions : (Name.t * t) list) (typ : t) : t =
   let without names =
     substitutions
@@ -408,6 +487,118 @@ let match_variables ?(relaxed_constructors = false) (pattern : t)
         if compare pattern actual = 0 then Some substitutions else None
   in
   match_typ [] pattern actual
+
+(** Rewrite the result of a partial function using the manifest definition of
+    its source monad.  This is needed for specialized functor signatures:
+    OCaml may expand [State.t A] to [state -> M (A * state)], but the partial
+    computation must still be a resumption over the whole [State.t] monad. *)
+let partialize_with_manifest ?arity (manifest : t) (typ : t) : t option =
+  match manifest with
+  | FunTyps ([ parameter ], manifest_body) ->
+      let unbound = Error "__rocq_partial_unbound" in
+      let rec match_parameter binding pattern actual =
+        match (pattern, actual) with
+        | Variable name, actual when Name.equal name parameter -> (
+            match binding with
+            | Some previous when compare previous unbound = 0 ->
+                Some actual
+            | Some previous when compare previous actual = 0 -> binding
+            | Some _ | None -> None)
+        | Variable _, _ ->
+            if compare pattern actual = 0 then binding else None
+        | Arrow (p1, p2), Arrow (a1, a2)
+        | Eq (p1, p2), Eq (a1, a2) -> (
+            match match_parameter binding p1 a1 with
+            | None -> None
+            | Some _ as binding ->
+                match_parameter binding p2 a2)
+        | Tuple patterns, Tuple actuals
+          when List.length patterns = List.length actuals ->
+            List.fold_left2
+              (fun binding pattern actual ->
+                match binding with
+                | None -> None
+                | Some _ as binding ->
+                    match_parameter binding pattern actual)
+              binding patterns actuals
+        | Apply (_, pattern_arguments), Apply (_, actual_arguments)
+          when List.length pattern_arguments = List.length actual_arguments ->
+            (* The typed signature may expand aliases in the value type but
+               retain them in the enclosing monad's manifest.  OCaml has
+               already checked that both denote the same source type, so match
+               constructor applications by shape here. *)
+            List.fold_left2
+              (fun binding (pattern, _) (actual, _) ->
+                match binding with
+                | None -> None
+                | Some _ as binding ->
+                    match_parameter binding pattern actual)
+              binding pattern_arguments actual_arguments
+        | _ ->
+            if compare pattern actual = 0 then binding else None
+      in
+      let runtime_type =
+        MixedPath.PathName
+          {
+            PathName.path =
+              [
+                Name.of_string_raw "RocqOfOCaml";
+                Name.of_string_raw "Partial";
+                Name.of_string_raw "Resumption";
+              ];
+            base = Name.of_string_raw "t";
+          }
+      in
+      let wrap typ =
+        match match_parameter (Some unbound) manifest_body typ with
+        | Some value when compare value unbound <> 0 ->
+            Some
+              (Apply
+                 ( runtime_type,
+                   [ (manifest, false); (value, false) ] ))
+        | _ -> (
+            (* A synthesized functor signature can preserve the enclosing
+               monad's local [t] alias instead of its manifest body. *)
+            match typ with
+            | Apply (_, [ (value, _) ]) ->
+                Some
+                  (Apply
+                     ( runtime_type,
+                       [ (manifest, false); (value, false) ] ))
+            | _ -> None)
+      in
+      let rec search typ =
+        match wrap typ with
+        | Some _ as result -> result
+        | None -> (
+            match typ with
+            | Arrow (argument, result) ->
+                Option.map
+                  (fun result -> Arrow (argument, result))
+                  (search result)
+            | ForallTyps (parameters, body) ->
+                Option.map
+                  (fun body -> ForallTyps (parameters, body))
+                  (search body)
+            | _ -> None)
+      in
+      let rec after_arity remaining typ =
+        match typ with
+        | ForallTyps (parameters, body) ->
+            Option.map
+              (fun body -> ForallTyps (parameters, body))
+              (after_arity remaining body)
+        | Arrow (argument, result) when remaining > 0 ->
+            Option.map
+              (fun result -> Arrow (argument, result))
+              (after_arity (remaining - 1) result)
+        | _ when remaining = 0 -> wrap typ
+        | _ -> None
+      in
+      (match arity with
+      | Some arity -> after_arity arity typ
+      | None -> search typ)
+  | _ -> None
 
 let subst_path (source : Name.t list) (target : Name.t) (typ : t) : t =
   let names_are_equal (left : Name.t list) (right : Name.t list) : bool =

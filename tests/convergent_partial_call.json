@@ -1,0 +1,6 @@
+{
+  "recursion_strategies": [
+    ["tests/convergent_partial_call.ml", "RUNTIME.Seq.mapM", "partial", 2],
+    ["tests/convergent_partial_call.ml", "Use.collect", "convergent"]
+  ]
+}

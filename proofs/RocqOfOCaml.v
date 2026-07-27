@@ -1,5 +1,6 @@
 Require Export Libraries.
 Require Export Basics.
+Require Export Partial.
 Require Export List.
 Require Export Tags.
 

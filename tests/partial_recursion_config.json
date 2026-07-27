@@ -1,0 +1,5 @@
+{
+  "recursion_strategies": [
+    ["tests/partial_recursion_config.ml", "consume.loop", "partial"]
+  ]
+}

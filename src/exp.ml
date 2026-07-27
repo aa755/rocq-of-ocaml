@@ -34,9 +34,22 @@ module Header = struct
 end
 
 module Definition = struct
+  type partial_recursion =
+    | MayDiverge
+    | StructurallyTerminates
+    | WellFoundedTerminates of string
+
+  type partial_details = {
+    definition_name : string;
+    partial_definitions : string list;
+    recursion : partial_recursion;
+  }
+
   type recursion_strategy =
     | Structural
     | WellFounded of string
+    | Partial of partial_details
+    | Convergent of string
 
   type 'a t = {
     is_rec : Recursivity.t;
@@ -852,7 +865,12 @@ let rec has_well_founded_recursion (e : t) : bool =
   | LetFun (definition, body) ->
       (match definition.Definition.recursion_strategy with
       | Definition.WellFounded _ -> true
-      | Definition.Structural -> false)
+      | Definition.Partial
+          { recursion = Definition.WellFoundedTerminates _; _ } ->
+          true
+      | Definition.Structural | Definition.Partial _
+      | Definition.Convergent _ ->
+          false)
       || has_well_founded_recursion body
       || any (List.filter_map snd definition.Definition.cases)
   | Match (scrutinee, _, cases, _) ->
@@ -865,6 +883,381 @@ let rec has_well_founded_recursion (e : t) : bool =
   | Record fields | Module (_, fields) ->
       any (List.map (fun (_, _, value) -> value) fields)
   | IfThenElse (condition, then_, else_) -> any [ condition; then_; else_ ]
+
+(** Whether an expression contains a local partial recursive definition.  Its
+    enclosing definition must expose the corresponding partial result type. *)
+let rec has_partial_recursion (e : t) : bool =
+  let any es = List.exists has_partial_recursion es in
+  match e with
+  | Constant _ | Variable _ | Error _ | ErrorTyp _ | Ltac _ -> false
+  | Tuple es | Constructor (_, _, es) | Assumption (_, _, es)
+  | ErrorArray es ->
+      any es
+  | ConstructorExtensible (_, _, e) | Return (_, e) | Function (_, _, e)
+  | Functions (_, e) | LetTyp (_, _, _, e) | LetModuleUnpack (_, _, e)
+  | Field (e, _) | ModulePack (_, e) | Functor (_, _, e) | Cast (e, _)
+  | TypAnnotation (e, _) | Assert (_, e) | RequiresAssumption (_, _, e)
+  | ErrorMessage (e, _) ->
+      has_partial_recursion e
+  | ConstructorVariant (_, None) -> false
+  | ConstructorVariant (_, Some (_, e)) -> has_partial_recursion e
+  | Apply (f, args) | SourceApply (f, args, _) ->
+      any (f :: List.filter_map (fun argument -> argument) args)
+  | InfixOperator (_, left, right) -> any [ left; right ]
+  | LetVar (_, _, _, value, body) -> any [ value; body ]
+  | LetFun (definition, body) ->
+      (match definition.Definition.recursion_strategy with
+      | Definition.Partial _ -> true
+      | Definition.Structural | Definition.WellFounded _
+      | Definition.Convergent _ ->
+          false)
+      || has_partial_recursion body
+      || any (List.filter_map snd definition.Definition.cases)
+  | Match (scrutinee, _, cases, _) ->
+      has_partial_recursion scrutinee
+      || any (List.map (fun (_, _, body) -> body) cases)
+  | MatchExtensible (scrutinee, _, cases) ->
+      has_partial_recursion scrutinee || any (List.map snd cases)
+  | MatchVariant (scrutinee, _, cases) ->
+      has_partial_recursion scrutinee || any (List.map snd cases)
+  | Record fields | Module (_, fields) ->
+      any (List.map (fun (_, _, value) -> value) fields)
+  | IfThenElse (condition, then_, else_) -> any [ condition; then_; else_ ]
+
+let rec expression_qualified_name (e : t) : string option =
+  match e with
+  | Variable (path, _) -> Some (MixedPath.to_string path)
+  | Field (base, field) ->
+      Option.map
+        (fun base -> base ^ "." ^ PathName.to_string field)
+        (expression_qualified_name base)
+  | _ -> None
+
+let rec application_function_name (e : t) : string option =
+  match e with
+  | Apply (function_, _) | SourceApply (function_, _, _) ->
+      application_function_name function_
+  | TypAnnotation (function_, _) | Cast (function_, _) ->
+      application_function_name function_
+  | RequiresAssumption (_, _, function_) ->
+      application_function_name function_
+  | _ -> expression_qualified_name e
+
+let is_ocaml_format_function (e : t) : bool =
+  match application_function_name e with
+  | None -> false
+  | Some name ->
+      List.exists
+        (fun suffix -> string_ends_with name suffix)
+        [
+          "OCamlFormat.printf";
+          "OCamlFormat.eprintf";
+          "OCamlFormat.sprintf";
+          "Format.printf";
+          "Format.eprintf";
+          "Format.sprintf";
+        ]
+
+let configured_partial_path_matches (candidate : string) (expected : string) :
+    bool =
+  let candidate = drop_closing_parentheses candidate in
+  let expected_components = String.split_on_char '.' expected in
+  let dotted_suffix, flattened_suffix =
+    match List.rev expected_components with
+    | value :: module_ :: _ ->
+        (module_ ^ "." ^ value, module_ ^ "_" ^ value)
+    | _ -> (expected, expected)
+  in
+  candidate = expected
+  || string_ends_with candidate ("." ^ expected)
+  || string_ends_with candidate ("." ^ dotted_suffix)
+  || string_ends_with candidate ("." ^ flattened_suffix)
+  || string_ends_with candidate ("_" ^ flattened_suffix)
+  ||
+  match List.rev (String.split_on_char '.' candidate) with
+  | final :: _ -> final = flattened_suffix
+  | [] -> false
+
+let is_configured_partial_expression (partial_definitions : string list)
+    (e : t) : bool =
+  match expression_qualified_name e with
+  | Some candidate ->
+      List.exists
+        (configured_partial_path_matches candidate)
+        partial_definitions
+  | None -> false
+
+(** Execute configured monadic sequence traversals inside a definition whose
+    well-founded specification asserts totality. [Resumption.run] exposes the
+    convergence proof as a [Program] obligation; it is never synthesized by
+    the translator. *)
+let rec discharge_partial_sequence_calls
+    (partial_definitions : string list) (e : t) : t =
+  let recurse = discharge_partial_sequence_calls partial_definitions in
+  let map_option f = function None -> None | Some value -> Some (f value) in
+  let field base name =
+    match base with
+    | Variable
+        ( MixedPath.PathName { PathName.path; base },
+          _ ) ->
+        Variable
+          ( MixedPath.PathName
+              (PathName.of_name
+                 (path @ [ base ])
+                 (Name.of_string_raw name)),
+            [] )
+    | _ ->
+        Field
+          ( base,
+            PathName.of_name [] (Name.of_string_raw name) )
+  in
+  let wildcard =
+    Variable (MixedPath.of_name (Name.of_string_raw "_"), [])
+  in
+  let runtime_apply module_name value_name arguments =
+    let value =
+      Variable
+        ( MixedPath.PathName
+            {
+              PathName.path =
+                [
+                  Name.of_string_raw "RocqOfOCaml";
+                  Name.of_string_raw "Partial";
+                  Name.of_string_raw module_name;
+                ];
+              base = Name.of_string_raw value_name;
+            },
+          [] )
+    in
+    Apply (value, List.map (fun argument -> Some argument) arguments)
+  in
+  let rewrite_application result_typ function_ arguments =
+    let rec flatten function_ arguments =
+      match function_ with
+      | Apply (inner, preceding)
+      | SourceApply (inner, preceding, _)
+        when
+          List.for_all
+            (function None -> false | Some _ -> true)
+            preceding ->
+          flatten inner (preceding @ arguments)
+      | _ -> (function_, arguments)
+    in
+    let function_, arguments = flatten function_ arguments in
+    let function_ = recurse function_ in
+    let arguments = List.map (map_option recurse) arguments in
+    let is_partial_seq_map =
+      match expression_qualified_name function_ with
+      | None -> false
+      | Some candidate ->
+          partial_definitions
+          |> List.exists (fun definition ->
+                 configured_partial_path_matches definition "Seq.mapM"
+                 && configured_partial_path_matches candidate definition)
+    in
+    let monad_of_seq_function =
+      match function_ with
+      | Variable
+          ( MixedPath.PathName
+              { PathName.path; base = _ },
+            _ ) -> (
+          match List.rev path with
+          | seq :: monad_base :: rev_monad_path
+            when Name.to_string seq = "Seq" ->
+              let monad_path =
+                MixedPath.PathName
+                  (PathName.of_name
+                     (List.rev rev_monad_path)
+                     monad_base)
+              in
+              let monad_type_path =
+                MixedPath.PathName
+                  (PathName.of_name
+                     (List.rev rev_monad_path @ [ monad_base ])
+                     (Name.of_string_raw "t"))
+              in
+              Some
+                (Variable (monad_path, []), monad_type_path)
+          | _ -> None)
+      | _ -> None
+    in
+    match (is_partial_seq_map, monad_of_seq_function, arguments) with
+    | true, Some (monad, monad_path), [ Some _; Some _ ] ->
+        let a = Name.of_string_raw "_rocq_partial_A" in
+        let b = Name.of_string_raw "_rocq_partial_B" in
+        let value = Name.of_string_raw "_rocq_partial_return_value" in
+        let action = Name.of_string_raw "_rocq_partial_action" in
+        let continuation =
+          Name.of_string_raw "_rocq_partial_continuation"
+        in
+        let monad_type result =
+          Type.Apply
+            (monad_path, [ (Type.Variable result, false) ])
+        in
+        let typed_function name typ body =
+          Function (name, Some typ, body)
+        in
+        let return_operation =
+          typed_function a (Type.Kind Kind.Set)
+            (typed_function value (Type.Variable a)
+               (Apply
+                  ( field monad "_return",
+                    [
+                      Some
+                        (Variable
+                           (MixedPath.of_name value, []));
+                    ] )))
+        in
+        let bind_operation =
+          typed_function a (Type.Kind Kind.Set)
+            (typed_function b (Type.Kind Kind.Set)
+               (typed_function action (monad_type a)
+                  (typed_function continuation
+                     (Type.Arrow (Type.Variable a, monad_type b))
+                     (Apply
+                        ( field monad "op_letdollar",
+                          [
+                            Some
+                              (Variable
+                                 (MixedPath.of_name action, []));
+                            Some
+                              (Variable
+                                 (MixedPath.of_name continuation, []));
+                          ] )))))
+        in
+        runtime_apply "Resumption" "run_explicit"
+          [
+            return_operation;
+            bind_operation;
+            Apply (function_, arguments);
+            wildcard;
+          ]
+    | _ -> (
+        match result_typ with
+        | None -> Apply (function_, arguments)
+        | Some result_typ ->
+            SourceApply (function_, arguments, result_typ))
+  in
+  match e with
+  | Constant _ | Variable _ | Error _ | ErrorTyp _ | Ltac _ -> e
+  | Tuple values -> Tuple (List.map recurse values)
+  | Constructor (name, implicits, values) ->
+      Constructor (name, implicits, List.map recurse values)
+  | ConstructorExtensible (tag, typ, value) ->
+      ConstructorExtensible (tag, typ, recurse value)
+  | ConstructorVariant (tag, value) ->
+      ConstructorVariant
+        (tag, Option.map (fun (typ, value) -> (typ, recurse value)) value)
+  | Apply (function_, arguments) ->
+      rewrite_application None function_ arguments
+  | SourceApply (function_, arguments, result_typ) ->
+      rewrite_application (Some result_typ) function_ arguments
+  | Return (operator, value) -> Return (operator, recurse value)
+  | InfixOperator (operator, left, right) ->
+      InfixOperator (operator, recurse left, recurse right)
+  | Function (name, typ, body) -> Function (name, typ, recurse body)
+  | Functions (names, body) -> Functions (names, recurse body)
+  | LetVar (operator, name, parameters, value, body) ->
+      LetVar (operator, name, parameters, recurse value, recurse body)
+  | LetFun (definition, body) ->
+      let cases =
+        definition.Definition.cases
+        |> List.map (fun (header, body) ->
+               (header, Option.map recurse body))
+      in
+      LetFun ({ definition with Definition.cases }, recurse body)
+  | LetTyp (name, parameters, typ, body) ->
+      LetTyp (name, parameters, typ, recurse body)
+  | LetModuleUnpack (name, path, body) ->
+      LetModuleUnpack (name, path, recurse body)
+  | Match (scrutinee, dependent, cases, default) ->
+      Match
+        ( recurse scrutinee,
+          dependent,
+          List.map
+            (fun (pattern, cast, body) ->
+              (pattern, cast, recurse body))
+            cases,
+          default )
+  | MatchExtensible (scrutinee, typ, cases) ->
+      MatchExtensible
+        ( recurse scrutinee,
+          typ,
+          List.map
+            (fun (pattern, body) -> (pattern, recurse body))
+            cases )
+  | MatchVariant (scrutinee, typ, cases) ->
+      MatchVariant
+        ( recurse scrutinee,
+          typ,
+          List.map
+            (fun (pattern, body) -> (pattern, recurse body))
+            cases )
+  | Record fields ->
+      Record
+        (List.map
+           (fun (name, arity, value) -> (name, arity, recurse value))
+           fields)
+  | Field (value, name) -> Field (recurse value, name)
+  | IfThenElse (condition, then_, else_) ->
+      IfThenElse (recurse condition, recurse then_, recurse else_)
+  | Module (typ, fields) ->
+      Module
+        ( typ,
+          List.map
+            (fun (name, arity, value) -> (name, arity, recurse value))
+            fields )
+  | ModulePack (arity, value) -> ModulePack (arity, recurse value)
+  | Functor (name, typ, body) -> Functor (name, typ, recurse body)
+  | Cast (value, typ) -> Cast (recurse value, typ)
+  | TypAnnotation (value, typ) -> TypAnnotation (recurse value, typ)
+  | Assert (typ, condition) -> Assert (typ, recurse condition)
+  | Assumption (kind, typ, arguments) ->
+      Assumption (kind, typ, List.map recurse arguments)
+  | RequiresAssumption (kind, typ, body) ->
+      RequiresAssumption (kind, typ, recurse body)
+  | ErrorArray values -> ErrorArray (List.map recurse values)
+  | ErrorMessage (body, message) -> ErrorMessage (recurse body, message)
+
+let rec has_partial_reference (partial_definitions : string list) (e : t) :
+    bool =
+  let any es = List.exists (has_partial_reference partial_definitions) es in
+  if is_configured_partial_expression partial_definitions e then true
+  else
+    match e with
+    | Constant _ | Error _ | ErrorTyp _ | Ltac _ | Variable _ -> false
+    | Tuple es | Constructor (_, _, es) | Assumption (_, _, es)
+    | ErrorArray es ->
+        any es
+    | ConstructorExtensible (_, _, e) | Return (_, e) | Function (_, _, e)
+    | Functions (_, e) | LetTyp (_, _, _, e) | LetModuleUnpack (_, _, e)
+    | Field (e, _) | ModulePack (_, e) | Functor (_, _, e) | Cast (e, _)
+    | TypAnnotation (e, _) | Assert (_, e) | RequiresAssumption (_, _, e)
+    | ErrorMessage (e, _) ->
+        has_partial_reference partial_definitions e
+    | ConstructorVariant (_, None) -> false
+    | ConstructorVariant (_, Some (_, e)) ->
+        has_partial_reference partial_definitions e
+    | Apply (f, args) | SourceApply (f, args, _) ->
+        any (f :: List.filter_map (fun argument -> argument) args)
+    | InfixOperator (_, left, right) -> any [ left; right ]
+    | LetVar (_, _, _, value, body) -> any [ value; body ]
+    | LetFun (definition, body) ->
+        has_partial_reference partial_definitions body
+        || any (List.filter_map snd definition.Definition.cases)
+    | Match (scrutinee, _, cases, _) ->
+        has_partial_reference partial_definitions scrutinee
+        || any (List.map (fun (_, _, body) -> body) cases)
+    | MatchExtensible (scrutinee, _, cases) ->
+        has_partial_reference partial_definitions scrutinee
+        || any (List.map snd cases)
+    | MatchVariant (scrutinee, _, cases) ->
+        has_partial_reference partial_definitions scrutinee
+        || any (List.map snd cases)
+    | Record fields | Module (_, fields) ->
+        any (List.map (fun (_, _, value) -> value) fields)
+    | IfThenElse (condition, then_, else_) ->
+        any [ condition; then_; else_ ]
 
 type assumption_requirement = assumption_kind * Type.t
 
@@ -1806,7 +2199,13 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               let apply =
                 match List.find_map (fun x -> x) applies with
                 | Some apply -> apply
-                | None -> SourceApply (e_f, e_xs, application_typ)
+                | None ->
+                    let application =
+                      SourceApply (e_f, e_xs, application_typ)
+                    in
+                    if is_ocaml_format_function e_f then
+                      TypAnnotation (application, application_typ)
+                    else application
               in
               let apply =
                 List.fold_right
@@ -2738,26 +3137,50 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
   let well_founded_case =
     match find_annotated Attribute.has_well_founded with
     | Some _ as case -> case
-    | None ->
+    | None when is_rec ->
         find_configured Configuration.RecursionStrategy.WellFounded
+    | None -> None
   in
   let partial_case =
     match find_annotated Attribute.has_partial with
     | Some _ as case -> case
     | None -> find_configured Configuration.RecursionStrategy.Partial
   in
+  let convergent_case =
+    find_configured Configuration.RecursionStrategy.Convergent
+  in
   let* recursion_strategy =
-    match (well_founded_case, partial_case) with
-    | Some (case, _), Some _ ->
+    match (well_founded_case, partial_case, convergent_case) with
+    | Some (case, _), Some _, _
+    | Some (case, _), _, Some _
+    | _, Some (case, _), Some _ ->
         set_loc case.vb_pat.pat_loc
           (raise Definition.Structural Unexpected
-             "A recursive group cannot be both @rocq.wf and @rocq.partial.")
-    | _, Some (case, _) ->
+             "A definition cannot use more than one recursion strategy.")
+    | _, Some (case, _), None ->
         set_loc case.vb_pat.pat_loc
-          (raise Definition.Structural NotSupported
-             "@rocq.partial requires Delay effect propagation through callers, \
-              which is not implemented yet.")
-    | Some (case, attributes), None ->
+          (let* () =
+             warn
+               "@rocq.partial changes the translated result type to an explicit \
+                partial computation; callers must preserve or discharge its \
+                convergence requirement."
+           in
+           let definition_name =
+             match source_binding_name case.vb_pat with
+             | Some name ->
+                 String.concat "."
+                   (enclosing_definition_path @ [ name ])
+             | None -> "anonymous"
+           in
+           return
+             (Definition.Partial
+                {
+                  definition_name;
+                  partial_definitions =
+                    Configuration.partial_definition_names configuration;
+                  recursion = Definition.MayDiverge;
+                }))
+    | Some (case, attributes), None, None ->
         set_loc case.vb_pat.pat_loc
           (if not is_rec then
              raise Definition.Structural Unexpected
@@ -2783,7 +3206,29 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
                | None -> "anonymous"
              in
              return (Definition.WellFounded definition_name))
-    | None, None -> return Definition.Structural
+    | None, None, Some (case, _) ->
+        set_loc case.vb_pat.pat_loc
+          (if is_rec then
+             raise Definition.Structural Unexpected
+               "The convergent strategy applies only to non-recursive \
+                definitions."
+           else
+             let* () =
+               warn
+                 "the convergent strategy keeps the source result type and \
+                  introduces admitted convergence obligations for partial \
+                  callees; replace those obligations before relying on this \
+                  definition."
+             in
+             let definition_name =
+               match source_binding_name case.vb_pat with
+               | Some name ->
+                   String.concat "."
+                     (enclosing_definition_path @ [ name ])
+               | None -> "anonymous"
+             in
+             return (Definition.Convergent definition_name))
+    | None, None, None -> return Definition.Structural
   in
   let* destructuring_cases =
     cases_with_attributes
@@ -2927,10 +3372,41 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
                           return (argument_types, result_type)
                     in
                     let* configuration = get_configuration in
+                    let partial_definitions =
+                      Configuration.partial_definition_names configuration
+                    in
+                    let e_body =
+                      match (recursion_strategy, e_body) with
+                      | (Definition.WellFounded _ | Definition.Convergent _),
+                        Some body ->
+                          Some
+                            (discharge_partial_sequence_calls
+                               partial_definitions body)
+                      | _, _ -> e_body
+                    in
+                    let e_body_typ =
+                      match recursion_strategy with
+                      | Definition.Partial _ ->
+                          Type.partialize e_body_typ
+                      | Definition.WellFounded _
+                      | Definition.Convergent _ ->
+                          e_body_typ
+                      | Definition.Structural ->
+                          if
+                            Option.fold ~none:false
+                              ~some:(fun body ->
+                                has_partial_recursion body
+                                || has_partial_reference
+                                     partial_definitions body)
+                              e_body
+                          then Type.partialize e_body_typ
+                          else e_body_typ
+                    in
                     let structs, instance_args =
                       match recursion_strategy with
-                      | Definition.WellFounded _ -> ([], [])
-                      | Definition.Structural -> (
+                      | Definition.WellFounded _ | Definition.Partial _ ->
+                          ([], [])
+                      | Definition.Structural | Definition.Convergent _ -> (
                           match (source_structs, is_rec) with
                           | [], true
                             when Configuration.is_without_guard_checking
@@ -2951,8 +3427,9 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
                     in
                     let* _ =
                       match recursion_strategy with
-                      | Definition.WellFounded _ -> return ()
-                      | Definition.Structural -> (
+                      | Definition.WellFounded _ | Definition.Partial _ ->
+                          return ()
+                      | Definition.Structural | Definition.Convergent _ -> (
                           match structs with
                           | [] -> return ()
                           | _ :: _ -> use_unsafe_fixpoint)
@@ -2971,6 +3448,48 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
                     in
                     return (Some (header, e_body)) )))
   >>= fun cases ->
+  let has_partial_result =
+    cases
+    |> List.exists (function
+         | _, Some body ->
+             has_partial_recursion body
+             || has_partial_reference
+                  (Configuration.partial_definition_names configuration)
+                  body
+         | _, None -> false)
+  in
+  let recursion_strategy =
+    match (recursion_strategy, has_partial_result) with
+    | Definition.Structural, true ->
+        let definition_name =
+          match cases_with_attributes with
+          | (case, _) :: _ -> (
+              match source_binding_name case.vb_pat with
+              | Some name ->
+                  String.concat "."
+                    (enclosing_definition_path @ [ name ])
+              | None -> "anonymous")
+          | [] -> "anonymous"
+        in
+        let recursion =
+          match recursion_strategy with
+          | Definition.Structural when is_rec ->
+              Definition.WellFoundedTerminates definition_name
+          | Definition.Structural ->
+              Definition.StructurallyTerminates
+          | Definition.WellFounded _ | Definition.Partial _
+          | Definition.Convergent _ ->
+              assert false
+        in
+        Definition.Partial
+          {
+            definition_name;
+            partial_definitions =
+              Configuration.partial_definition_names configuration;
+            recursion;
+          }
+    | strategy, _ -> strategy
+  in
   let* term_environment = get_term_environment in
   return
     {
@@ -3931,6 +4450,508 @@ let rec flatten_list (e : t) : t list option =
 let to_coq_let_symbol (let_symbol : string option) : SmartPrint.t =
   match let_symbol with None -> !^"let" | Some let_symbol -> !^let_symbol
 
+let runtime_value ?monad (module_name : string) (value_name : string) : t =
+  let implicits =
+    match monad with
+    | None -> []
+    | Some monad ->
+        [
+          ( "M",
+            SmartPrint.to_string 1_000_000 0
+              (Type.to_coq None None monad) );
+        ]
+  in
+  Variable
+    ( MixedPath.PathName
+        {
+          PathName.path =
+            [
+              Name.of_string_raw "RocqOfOCaml";
+              Name.of_string_raw "Partial";
+              Name.of_string_raw module_name;
+            ];
+          base = Name.of_string_raw value_name;
+        },
+      implicits )
+
+let apply_runtime ?monad (module_name : string) (value_name : string)
+    (arguments : t list) : t =
+  Apply
+    ( runtime_value ?monad module_name value_name,
+      List.map (fun argument -> Some argument) arguments )
+
+let expression_function_name (e : t) : string option =
+  expression_qualified_name e
+
+let final_path_component (path : string) : string =
+  match List.rev (String.split_on_char '.' path) with
+  | component :: _ -> component
+  | [] -> path
+
+let definition_final_component (definition : string) : string =
+  final_path_component definition
+
+let function_name_matches (candidate : string) (expected : string) : bool =
+  let candidate = drop_closing_parentheses candidate in
+  let expected_components = String.split_on_char '.' expected in
+  let flattened_suffix =
+    match List.rev expected_components with
+    | value :: module_ :: _ -> module_ ^ "_" ^ value
+    | _ -> expected
+  in
+  candidate = expected
+  || string_ends_with candidate ("." ^ expected)
+  || final_path_component candidate = definition_final_component expected
+  || string_ends_with candidate ("." ^ flattened_suffix)
+  || string_ends_with candidate ("_" ^ flattened_suffix)
+  || final_path_component candidate = flattened_suffix
+
+let rewrite_local_well_founded_calls (recursive_name : Name.t)
+    (recurse_name : Name.t) (argument_count : int) (e : t) : t =
+  let map_option f = Option.map f in
+  let rec flatten_application function_ arguments =
+    match function_ with
+    | Apply (inner, preceding)
+    | SourceApply (inner, preceding, _)
+      when
+        List.for_all
+          (function None -> false | Some _ -> true)
+          preceding ->
+        flatten_application inner (preceding @ arguments)
+    | _ -> (function_, arguments)
+  in
+  let rec rewrite e =
+    match e with
+    | Constant _ | Variable _ | Error _ | ErrorTyp _ | Ltac _ -> e
+    | Tuple values -> Tuple (List.map rewrite values)
+    | Constructor (name, implicits, values) ->
+        Constructor (name, implicits, List.map rewrite values)
+    | ConstructorExtensible (tag, typ, value) ->
+        ConstructorExtensible (tag, typ, rewrite value)
+    | ConstructorVariant (tag, value) ->
+        ConstructorVariant
+          (tag, Option.map (fun (typ, value) -> (typ, rewrite value)) value)
+    | Apply (function_, arguments) ->
+        rewrite_application None function_ arguments
+    | SourceApply (function_, arguments, result_typ) ->
+        rewrite_application (Some result_typ) function_ arguments
+    | Return (operator, value) -> Return (operator, rewrite value)
+    | InfixOperator (operator, left, right) ->
+        InfixOperator (operator, rewrite left, rewrite right)
+    | Function (name, typ, body) -> Function (name, typ, rewrite body)
+    | Functions (names, body) -> Functions (names, rewrite body)
+    | LetVar (operator, name, parameters, value, body) ->
+        LetVar
+          (operator, name, parameters, rewrite value, rewrite body)
+    | LetFun (definition, body) ->
+        let cases =
+          definition.Definition.cases
+          |> List.map (fun (header, body) ->
+                 (header, Option.map rewrite body))
+        in
+        LetFun ({ definition with Definition.cases }, rewrite body)
+    | LetTyp (name, parameters, typ, body) ->
+        LetTyp (name, parameters, typ, rewrite body)
+    | LetModuleUnpack (name, path, body) ->
+        LetModuleUnpack (name, path, rewrite body)
+    | Match (scrutinee, dependent, cases, default) ->
+        Match
+          ( rewrite scrutinee,
+            dependent,
+            List.map
+              (fun (pattern, cast, body) ->
+                (pattern, cast, rewrite body))
+              cases,
+            default )
+    | MatchExtensible (scrutinee, typ, cases) ->
+        MatchExtensible
+          ( rewrite scrutinee,
+            typ,
+            List.map
+              (fun (pattern, body) -> (pattern, rewrite body))
+              cases )
+    | MatchVariant (scrutinee, typ, cases) ->
+        MatchVariant
+          ( rewrite scrutinee,
+            typ,
+            List.map
+              (fun (pattern, body) -> (pattern, rewrite body))
+              cases )
+    | Record fields ->
+        Record
+          (List.map
+             (fun (name, arity, value) -> (name, arity, rewrite value))
+             fields)
+    | Field (value, name) -> Field (rewrite value, name)
+    | IfThenElse (condition, then_, else_) ->
+        IfThenElse (rewrite condition, rewrite then_, rewrite else_)
+    | Module (typ, fields) ->
+        Module
+          ( typ,
+            List.map
+              (fun (name, arity, value) -> (name, arity, rewrite value))
+              fields )
+    | ModulePack (arity, value) -> ModulePack (arity, rewrite value)
+    | Functor (name, typ, body) -> Functor (name, typ, rewrite body)
+    | Cast (value, typ) -> Cast (rewrite value, typ)
+    | TypAnnotation (value, typ) -> TypAnnotation (rewrite value, typ)
+    | Assert (typ, condition) -> Assert (typ, rewrite condition)
+    | Assumption (kind, typ, arguments) ->
+        Assumption (kind, typ, List.map rewrite arguments)
+    | RequiresAssumption (kind, typ, body) ->
+        RequiresAssumption (kind, typ, rewrite body)
+    | ErrorArray values -> ErrorArray (List.map rewrite values)
+    | ErrorMessage (body, message) ->
+        ErrorMessage (rewrite body, message)
+  and rewrite_application result_typ function_ arguments =
+    let function_, arguments =
+      flatten_application function_ arguments
+    in
+    let is_recursive_call =
+      match expression_function_name function_ with
+      | Some candidate ->
+          function_name_matches candidate (Name.to_string recursive_name)
+      | None -> false
+    in
+    let supplied_arguments =
+      List.filter_map (fun argument -> argument) arguments
+    in
+    if
+      is_recursive_call
+      && List.length supplied_arguments = argument_count
+      && List.length arguments = argument_count
+    then
+      let state =
+        match supplied_arguments with
+        | [] -> Tuple []
+        | [ value ] -> rewrite value
+        | values -> Tuple (List.map rewrite values)
+      in
+      Apply
+        ( Variable (MixedPath.of_name recurse_name, []),
+          [
+            Some state;
+            Some
+              (Variable
+                 (MixedPath.of_name (Name.of_string_raw "_"), []));
+          ] )
+    else
+      let function_ = rewrite function_ in
+      let arguments = List.map (map_option rewrite) arguments in
+      match result_typ with
+      | None -> Apply (function_, arguments)
+      | Some result_typ ->
+          SourceApply (function_, arguments, result_typ)
+  in
+  rewrite e
+
+let is_named_expression (names : string list) (e : t) : bool =
+  match expression_function_name e with
+  | Some candidate ->
+      List.exists (function_name_matches candidate) names
+  | None -> false
+
+let is_named_application (names : string list) (e : t) : bool =
+  match e with
+  | Apply (function_, _) | SourceApply (function_, _, _) -> (
+      match expression_function_name function_ with
+      | Some candidate ->
+          List.exists (function_name_matches candidate) names
+      | None -> false)
+  | _ -> false
+
+let partial_wrapper_is_resumption (typ : Type.t) : bool =
+  match Type.arrow_result typ with
+  | Type.Apply (path, _) ->
+      let path = MixedPath.to_string path in
+      path = "RocqOfOCaml.Partial.Resumption.t"
+      || string_ends_with path ".Partial.Resumption.t"
+  | _ -> false
+
+let partial_wrapper_monad (typ : Type.t) : Type.t option =
+  match Type.arrow_result typ with
+  | Type.Apply
+      ( path,
+        [ (monad, _); _ ] )
+    when
+      let path = MixedPath.to_string path in
+      path = "RocqOfOCaml.Partial.Resumption.t"
+      || string_ends_with path ".Partial.Resumption.t" ->
+      Some monad
+  | _ -> None
+
+(** Lift one source expression into the explicit partial-computation syntax.
+    Recursive calls and calls to other configured partial definitions already
+    have the lifted type. Pure branches become [Done]. In a monadic partial
+    computation, ordinary source-monad actions become [Bind] nodes, while a
+    lifted recursive/partial action composes with [Resumption.bind]. *)
+let rec lift_partial_expression ~(resumption : bool)
+    ~(monad : Type.t option)
+    ~(recursive_names : string list) ~(partial_definitions : string list)
+    (e : t) : t =
+  let rec flatten_application e =
+    match e with
+    | Apply (function_, arguments)
+    | SourceApply (function_, arguments, _)
+      when
+        List.for_all (function None -> false | Some _ -> true) arguments ->
+        let function_, preceding_arguments =
+          match flatten_application function_ with
+          | Apply (function_, preceding_arguments) ->
+              (function_, preceding_arguments)
+          | function_ -> (function_, [])
+        in
+        Apply (function_, preceding_arguments @ arguments)
+    | _ -> e
+  in
+  let e = flatten_application e in
+  let recurse =
+    lift_partial_expression ~resumption ~monad ~recursive_names
+      ~partial_definitions
+  in
+  let is_partial e =
+    is_named_application (recursive_names @ partial_definitions) e
+  in
+  let contains_partial e =
+    is_partial e
+    || has_partial_recursion e
+    || has_partial_reference partial_definitions e
+  in
+  let done_ value =
+    apply_runtime ?monad:(if resumption then monad else None)
+      (if resumption then "Resumption" else "Delay")
+      "Done" [ value ]
+  in
+  let bind computation continuation =
+    apply_runtime ?monad "Resumption" "Compose"
+      [ computation; continuation ]
+  in
+  let action action continuation =
+    apply_runtime ?monad "Resumption" "Bind" [ action; continuation ]
+  in
+  let suspend computation =
+    let thunk = Function (Name.of_string_raw "_", None, computation) in
+    apply_runtime ?monad:(if resumption then monad else None)
+      (if resumption then "Resumption" else "Delay")
+      "Tau" [ thunk ]
+  in
+  let continuation name typ body =
+    Function (name, typ, recurse body)
+  in
+  let runtime_sequence_value value_name =
+    Variable
+      ( MixedPath.PathName
+          {
+            PathName.path =
+              [
+                Name.of_string_raw "RocqOfOCaml";
+                Name.of_string_raw "OCamlSeq";
+              ];
+            base = Name.of_string_raw value_name;
+          },
+        [] )
+  in
+  let is_configured_seq_map function_ =
+    match expression_function_name function_ with
+    | None -> false
+    | Some candidate ->
+        partial_definitions
+        |> List.exists (fun definition ->
+               configured_partial_path_matches definition "Seq.mapM"
+               && configured_partial_path_matches candidate definition)
+  in
+  let lift_callback callback =
+    match callback with
+    | Function (name, typ, body) ->
+        Function (name, typ, recurse body)
+    | _ ->
+        let value = Name.of_string_raw "_rocq_partial_argument" in
+        Function
+          ( value,
+            None,
+            recurse
+              (Apply
+                 ( callback,
+                   [ Some (Variable (MixedPath.of_name value, [])) ] )) )
+  in
+  let lift_seq_map function_ arguments =
+    match arguments with
+    | [ Some callback; Some sequence ]
+      when resumption && is_configured_seq_map function_ ->
+        Some
+          (apply_runtime ?monad "Resumption" "traverse"
+             [
+               runtime_sequence_value "uncons";
+               runtime_sequence_value "empty";
+               runtime_sequence_value "cons";
+               lift_callback callback;
+               sequence;
+             ])
+    | _ -> None
+  in
+  let lifted_seq_map =
+    match e with
+    | Apply (function_, arguments)
+    | SourceApply (function_, arguments, _) ->
+        lift_seq_map function_ arguments
+    | _ -> None
+  in
+  match lifted_seq_map with
+  | Some e -> e
+  | None when is_named_application recursive_names e -> suspend e
+  | None when is_partial e -> e
+  | None ->
+    match e with
+    | Match (scrutinee, dependent, cases, default) ->
+        Match
+          ( scrutinee,
+            dependent,
+            List.map
+              (fun (pattern, cast, body) -> (pattern, cast, recurse body))
+              cases,
+            default )
+    | MatchExtensible (scrutinee, typ, cases) ->
+        MatchExtensible
+          ( scrutinee,
+            typ,
+            List.map
+              (fun (pattern, body) -> (pattern, recurse body))
+              cases )
+    | MatchVariant (scrutinee, typ, cases) ->
+        MatchVariant
+          ( scrutinee,
+            typ,
+            List.map
+              (fun (pattern, body) -> (pattern, recurse body))
+              cases )
+    | IfThenElse (condition, then_, else_) ->
+        IfThenElse (condition, recurse then_, recurse else_)
+    | LetVar (None, name, parameters, value, body) ->
+        LetVar (None, name, parameters, value, recurse body)
+    | LetFun (definition, body)
+      when
+        match definition.Definition.recursion_strategy with
+        | Definition.Partial _ -> true
+        | Definition.Structural | Definition.WellFounded _
+        | Definition.Convergent _ ->
+            false ->
+        let local_partial_names =
+          definition.Definition.cases
+          |> List.map (fun (header, _) ->
+                 Name.to_string header.Header.name)
+        in
+        LetFun
+          ( definition,
+            lift_partial_expression ~resumption ~monad
+              ~recursive_names
+              ~partial_definitions:
+                (local_partial_names @ partial_definitions)
+              body )
+    | LetFun (definition, body)
+      when
+        has_partial_recursion body
+        || has_partial_reference partial_definitions body ->
+        LetFun (definition, recurse body)
+    | LetVar (Some _, name, [], value, body) when resumption ->
+        let continuation = continuation name None body in
+        if contains_partial value then bind (recurse value) continuation
+        else action value continuation
+    | Apply
+        ( function_,
+          [ Some value; Some (Function (name, typ, body)) ] )
+    | SourceApply
+        ( function_,
+          [ Some value; Some (Function (name, typ, body)) ],
+          _ )
+      when
+        resumption
+        &&
+        match expression_function_name function_ with
+        | Some name ->
+            function_name_matches name "op_letdollar"
+            || function_name_matches name "op_gtgteq"
+            || function_name_matches name "bind"
+        | None -> false ->
+        let continuation = continuation name typ body in
+        if contains_partial value then bind (recurse value) continuation
+        else action value continuation
+    | Apply (function_, [ Some value; Some continuation_function ])
+    | SourceApply
+        (function_, [ Some value; Some continuation_function ], _)
+      when
+        resumption
+        &&
+        match expression_function_name function_ with
+        | Some name ->
+            function_name_matches name "op_letdollar"
+            || function_name_matches name "op_gtgteq"
+            || function_name_matches name "bind"
+        | None -> false ->
+        let value_name = Name.of_string_raw "_rocq_partial_bound" in
+        let continuation =
+          Function
+            ( value_name,
+              None,
+              recurse
+                (Apply
+                   ( continuation_function,
+                     [
+                       Some
+                         (Variable
+                            (MixedPath.of_name value_name, []));
+                     ] )) )
+        in
+        if contains_partial value then bind (recurse value) continuation
+        else action value continuation
+    | Apply (function_, [ Some mapper; Some computation ])
+    | SourceApply (function_, [ Some mapper; Some computation ], _)
+      when
+        resumption
+        && (has_partial_recursion computation
+           || has_partial_reference partial_definitions computation)
+        &&
+        match expression_function_name function_ with
+        | Some name -> function_name_matches name "fmap"
+        | None -> false ->
+        let value_name = Name.of_string_raw "_rocq_partial_mapped" in
+        bind (recurse computation)
+          (Function
+             ( value_name,
+               None,
+               done_
+                 (Apply
+                    ( mapper,
+                      [
+                        Some
+                          (Variable
+                             (MixedPath.of_name value_name, []));
+                      ] )) ))
+    | Return (_, value) -> done_ value
+    | Apply (function_, [ Some value ])
+    | SourceApply (function_, [ Some value ], _)
+      when
+        match expression_function_name function_ with
+        | Some name -> function_name_matches name "return"
+        | None -> false ->
+        done_ value
+    | ErrorMessage (body, message) ->
+        ErrorMessage (recurse body, message)
+    | TypAnnotation (body, typ) ->
+        TypAnnotation (recurse body, Type.partialize typ)
+    | _ when resumption ->
+        let result = Name.of_string_raw "_rocq_partial_value" in
+        action e (Function (result, None, done_ (Variable (MixedPath.of_name result, []))))
+    | _ -> done_ e
+
+let guard_partial_body (resumption : bool) (monad : Type.t option)
+    (body : t) : t =
+  let thunk =
+    Function (Name.of_string_raw "_", None, body)
+  in
+  apply_runtime ?monad:(if resumption then monad else None)
+    (if resumption then "Resumption" else "Delay")
+    "Tau" [ thunk ]
+
 let to_coq_implicit (implicit : string * string) : SmartPrint.t =
   let name, value = implicit in
   nest (parens (!^name ^^ !^":=" ^^ !^value))
@@ -4095,7 +5116,8 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
                 | _ :: _ ->
                     !^"fun" ^^ separate space missing_args ^^ !^"=>" ^^ space)
                ^-^ nest (separate space (to_coq true e_f :: all_args)))))
-  | SourceApply (e_f, e_xs, _) -> to_coq paren (Apply (e_f, e_xs))
+  | SourceApply (e_f, e_xs, _) ->
+      to_coq paren (Apply (e_f, e_xs))
   | Return ("", e) -> to_coq paren e
   | Return (operator, e) ->
       Pp.parens paren @@ nest @@ !^operator ^^ to_coq true e
@@ -4159,7 +5181,11 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
       (match def.Definition.recursion_strategy with
       | Definition.WellFounded definition_name ->
           to_coq_well_founded_let paren definition_name def e
-      | Definition.Structural ->
+      | Definition.Partial
+          { definition_name; partial_definitions; recursion } ->
+          to_coq_partial_let paren definition_name partial_definitions
+            recursion def e
+      | Definition.Structural | Definition.Convergent _ ->
       let is_mutual_fixpoint =
         def.Definition.is_rec && List.length def.Definition.cases > 1
       in
@@ -4224,9 +5250,44 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
   | LetModuleUnpack (x, path_name, e2) ->
       Pp.parens paren
       @@ nest
-           (!^"let" ^^ !^"'existS" ^^ !^"_" ^^ !^"_" ^^ Name.to_coq x ^^ !^":="
+          (!^"let" ^^ !^"'existS" ^^ !^"_" ^^ !^"_" ^^ Name.to_coq x ^^ !^":="
           ^^ PathName.to_coq path_name ^^ !^"in" ^^ newline ^^ to_coq false e2)
   | Match (e, dep_match, cases, is_with_default_case) -> (
+      let top_or_alias =
+        cases
+        |> List.find_map (fun (pattern, _, _) ->
+               match pattern with
+               | Pattern.Alias (pattern, name)
+                 when Pattern.has_or_patterns pattern ->
+                   Some name
+               | _ -> None)
+      in
+      match top_or_alias with
+      | Some alias ->
+          let cases =
+            cases
+            |> List.map (fun (pattern, cast, body) ->
+                   let pattern =
+                     match pattern with
+                     | Pattern.Alias (pattern, name)
+                       when Name.equal name alias ->
+                         pattern
+                     | _ -> pattern
+                   in
+                   (pattern, cast, body))
+          in
+          to_coq paren
+            (LetVar
+               ( None,
+                 alias,
+                 [],
+                 e,
+                 Match
+                   ( Variable (MixedPath.of_name alias, []),
+                     dep_match,
+                     cases,
+                     is_with_default_case ) ))
+      | None ->
       let single_let =
         to_coq_try_single_let_pattern paren None e cases is_with_default_case
       in
@@ -4442,6 +5503,59 @@ let rec to_coq (paren : bool) (e : t) : SmartPrint.t =
 (** Render local well-founded recursion with the term-level kernel [Fix].
     The enclosing [Program] command turns each proof hole passed to
     [_rocq_recurse] into a decrease obligation in its branch context. *)
+and to_coq_partial_let (paren : bool) (_definition_name : string)
+    (partial_definitions : string list)
+    (recursion : Definition.partial_recursion)
+    (definition : t option Definition.t)
+    (continuation : t) : SmartPrint.t =
+  match definition.Definition.cases with
+  | [ (header, Some body) ] ->
+      let resumption = partial_wrapper_is_resumption header.Header.typ in
+      let monad = partial_wrapper_monad header.Header.typ in
+      let recursive_names = [ Name.to_string header.Header.name ] in
+      let body =
+        lift_partial_expression ~resumption ~monad ~recursive_names
+          ~partial_definitions body
+      in
+      let body =
+        if
+          definition.Definition.is_rec
+          && recursion = Definition.MayDiverge
+        then
+          guard_partial_body resumption monad body
+        else body
+      in
+      Pp.parens paren
+      @@ nest
+           (!^"let"
+           ^^
+           (if definition.Definition.is_rec then
+              match recursion with
+              | Definition.MayDiverge -> !^"cofix"
+              | Definition.StructurallyTerminates -> !^"fix"
+              | Definition.WellFoundedTerminates _ ->
+                  failwith
+                    "local well-founded recursion returning a partial \
+                     computation is not supported"
+            else empty)
+           ^^ Name.to_coq header.Header.name
+           ^^ Type.typ_vars_to_coq braces empty empty header.Header.typ_vars
+           ^^ Header.to_coq_instance_args header
+           ^^ group
+                (separate space
+                   (header.Header.args
+                   |> List.map (fun (name, typ) ->
+                          parens
+                            (nest
+                               (Name.to_coq name ^^ !^":"
+                               ^^ Type.to_coq None None typ)))))
+           ^^ !^":" ^^ Type.to_coq None None header.Header.typ
+           ^^ !^":=" ^^ newline ^^ indent (to_coq false body)
+           ^^ !^"in" ^^ newline ^^ to_coq false continuation)
+  | _ ->
+      failwith
+        "local partial recursion must contain one concrete definition"
+
 and to_coq_well_founded_let (paren : bool) (definition_name : string)
     (definition : t option Definition.t) (continuation : t) : SmartPrint.t =
   match definition.Definition.cases with
@@ -4455,6 +5569,7 @@ and to_coq_well_founded_let (paren : bool) (definition_name : string)
         let state_name = Name.of_string_raw "_rocq_state" in
         let recurse_name = Name.of_string_raw "_rocq_recurse" in
         let measure_name = Name.of_string_raw "_rocq_measure" in
+        let body_name = Name.of_string_raw "_rocq_body" in
         let fix_name = Name.of_string_raw "_rocq_fix" in
         let state_typ =
           match List.map snd args with
@@ -4488,20 +5603,32 @@ and to_coq_well_founded_let (paren : bool) (definition_name : string)
         let measure_input =
           tuple (List.map Name.to_coq captures @ [ Name.to_coq state_name ])
         in
+        let bind name value inner =
+          !^"let" ^^ Name.to_coq name ^^ !^":=" ^^ value ^^ !^"in"
+          ^^ newline ^^ inner
+        in
+        let rec destruct_tuple index arguments state inner =
+          match arguments with
+          | [] -> inner
+          | [ (argument, _) ] ->
+              bind argument state inner
+          | (argument, _) :: remaining ->
+              let tail =
+                Name.of_string_raw
+                  ("_rocq_state_tail_" ^ string_of_int index)
+              in
+              bind argument (!^"fst" ^^ state)
+                (bind tail (!^"snd" ^^ state)
+                   (destruct_tuple (index + 1) remaining
+                      (Name.to_coq tail) inner))
+        in
         let destruct_state inner =
           match args with
           | [] -> inner
           | [ (argument, _) ] ->
-              !^"let" ^^ Name.to_coq argument ^^ !^":="
-              ^^ Name.to_coq state_name ^^ !^"in" ^^ newline ^^ inner
+              bind argument (Name.to_coq state_name) inner
           | _ ->
-              !^"let" ^^ !^"'"
-              ^-^ tuple
-                    (List.map
-                       (fun (argument, _) -> Name.to_coq argument)
-                       args)
-              ^^ !^":=" ^^ Name.to_coq state_name ^^ !^"in" ^^ newline
-              ^^ inner
+              destruct_tuple 0 args (Name.to_coq state_name) inner
         in
         let rendered_arguments =
           args
@@ -4512,18 +5639,42 @@ and to_coq_well_founded_let (paren : bool) (definition_name : string)
                       ^^ Type.to_coq None None argument_typ)))
           |> separate space
         in
-        let recursive_alias =
-          !^"let" ^^ Name.to_coq name ^^ rendered_arguments
-          ^^ !^":" ^^ Type.to_coq None None typ ^^ !^":="
-          ^^ Name.to_coq recurse_name ^^ state_value ^^ !^"_"
-          ^^ !^"in" ^^ newline ^^ to_coq false body
+        let body =
+          rewrite_local_well_founded_calls name recurse_name
+            (List.length args) body
+        in
+        let () =
+          if Name.Set.mem name (get_free_vars body) then
+            failwith
+              ("local well-founded recursive function "
+              ^ Name.to_string name
+              ^ " must be fully applied at each recursive call")
         in
         let functional =
           parens
             (nest
                (!^"fun" ^^ Name.to_coq state_name
                ^^ Name.to_coq recurse_name ^^ !^"=>" ^^ newline
-               ^^ indent (destruct_state recursive_alias)))
+               ^^ indent (destruct_state (to_coq false body))))
+        in
+        let body_definition =
+          !^"let" ^^ Name.to_coq body_name ^^ !^":"
+          ^^ parens
+               (nest
+                  (!^"forall" ^^ Name.to_coq state_name ^^ !^":"
+                  ^^ Type.to_coq None None state_typ ^-^ !^","
+                  ^^ parens
+                       (nest
+                          (!^"forall" ^^ !^"_rocq_next" ^^ !^":"
+                          ^^ Type.to_coq None None state_typ ^-^ !^","
+                          ^^ !^"ltof"
+                          ^^ Type.to_coq None (Some Type.Context.Apply)
+                               state_typ
+                          ^^ Name.to_coq measure_name ^^ !^"_rocq_next"
+                          ^^ Name.to_coq state_name ^^ !^"->"
+                          ^^ Type.to_coq None None typ))
+                  ^^ !^"->" ^^ Type.to_coq None None typ))
+          ^^ !^":=" ^^ functional ^^ !^"in"
         in
         let motive =
           parens
@@ -4550,7 +5701,7 @@ and to_coq_well_founded_let (paren : bool) (definition_name : string)
                (!^"well_founded_ltof"
                ^^ Type.to_coq None (Some Type.Context.Apply) state_typ
                ^^ Name.to_coq measure_name)
-          ^^ motive ^^ functional ^^ !^"in"
+          ^^ motive ^^ Name.to_coq body_name ^^ !^"in"
         in
         let public_definition =
           !^"let" ^^ Name.to_coq name ^^ rendered_arguments
@@ -4560,6 +5711,7 @@ and to_coq_well_founded_let (paren : bool) (definition_name : string)
         Pp.parens paren
         @@ nest
              (measure_definition ^^ newline
+             ^^ body_definition ^^ newline
              ^^ fix_definition ^^ newline
              ^^ public_definition ^^ newline
              ^^ to_coq false continuation)

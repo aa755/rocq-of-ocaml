@@ -273,11 +273,43 @@ module Value = struct
           match definition.Exp.Definition.recursion_strategy with
           | Exp.Definition.Structural -> false
           | Exp.Definition.WellFounded _ -> true
+          | Exp.Definition.Partial
+              {
+                recursion =
+                  Exp.Definition.WellFoundedTerminates _;
+                _;
+              } ->
+              true
+          | Exp.Definition.Partial _ | Exp.Definition.Convergent _ ->
+              false
         in
         let well_founded_name =
           match definition.Exp.Definition.recursion_strategy with
-          | Exp.Definition.Structural -> None
+          | Exp.Definition.Structural | Exp.Definition.Convergent _ ->
+              None
           | Exp.Definition.WellFounded name -> Some name
+          | Exp.Definition.Partial
+              {
+                recursion =
+                  Exp.Definition.WellFoundedTerminates name;
+                _;
+              } ->
+              Some name
+          | Exp.Definition.Partial _ -> None
+        in
+        let partial_details =
+          match definition.Exp.Definition.recursion_strategy with
+          | Exp.Definition.Partial details -> Some details
+          | Exp.Definition.Structural | Exp.Definition.WellFounded _
+          | Exp.Definition.Convergent _ ->
+              None
+        in
+        let is_convergent =
+          match definition.Exp.Definition.recursion_strategy with
+          | Exp.Definition.Convergent _ -> true
+          | Exp.Definition.Structural | Exp.Definition.WellFounded _
+          | Exp.Definition.Partial _ ->
+              false
         in
         let has_local_well_founded =
           definition.Exp.Definition.cases
@@ -289,20 +321,28 @@ module Value = struct
           Name.of_string_raw
             ("_rocq_measure_" ^ Name.to_string header.Exp.Header.name)
         in
-        let measure_arguments (header : Exp.Header.t) : Name.t list =
+        let measure_implicit_arguments
+            (header : Exp.Header.t) : Name.t list =
           (match definition_fargs with
           | Some _ -> [ Name.of_string_raw "_fargs" ]
           | None -> [])
           @ List.map fst header.Exp.Header.typ_vars
           @ List.map fst header.Exp.Header.instance_args
-          @ List.map fst header.Exp.Header.args
         in
         let measure_application (header : Exp.Header.t) : SmartPrint.t =
           parens
             (nest
-               ((!^"@" ^-^ Name.to_coq (measure_name header))
+               (Name.to_coq (measure_name header)
                ^^ separate space
-                    (List.map Name.to_coq (measure_arguments header))))
+                    (measure_implicit_arguments header
+                    |> List.map (fun argument ->
+                           parens
+                             (Name.to_coq argument ^^ !^":="
+                             ^^ Name.to_coq argument)))
+                ^^ separate space
+                     (List.map
+                        (fun (argument, _) -> Name.to_coq argument)
+                        header.Exp.Header.args)))
         in
         let measure_declaration (header : Exp.Header.t) : SmartPrint.t =
           let has_arguments =
@@ -390,13 +430,48 @@ module Value = struct
                        | _ :: _ -> false
                    in
                    let free_vars_of_e = Exp.get_free_vars e in
+                   let e =
+                     match partial_details with
+                     | None -> e
+                     | Some { partial_definitions; recursion; _ } ->
+                         let recursive_names =
+                           definition.Exp.Definition.cases
+                           |> List.map (fun (header, _) ->
+                                  Name.to_string header.Exp.Header.name)
+                         in
+                         let resumption =
+                           Exp.partial_wrapper_is_resumption
+                             header.Exp.Header.typ
+                         in
+                         let monad =
+                           Exp.partial_wrapper_monad
+                             header.Exp.Header.typ
+                         in
+                         let e =
+                           Exp.lift_partial_expression ~resumption ~monad
+                             ~recursive_names ~partial_definitions e
+                         in
+                         if
+                           definition.Exp.Definition.is_rec
+                           && recursion = Exp.Definition.MayDiverge
+                         then
+                           Exp.guard_partial_body resumption monad e
+                         else e
+                   in
                    nest
                      ((if not definition.Exp.Definition.is_rec then
-                       if has_local_well_founded then
+                       if has_local_well_founded || is_convergent then
                          !^"Program Definition"
                        else !^"Definition"
                       else if first_case then
-                       if is_well_founded then !^"Program Fixpoint"
+                       if
+                         Option.fold ~none:false
+                           ~some:(fun details ->
+                             details.Exp.Definition.recursion
+                             = Exp.Definition.MayDiverge)
+                           partial_details
+                       then !^"CoFixpoint"
+                       else if is_well_founded then !^"Program Fixpoint"
                        else if has_local_well_founded then
                          !^"Program Fixpoint"
                        else
@@ -433,7 +508,11 @@ module Value = struct
                      (if last_case then
                         !^"."
                         ^^
-                        (if is_well_founded || has_local_well_founded then
+                        (if
+                           is_well_founded
+                           || has_local_well_founded
+                           || is_convergent
+                         then
                            newline ^^ newline ^^ !^"Admit Obligations."
                          else empty)
                       else empty))))
@@ -567,7 +646,16 @@ let rec uses_well_founded_recursion (definitions : t list) : bool =
        | Value { Value.definition; _ } -> (
            match definition.Exp.Definition.recursion_strategy with
            | Exp.Definition.Structural -> false
-           | Exp.Definition.WellFounded _ -> true)
+           | Exp.Definition.WellFounded _ -> true
+           | Exp.Definition.Partial
+               {
+                 recursion =
+                   Exp.Definition.WellFoundedTerminates _;
+                 _;
+               } ->
+               true
+           | Exp.Definition.Partial _ | Exp.Definition.Convergent _ ->
+               false)
            ||
            (definition.Exp.Definition.cases
            |> List.exists (function
@@ -1301,6 +1389,49 @@ let constructor_override_candidates_from_origin
       else overrides)
   in
   collect [] origin_typ specialized_typ
+
+let rec partialize_include_types (partial_definitions : string list)
+    (definitions : t list) : t list =
+  definitions
+  |> List.map (function
+       | ModuleIncludeItem
+           ( kind,
+             name,
+             typ_vars,
+             Some typ,
+             mixed_path,
+             requirements )
+         when
+           (kind = IncludeValue || kind = IncludeProjectedValue)
+           && not (Type.is_partialized typ)
+           && Exp.is_configured_partial_expression partial_definitions
+                (Exp.Variable (mixed_path, [])) ->
+           ModuleIncludeItem
+             ( IncludeProjectedValue,
+               name,
+               typ_vars,
+               None,
+               mixed_path,
+               requirements )
+       | Module (name, parameters, definitions, expression) ->
+           Module
+             ( name,
+               parameters,
+               partialize_include_types partial_definitions definitions,
+               expression )
+       | Documentation (message, definitions) ->
+           Documentation
+             ( message,
+               partialize_include_types partial_definitions definitions )
+       | ErrorMessage (message, definition) ->
+           ErrorMessage
+             ( message,
+               match
+                 partialize_include_types partial_definitions [ definition ]
+               with
+               | [ definition ] -> definition
+               | _ -> definition )
+       | definition -> definition)
 
 (** Import an OCaml structure. *)
 let rec of_structure ?(has_functor_parameters = false)
@@ -2301,7 +2432,12 @@ let rec of_structure ?(has_functor_parameters = false)
       return (translated_item @ structure, env, shadowed_names))
     structure.str_items
     ([], structure.str_final_env, [])
-  >>= fun (structure, _, _) -> return structure
+  >>= fun (structure, _, _) ->
+  let* configuration = get_configuration in
+  return
+    (partialize_include_types
+       (Configuration.partial_definition_names configuration)
+       structure)
 
 and of_module ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
     (functor_parameters : functor_parameters)

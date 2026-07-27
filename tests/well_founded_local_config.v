@@ -7,15 +7,18 @@ Program Definition search (bound : int) : int :=
   let _rocq_measure (_rocq_state : int) : nat :=
     RocqOfOCaml.Basics.well_founded_measure "search.loop" (bound, _rocq_state)
     in
-  let _rocq_fix := @Fix int (ltof int _rocq_measure) (well_founded_ltof int
-    _rocq_measure) (fun _ => int)
+  let _rocq_body :
+    (forall _rocq_state : int,
+      (forall _rocq_next : int, ltof int _rocq_measure _rocq_next _rocq_state ->
+        int) -> int) :=
     (fun _rocq_state _rocq_recurse =>
       let value := _rocq_state in
-      let loop (value : int) : int := _rocq_recurse value _ in
       if RocqOfOCaml.Basics.Stdlib.lt value bound then
-        loop (Z.add value 1)
+        _rocq_recurse (Z.add value 1) _
       else
         value) in
+  let _rocq_fix := @Fix int (ltof int _rocq_measure) (well_founded_ltof int
+    _rocq_measure) (fun _ => int) _rocq_body in
   let loop (value : int) : int := _rocq_fix value in
   loop 0.
 
