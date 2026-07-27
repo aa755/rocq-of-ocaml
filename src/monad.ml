@@ -12,6 +12,7 @@ module Command = struct
   type 'a t =
     | GetConfiguration : Configuration.t t
     | GetDocumentation : string option t
+    | GetDefinitionPath : string list t
     | GetEnv : Env.t t
     | GetEnvStack : Env.t list t
     | GetIncludedPathAlias : Ident.t -> Path.t option t
@@ -47,6 +48,7 @@ module Wrapper = struct
     | EnvSet of Env.t
     | EnvStackPush
     | LocSet of Location.t
+    | DefinitionPathPush of string
     | ModulePathAliasSet of Path.t * Path.t
     | SignatureHintSet of Path.t * Path.t
 end
@@ -65,6 +67,7 @@ module Notations = struct
   let ( >> ) (x : 'a t) (y : 'b t) : 'b t = Bind (x, fun () -> y)
   let get_configuration : Configuration.t t = Command Command.GetConfiguration
   let get_documentation : string option t = Command Command.GetDocumentation
+  let get_definition_path : string list t = Command Command.GetDefinitionPath
   let get_env : Env.t t = Command Command.GetEnv
   let get_env_stack : Env.t list t = Command Command.GetEnvStack
   let get_included_path_alias (ident : Ident.t) : Path.t option t =
@@ -130,6 +133,9 @@ module Notations = struct
 
   let set_loc (loc : Location.t) (x : 'a t) : 'a t =
     Wrapper (Wrapper.LocSet loc, x)
+
+  let push_definition_path (name : string) (x : 'a t) : 'a t =
+    Wrapper (Wrapper.DefinitionPathPush name, x)
 
   let push_env (x : 'a t) : 'a t = Wrapper (Wrapper.EnvStackPush, x)
 

@@ -44,6 +44,7 @@ module Context = struct
     comments : comments;
     configuration : Configuration.t;
     constructor_names : ConstructorNames.t;
+    definition_path : string list;
     env : Env.t;
     env_stack : EnvStack.t;
     included_path_aliases : IncludedPathAliases.t;
@@ -69,6 +70,7 @@ module Context = struct
       comments;
       configuration;
       constructor_names;
+      definition_path = [];
       env = initial_env;
       env_stack = [];
       included_path_aliases;
@@ -131,6 +133,7 @@ module Command = struct
             context.loc
         in
         Result.success documentation
+    | GetDefinitionPath -> Result.success context.definition_path
     | GetEnv -> Result.success context.env
     | GetEnvStack -> Result.success context.env_stack
     | GetIncludedPathAlias ident ->
@@ -314,6 +317,12 @@ module Wrapper = struct
    fun context ->
     match wrapper with
     | EnvSet env -> interpret { context with env }
+    | DefinitionPathPush name ->
+        interpret
+          {
+            context with
+            definition_path = context.definition_path @ [ name ];
+          }
     | EnvStackPush ->
         interpret { context with env_stack = context.env :: context.env_stack }
     | LocSet loc ->

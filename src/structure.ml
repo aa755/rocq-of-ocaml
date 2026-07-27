@@ -2254,10 +2254,31 @@ and of_module ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
         "A synthesized functor result signature requires a module body"
   in
   let* include_aliases = set_env module_expr.mod_env include_aliases in
-  List.fold_right
-    (fun (source, target) body ->
-      set_module_path_alias source target body)
-    include_aliases (translate_module ())
+  let source_name =
+    match binding_path with
+    | Some path -> Path.last path
+    | None -> Name.to_string name
+  in
+  let translated =
+    List.fold_right
+      (fun (source, target) body ->
+        set_module_path_alias source target body)
+      include_aliases (translate_module ())
+  in
+  let rec begins_with_functor (module_expr : module_expr) =
+    match module_expr.mod_desc with
+    | Tmod_functor _ -> true
+    | Tmod_constraint (body, _, _, _) -> begins_with_functor body
+    | Tmod_ident _
+    | Tmod_structure _
+    | Tmod_apply _
+    | Tmod_apply_unit _
+    | Tmod_unpack _
+    | Tmod_typed_hole ->
+        false
+  in
+  if begins_with_functor module_expr then translated
+  else push_definition_path source_name translated
 
 and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
     (name : Name.t)

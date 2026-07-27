@@ -52,6 +52,16 @@ module RenamingRule = struct
     |> List.find_map (fun rule -> rewrite rule source)
 end
 
+module RecursionStrategy = struct
+  type kind = WellFounded | Partial
+
+  type t = {
+    source : string;
+    definition : string;
+    kind : kind;
+  }
+end
+
 module VariantMapping = struct
   type t = { source : string; target : string }
 end
@@ -75,6 +85,7 @@ type t = {
   monadic_returns : Operator.t list;
   monadic_return_lets : MonadicOperators.t list;
   operator_infix : Operator.t list;
+  recursion_strategies : RecursionStrategy.t list;
   renaming_rules : RenamingRule.t list;
   renaming_type_constructor : RenamingRule.t list;
   require : Import.t list;
@@ -108,6 +119,7 @@ let default (file_name : string) : t =
     monadic_returns = [];
     monadic_return_lets = [];
     operator_infix = [];
+    recursion_strategies = [];
     renaming_rules =
       ConfigurationRenaming.rules
       |> List.map (fun (source, target) -> { RenamingRule.source; target });
@@ -166,6 +178,15 @@ let is_message_in_error_blacklist (configuration : t) (message : string) : bool
 
 let is_value_to_escape (configuration : t) (name : string) : bool =
   List.mem name configuration.escape_value
+
+let get_recursion_strategy (configuration : t) (definition_path : string list) :
+    RecursionStrategy.kind option =
+  let definition = String.concat "." definition_path in
+  configuration.recursion_strategies
+  |> List.find_opt (fun { RecursionStrategy.source; definition = configured; _ } ->
+         configured = definition
+         && filename_matches configuration.file_name source)
+  |> Option.map (fun { RecursionStrategy.kind; _ } -> kind)
 
 let is_in_first_class_module_path_backlist (configuration : t) (path : Path.t) :
     bool =
@@ -440,6 +461,28 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                        { Operator.name; notation })
               in
               { configuration with operator_infix = entry }
+          | "recursion_strategies" ->
+              let entry =
+                entry
+                |> get_string_triple_list "recursion_strategies"
+                |> List.map (fun (source, definition, strategy) ->
+                       if definition = "" then
+                         failwith
+                           "Expected a qualified definition name in \
+                            recursion_strategies";
+                       let kind =
+                         match strategy with
+                         | "well_founded" ->
+                             RecursionStrategy.WellFounded
+                         | "partial" -> RecursionStrategy.Partial
+                         | _ ->
+                             failwith
+                               "Expected recursion strategy \"well_founded\" \
+                                or \"partial\""
+                       in
+                       { RecursionStrategy.source; definition; kind })
+              in
+              { configuration with recursion_strategies = entry }
           | "renaming_rules" ->
               let entry =
                 entry

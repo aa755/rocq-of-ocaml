@@ -2647,8 +2647,37 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
       (fun (_, attributes) -> predicate attributes)
       cases_with_attributes
   in
-  let well_founded_case = find_annotated Attribute.has_well_founded in
-  let partial_case = find_annotated Attribute.has_partial in
+  let* configuration = get_configuration in
+  let* enclosing_definition_path = get_definition_path in
+  let source_binding_name (pattern : value general_pattern) : string option =
+    match pattern.pat_desc with
+    | Tpat_var (ident, _, _)
+    | Tpat_alias (_, ident, _, _, _) ->
+        Some (Ident.name ident)
+    | _ -> None
+  in
+  let find_configured strategy =
+    List.find_opt
+      (fun (case, _) ->
+        match source_binding_name case.vb_pat with
+        | None -> false
+        | Some name ->
+            Configuration.get_recursion_strategy configuration
+              (enclosing_definition_path @ [ name ])
+            = Some strategy)
+      cases_with_attributes
+  in
+  let well_founded_case =
+    match find_annotated Attribute.has_well_founded with
+    | Some _ as case -> case
+    | None ->
+        find_configured Configuration.RecursionStrategy.WellFounded
+  in
+  let partial_case =
+    match find_annotated Attribute.has_partial with
+    | Some _ as case -> case
+    | None -> find_configured Configuration.RecursionStrategy.Partial
+  in
   let* recursion_strategy =
     match (well_founded_case, partial_case) with
     | Some (case, _), Some _ ->
@@ -2767,7 +2796,8 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
          let source_structs = Attribute.get_structs attributes in
          set_env vb_expr.exp_env
            (set_loc p.pat_loc
-              ( Pattern.of_pattern p >>= fun p ->
+              ( let source_name = source_binding_name p in
+                Pattern.of_pattern p >>= fun p ->
                 (match p with
                 | Some Pattern.Any -> return None
                 | Some (Pattern.Variable x) -> return (Some x)
@@ -2790,7 +2820,14 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (at_top_level : bool)
                 | Some x ->
                     let* args_names, e_body =
                       if not is_axiom then
-                        let* e = of_expression typ_vars vb_expr in
+                        let translation = of_expression typ_vars vb_expr in
+                        let translation =
+                          match source_name with
+                          | Some name ->
+                              push_definition_path name translation
+                          | None -> translation
+                        in
+                        let* e = translation in
                         let args_names, e_body = open_function e in
                         return (args_names, Some e_body)
                       else return ([], None)
