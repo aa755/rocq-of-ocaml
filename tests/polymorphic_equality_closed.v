@@ -20,3 +20,24 @@ Definition not_equal_string (x_value : string) (y_value : string) : bool :=
 
 Definition equal_int_list (x_value : list int) (y_value : list int) : bool :=
   equiv_decb x_value y_value.
+
+Definition is_ready (x_value : status) : bool :=
+  match x_value with
+  | Ready => true
+  | _ => false
+  end.
+
+Definition is_not_failed_one (x_value : status) : bool :=
+  negb
+    (let _rocq_eq_expected_0 := 1 in
+    match x_value with
+    | Failed _rocq_eq_actual_0 =>
+      andb true (equiv_decb _rocq_eq_actual_0 _rocq_eq_expected_0)
+    | _ => false
+    end).
+
+Definition is_empty (xs : list int) : bool :=
+  match xs with
+  | [] => true
+  | _ => false
+  end.

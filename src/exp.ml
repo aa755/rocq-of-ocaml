@@ -300,6 +300,57 @@ let equality_argument_has_rocq_eq_dec (e : expression) : bool =
   | Some (argument :: _, _) -> has_rocq_eq_dec e.exp_env argument
   | Some ([], _) | None -> false
 
+type constructor_equality = {
+  negate : bool;
+  scrutinee : expression;
+  constructor : Data_types.constructor_description;
+  payloads : expression list;
+}
+
+let constructor_equality_application (path : Path.t)
+    (arguments : (Asttypes.arg_label * apply_arg) list) :
+    constructor_equality option =
+  let negate =
+    match Path.name path with
+    | "Stdlib.=" | "Pervasives.=" | "Stdlib.op_eq" | "Pervasives.op_eq" ->
+        Some false
+    | "Stdlib.<>" | "Pervasives.<>" | "Stdlib.op_ltgt"
+    | "Pervasives.op_ltgt" ->
+        Some true
+    | _ -> None
+  in
+  let arguments =
+    arguments
+    |> List.filter_map (fun (_, argument) ->
+           match argument with Arg expression -> Some expression | Omitted () -> None)
+  in
+  let as_constructor expression =
+    match expression.exp_desc with
+    | Texp_construct (_, constructor, payloads) -> (
+        match constructor.cstr_tag with
+        | Cstr_extension _ -> None
+        | _ ->
+            if
+              List.for_all
+                (fun payload ->
+                  has_rocq_eq_dec payload.exp_env payload.exp_type)
+                payloads
+            then Some (constructor, payloads)
+            else None)
+    | _ -> None
+  in
+  match (negate, arguments) with
+  | Some negate, [ left; right ] -> (
+      match as_constructor right with
+      | Some (constructor, payloads) ->
+          Some { negate; scrutinee = left; constructor; payloads }
+      | None -> (
+          match as_constructor left with
+          | Some (constructor, payloads) ->
+              Some { negate; scrutinee = right; constructor; payloads }
+          | None -> None))
+  | _ -> None
+
 let error_message (e : t) (category : Error.Category.t) (message : string) :
     t Monad.t =
   raise (ErrorMessage (e, message)) category message
@@ -2064,6 +2115,88 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                        represented by an Unimplemented result"
               in
               return (Assumption (kind, typ, arguments))
+          | Texp_apply
+              ( { exp_desc = Texp_ident (path, _, _); _ },
+                e_xs )
+            when Option.is_some (constructor_equality_application path e_xs) -> (
+              match constructor_equality_application path e_xs with
+              | Some { negate; scrutinee; constructor; payloads } ->
+                  let* scrutinee = of_expression typ_vars scrutinee in
+                  let* payloads =
+                    Monad.List.map (of_expression typ_vars) payloads
+                  in
+                  let* constructor =
+                    PathName.of_constructor_description constructor
+                  in
+                  let actual_names =
+                    List.mapi
+                      (fun index _ ->
+                        Name.of_string_raw
+                          ("_rocq_eq_actual_" ^ string_of_int index))
+                      payloads
+                  in
+                  let expected_names =
+                    List.mapi
+                      (fun index _ ->
+                        Name.of_string_raw
+                          ("_rocq_eq_expected_" ^ string_of_int index))
+                      payloads
+                  in
+                  let variable name =
+                    Variable (MixedPath.of_name name, [])
+                  in
+                  let true_value =
+                    Variable (MixedPath.PathName PathName.true_value, [])
+                  in
+                  let false_value =
+                    Variable (MixedPath.PathName PathName.false_value, [])
+                  in
+                  let payload_equal actual expected =
+                    Apply
+                      ( variable (Name.of_string_raw "equiv_decb"),
+                        [ Some (variable actual); Some (variable expected) ] )
+                  in
+                  let equal_payloads =
+                    List.map2 payload_equal actual_names expected_names
+                    |> List.fold_left
+                         (fun result equality ->
+                           Apply
+                             ( variable (Name.of_string_raw "andb"),
+                               [ Some result; Some equality ] ))
+                         true_value
+                  in
+                  let equality =
+                    Match
+                      ( scrutinee,
+                        None,
+                        [
+                          ( Pattern.Constructor
+                              ( constructor,
+                                List.map
+                                  (fun name -> Pattern.Variable name)
+                                  actual_names ),
+                            None,
+                            equal_payloads );
+                          (Pattern.Any, None, false_value);
+                        ],
+                        false )
+                  in
+                  let equality =
+                    List.fold_right2
+                      (fun name payload body ->
+                        LetVar (None, name, [], payload, body))
+                      expected_names payloads equality
+                  in
+                  if negate then
+                    return
+                      (Apply
+                         ( variable (Name.of_string_raw "negb"),
+                           [ Some equality ] ))
+                  else return equality
+              | None ->
+                  failwith
+                    "constructor equality application disappeared after its \
+                     guard")
           | Texp_apply (source_e_f, e_xs) -> (
               let partial_operation =
                 match source_e_f.exp_desc with
