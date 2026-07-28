@@ -28,3 +28,11 @@ Definition Packed := Packed.module.
 
 (** Inclusion of the module [Packed] *)
 Definition keep_packed : int := Packed.(Packed.Packed_signature.keep_packed).
+
+Definition Packed_alias := Packed.
+
+Module Plain.
+  Definition keep_plain : int := 8.
+End Plain.
+
+Definition keep_plain : int := Plain.keep_plain.

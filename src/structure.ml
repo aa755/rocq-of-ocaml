@@ -1588,6 +1588,18 @@ let rec of_structure ?(has_functor_parameters = false)
       || Configuration.is_definition_excluded configuration
            (enclosing_path @ reference_path @ prefix @ [ name ])
     in
+    let* env = get_env in
+    let has_configured_value_exclusion =
+      match Mtype.scrape env mod_type with
+      | Mty_signature signature ->
+          List.exists
+            (function
+              | Types.Sig_value (ident, _, _) ->
+                  definition_is_excluded [] (Ident.name ident)
+              | _ -> false)
+            signature
+      | _ -> false
+    in
     let field_reference (name : Name.t) : PathName.t =
       {
         PathName.path = reference.path @ [ reference.base ];
@@ -2125,10 +2137,9 @@ let rec of_structure ?(has_functor_parameters = false)
               "Unexpected include of functor."
       )
     | _ -> (
-        match exclude_list with
-        | [] -> return [ ModuleInclude reference ]
-        | _ :: _ -> (
-            let* env = get_env in
+        match (exclude_list, has_configured_value_exclusion) with
+        | [], false -> return [ ModuleInclude reference ]
+        | _, _ -> (
             match Mtype.scrape env mod_type with
             | Mty_signature signature ->
                 signature
@@ -3318,6 +3329,12 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
           in
           let root_path, source_fields = root_and_fields path [] in
           let* root_signature = get_signature_hint root_path in
+          let* configuration = get_configuration in
+          let* enclosing_path = get_definition_path in
+          let definition_is_excluded prefix name =
+            Configuration.is_definition_excluded configuration
+              (enclosing_path @ prefix @ [ name ])
+          in
           let* flattened_namespace =
             match (root_signature, source_fields) with
             | Some root_signature, _ :: _
@@ -3395,6 +3412,14 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
                            Types.signature_item_id signature_item
                          in
                          let source_name = Ident.name ident in
+                         if
+                           match signature_item with
+                           | Types.Sig_value _ ->
+                               definition_is_excluded flattened_prefix
+                                 source_name
+                           | _ -> false
+                         then return []
+                         else
                          match signature_item with
                          | Types.Sig_value
                              (_, { Types.val_type; _ }, _)

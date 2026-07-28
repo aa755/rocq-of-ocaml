@@ -17,3 +17,12 @@ end = struct
 end
 
 include Packed
+
+module Packed_alias = Packed
+
+module Plain = struct
+  let keep_plain = 8
+  let drop_plain = 9
+end
+
+include Plain

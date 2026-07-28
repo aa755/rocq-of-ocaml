@@ -4,6 +4,8 @@
     ["tests/excluded_definitions.ml", "*_by_suffix"],
     ["tests/excluded_definitions.ml", "drop_external"],
     ["tests/excluded_definitions.ml", "Nested.drop_nested"],
-    ["tests/excluded_definitions.ml", "Packed.drop_packed"]
+    ["tests/excluded_definitions.ml", "Packed.drop_packed"],
+    ["tests/excluded_definitions.ml", "Packed_alias.drop_packed"],
+    ["tests/excluded_definitions.ml", "Plain.drop_plain"]
   ]
 }
