@@ -8,11 +8,9 @@ Definition a_value : t := Variant.Build "A" unit tt.
 
 Definition b_value : t := Variant.Build "B" int 1.
 
-#[local] Instance _rocq_assumption_match_variant_0 :
-  RocqOfOCaml.Basics.Unreachable int.
-Admitted.
-
-Definition match_variant (x_value : t) : int :=
+Definition match_variant
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (x_value : t)
+  : int :=
   let _variant_value := x_value in
   match _variant_value with
   | Variant.Build _variant_tag _ _variant_payload =>

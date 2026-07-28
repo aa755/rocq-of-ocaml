@@ -17,11 +17,9 @@ Definition payload (function_parameter : Mapped.t) : int :=
   | Mapped.B n_value => n_value
   end.
 
-#[local] Instance _rocq_assumption_only_a_0 :
-  RocqOfOCaml.Basics.Unreachable int.
-Admitted.
-
-Definition only_a (x_value : Mapped.t) : int :=
+Definition only_a
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+  (x_value : Mapped.t) : int :=
   match x_value with
   | Mapped.A => 1
   | _ => (@RocqOfOCaml.Basics.unreachable int _)

@@ -1,7 +1,7 @@
 --- tests/errors/legacy_attribute.ml:1:18 ------------------------------------- unexpected (1/1) ---
 
 > 1 | let value = 1 [@@coq_axiom]
-  2 | 
+  2 |
 
 
 Attributes were renamed from @coq_* to @rocq_*.

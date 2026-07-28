@@ -1,9 +1,9 @@
 --- tests/errors/unsupported_expressions.ml:4:3 ----------------------------- side_effect (1/12) ---
 
-  2 | 
+  2 |
   3 | let set_field (record : mutable_record) =
 > 4 |   record.field <- 1
-  5 | 
+  5 |
   6 | let array_value =
   7 |   [| 1; 2; 3 |]
 
@@ -17,7 +17,7 @@ Set record field not handled.
 > 11 |   while !counter < 2 do
 > 12 |     counter := !counter + 1
 > 13 |   done
-  14 | 
+  14 |
   15 | let for_loop () =
   16 |   for index = 0 to 2 do
 
@@ -26,12 +26,12 @@ While loops not handled.
 
 --- tests/errors/unsupported_expressions.ml:16:3 ---------------------------- side_effect (3/12) ---
 
-  14 | 
+  14 |
   15 | let for_loop () =
 > 16 |   for index = 0 to 2 do
 > 17 |     ignore index
 > 18 |   done
-  19 | 
+  19 |
   20 | class simple_object =
   21 |   object
 
@@ -41,14 +41,14 @@ For loops not handled.
 --- tests/errors/unsupported_expressions.ml:20:1 -------------------------- not_supported (4/12) ---
 
   18 |   done
-  19 | 
+  19 |
 > 20 | class simple_object =
 > 21 |   object
 > 22 |     val mutable field = 0
 > 23 |     method get = field
 > 24 |     method set value = field <- value
 > 25 |   end
-  26 | 
+  26 |
   27 | let object_value =
   28 |   object
 
@@ -58,7 +58,7 @@ Structure item `class` not handled.
 --- tests/errors/unsupported_expressions.ml:27:5 -------------------------- not_supported (5/12) ---
 
   25 |   end
-  26 | 
+  26 |
 > 27 | let object_value =
   28 |   object
   29 |     method get = 1
@@ -70,7 +70,7 @@ We do not handle this form of object types
 --- tests/errors/unsupported_expressions.ml:27:5 -------------------------- not_supported (6/12) ---
 
   25 |   end
-  26 | 
+  26 |
 > 27 | let object_value =
   28 |   object
   29 |     method get = 1
@@ -81,12 +81,12 @@ We do not handle this form of object types
 
 --- tests/errors/unsupported_expressions.ml:28:3 -------------------------- not_supported (7/12) ---
 
-  26 | 
+  26 |
   27 | let object_value =
 > 28 |   object
 > 29 |     method get = 1
 > 30 |   end
-  31 | 
+  31 |
   32 | let send_value =
   33 |   object_value#get
 
@@ -95,10 +95,10 @@ Creation of objects is not handled
 
 --- tests/errors/unsupported_expressions.ml:33:3 -------------------------- not_supported (8/12) ---
 
-  31 | 
+  31 |
   32 | let send_value =
 > 33 |   object_value#get
-  34 | 
+  34 |
   35 | let new_object =
   36 |   new simple_object
 
@@ -107,10 +107,10 @@ Sending method message is not handled
 
 --- tests/errors/unsupported_expressions.ml:36:3 -------------------------- not_supported (9/12) ---
 
-  34 | 
+  34 |
   35 | let new_object =
 > 36 |   new simple_object
-  37 | 
+  37 |
   38 | let lazy_value =
   39 |   lazy 1
 
@@ -119,10 +119,10 @@ Creation of new objects is not handled
 
 --- tests/errors/unsupported_expressions.ml:39:3 --------------------------- side_effect (10/12) ---
 
-  37 | 
+  37 |
   38 | let lazy_value =
 > 39 |   lazy 1
-  40 | 
+  40 |
   41 | let assertion =
   42 |   assert true
 
@@ -134,7 +134,7 @@ Lazy expressions are not handled
   48 | let try_with_name value =
   49 |   try value with
 > 50 |   | exn -> 0
-  51 | 
+  51 |
   52 | let try_with_any value =
   53 |   try value with
 
@@ -143,13 +143,13 @@ Unexpected kind of pattern (expected extensible type or an any pattern)
 
 --- tests/errors/unsupported_expressions.ml:57:3 --------------------------- side_effect (12/12) ---
 
-  55 | 
+  55 |
   56 | let local_exception () =
 > 57 |   let exception Local in
 > 58 |   raise Local
-  59 | 
+  59 |
   60 | type empty = |
-  61 | 
+  61 |
 
 
 Let of exception is not handled
@@ -206,18 +206,13 @@ Definition lazy_value : lazy_t :=
   (* ❌ Lazy expressions are not handled *)
   lazy 1.
 
-#[local] Instance _rocq_assumption_assertion_0 :
-  RocqOfOCaml.Basics.Unreachable unit.
-Admitted.
-
-Definition assertion : unit :=
+Definition assertion
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit} : unit :=
   if true then tt else (@RocqOfOCaml.Basics.unreachable unit _).
 
-#[local] Instance _rocq_assumption_try_with_0 :
-  RocqOfOCaml.Basics.Unreachable int.
-Admitted.
-
-Definition try_with (value : int) : int :=
+Definition try_with
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (value : int)
+  : int :=
   try_with (fun _ => value)
     (fun _exception_value =>
       match _exception_value with
@@ -229,11 +224,9 @@ Definition try_with (value : int) : int :=
           (@RocqOfOCaml.Basics.unreachable int _)
       end).
 
-#[local] Instance _rocq_assumption_try_with_name_0 :
-  RocqOfOCaml.Basics.Unreachable int.
-Admitted.
-
-Definition try_with_name (value : int) : int :=
+Definition try_with_name
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (value : int)
+  : int :=
   try_with (fun _ => value)
     (fun _exception_value =>
       match _exception_value with

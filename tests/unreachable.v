@@ -2,38 +2,30 @@
 Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
-#[local] Instance _rocq_assumption_failed_int_0 :
-  RocqOfOCaml.Basics.Unreachable int.
-Admitted.
-
-Definition failed_int (function_parameter : unit) : int :=
+Definition failed_int
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+  (function_parameter : unit) : int :=
   let '_ := function_parameter in
   let '_ := "impossible" in
   (@RocqOfOCaml.Basics.unreachable int _).
 
-#[local] Instance _rocq_assumption_invalid_string_0 :
-  RocqOfOCaml.Basics.Unreachable string.
-Admitted.
-
-Definition invalid_string (function_parameter : unit) : string :=
+Definition invalid_string
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
+  (function_parameter : unit) : string :=
   let '_ := function_parameter in
   let '_ := "invalid" in
   (@RocqOfOCaml.Basics.unreachable string _).
 
-#[local] Instance _rocq_assumption_raised_bool_0 :
-  RocqOfOCaml.Basics.Unreachable bool.
-Admitted.
-
-Definition raised_bool (function_parameter : unit) : bool :=
+Definition raised_bool
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool}
+  (function_parameter : unit) : bool :=
   let '_ := function_parameter in
   let '_ := Build_extensible "Failure_case" unit tt in
   (@RocqOfOCaml.Basics.unreachable bool _).
 
-#[local] Instance _rocq_assumption_missing_implementation_0 :
-  RocqOfOCaml.Basics.Unimplemented int.
-Admitted.
-
-Definition missing_implementation (function_parameter : unit) : int :=
+Definition missing_implementation
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unimplemented int}
+  (function_parameter : unit) : int :=
   let '_ := function_parameter in
   let '_ := "todo 17" in
   (@RocqOfOCaml.Basics.unimplemented int _).
@@ -45,11 +37,9 @@ Definition failed_poly {a : Set}
   let '_ := "impossible polymorphic result" in
   (@RocqOfOCaml.Basics.unreachable a _).
 
-#[local] Instance _rocq_assumption_failed_poly_int_0 :
-  RocqOfOCaml.Basics.Unreachable int.
-Admitted.
-
-Definition failed_poly_int (function_parameter : unit) : int :=
+Definition failed_poly_int
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+  (function_parameter : unit) : int :=
   let '_ := function_parameter in
   failed_poly tt.
 
@@ -83,25 +73,20 @@ Module Outer.
     }.
     Arguments Build_FArgs {_ _}.
     
-    Section _rocq_assumptions_checked.
-      Context `{_fargs : FArgs}.
-      
-      #[local] Instance _rocq_assumption_checked_0 :
-        RocqOfOCaml.Basics.Unreachable unit.
-      Admitted.
-      
-      Definition checked (function_parameter : unit)
-        : RocqOfOCaml.Basics.with_context _fargs (X.(Outer_X_signature.t)) :=
-        let '_ := function_parameter in
-        let '_ :=
-          if Y.(Inner_Y_signature.valid) then tt else
-            (@RocqOfOCaml.Basics.unreachable unit _) in
-        X.(Outer_X_signature.value).
-    End _rocq_assumptions_checked.
+    Definition checked `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
+      (function_parameter : unit) : X.(Outer_X_signature.t) :=
+      let '_ := function_parameter in
+      let '_ :=
+        if Y.(Inner_Y_signature.valid) then tt else
+          (@RocqOfOCaml.Basics.unreachable unit _) in
+      X.(Outer_X_signature.value).
     
     Module Inner_result.
       Record signature `{_fargs : FArgs} : Set := {
-        checked : unit -> X.(Outer_X_signature.t);
+        checked :
+          forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit},
+            unit -> X.(Outer_X_signature.t);
       }.
     End Inner_result.
     Definition Inner_result `{_fargs : FArgs} := @Inner_result.signature _ _ _.
@@ -110,7 +95,8 @@ Module Outer.
     (* Inner *)
     Definition functor `{_fargs : FArgs} :@Inner_result _ _ _fargs :=
       ({|
-        Inner_result.checked (_fargs := _fargs) := (checked (_fargs := _fargs))
+        Inner_result.checked (_fargs := _fargs) _ :=
+          (checked (_fargs := _fargs))
       |} : @Inner_result _ _ _fargs).
   End Inner.
   Definition Inner `{_fargs : FArgs} (Y : Inner_Y_signature) :=
