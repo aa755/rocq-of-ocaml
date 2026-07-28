@@ -1504,6 +1504,7 @@ let add_assumption_instance_args (definition : t option Definition.t) :
 
 type assumption_call_spec = {
   call_typ : Type.t;
+  projected_types : Name.t Name.Map.t;
   result_typ : Type.t;
   requirements : assumption_requirement list;
 }
@@ -1516,11 +1517,35 @@ let assumption_call_spec_for_field (specs : assumption_call_specs)
   | Some spec -> Some spec
   | None ->
       let field_name = Name.to_string field.PathName.base in
+      let operator_record_field_name definition_name =
+        let marker = "_op_" in
+        let marker_length = String.length marker in
+        let rec find index =
+          if index + marker_length > String.length definition_name then
+            None
+          else if
+            String.sub definition_name index marker_length = marker
+          then
+            let module_path = String.sub definition_name 0 index in
+            let operator =
+              String.sub definition_name (index + marker_length)
+                (String.length definition_name - index - marker_length)
+            in
+            Some ("op_" ^ module_path ^ "_" ^ operator)
+          else find (index + 1)
+        in
+        find 0
+      in
       specs
       |> Name.Map.bindings
       |> List.find_map (fun (name, spec) ->
-             let suffix = "_" ^ Name.to_string name in
-             if string_ends_with field_name suffix then Some spec else None)
+             let name = Name.to_string name in
+             let suffix = "_" ^ name in
+             if
+               string_ends_with field_name suffix
+               || operator_record_field_name name = Some field_name
+             then Some spec
+             else None)
 
 (** Add the extra binders needed when a generated module-record constructor
     stores translated functions that acquired assumption class parameters.
@@ -1567,6 +1592,7 @@ let assumption_call_specs_of_definition (definition : t option Definition.t) :
              Name.Map.add header.Header.name
                {
                  call_typ;
+                 projected_types = Name.Map.empty;
                  result_typ = Type.arrow_result call_typ;
                  requirements;
                }

@@ -28,14 +28,35 @@ let type_of_let_in_type_target = function
 
 let add_assumption_requirements (specs : Exp.assumption_call_specs)
     (signature : t) : t =
+  let rec call_type_correspondences items =
+    items
+    |> List.concat_map (function
+         | Value (name, typ, _) -> (
+             match
+               Exp.assumption_call_spec_for_field specs
+                 { PathName.path = []; base = name }
+             with
+             | Some spec -> [ (spec.Exp.call_typ, typ) ]
+             | None -> [])
+         | ModuleWithSignature items ->
+             call_type_correspondences items
+         | _ -> [])
+  in
+  let call_type_correspondences =
+    call_type_correspondences signature.items
+  in
   let rec add_to_item = function
     | Value (name, typ, existing_requirements) ->
         let requirements =
-          match Name.Map.find_opt name specs with
+          match
+            Exp.assumption_call_spec_for_field specs
+              { PathName.path = []; base = name }
+          with
           | None -> existing_requirements
           | Some
               {
                 Exp.call_typ = declared_call;
+                projected_types = _;
                 Exp.result_typ = declared_result;
                 requirements = inferred_requirements;
               } ->
@@ -43,17 +64,33 @@ let add_assumption_requirements (specs : Exp.assumption_call_specs)
               existing_requirements
               @ List.map
                   (fun (kind, required_typ) ->
-                    let specialized =
+                    let specialize declared actual typ =
                       match
                         Type.specialize_matched_type
-                          ~relaxed_constructors:true declared_call
-                          actual_call required_typ
+                          ~relaxed_constructors:true declared actual typ
+                      with
+                      | Some specialized
+                        when compare specialized typ <> 0 ->
+                          Some specialized
+                      | Some _ | None -> None
+                    in
+                    let specialized =
+                      match
+                        specialize declared_call actual_call required_typ
                       with
                       | Some specialized -> specialized
-                      | None ->
+                      | None -> (
+                          match
+                            List.find_map
+                              (fun (declared, actual) ->
+                                specialize declared actual required_typ)
+                              call_type_correspondences
+                          with
+                          | Some specialized -> specialized
+                          | None ->
                           if compare required_typ declared_result = 0 then
                             Type.arrow_result actual_call
-                          else required_typ
+                          else required_typ)
                     in
                     (kind, specialized))
                   inferred_requirements
@@ -67,11 +104,37 @@ let add_assumption_requirements (specs : Exp.assumption_call_specs)
   { signature with items = List.map add_to_item signature.items }
 
 let assumption_call_specs (signature : t) : Exp.assumption_call_specs =
+  let add_projected_type source target projected =
+    if Name.Map.mem source projected then projected
+    else Name.Map.add source target projected
+  in
+  let rec projected_types projected = function
+    | TypExistential name ->
+        add_projected_type name name projected
+    | TypSynonym (name, typ) ->
+        let projected = add_projected_type name name projected in
+        (match typ with
+        | Type.Variable source
+        | Type.Apply
+            (MixedPath.PathName { PathName.path = []; base = source }, []) ->
+            add_projected_type source name projected
+        | _ -> projected)
+    | ModuleWithTypeParams (name, _, _) ->
+        add_projected_type name name projected
+    | ModuleWithSignature items ->
+        List.fold_left projected_types projected items
+    | Error _ | Documentation _ | Module _ | Value _ ->
+        projected
+  in
+  let projected_types =
+    List.fold_left projected_types Name.Map.empty signature.items
+  in
   let rec collect specs = function
     | Value (name, typ, (_ :: _ as requirements)) ->
         Name.Map.add name
           {
             Exp.call_typ = typ;
+            projected_types;
             Exp.result_typ = Type.arrow_result typ;
             requirements;
           }

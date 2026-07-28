@@ -597,6 +597,111 @@ let specialize_matched_type ?(relaxed_constructors = false) (pattern : t)
       in
       Some (specialize typ)
 
+(** Qualify type constructors while lifting a definition out of a nested
+    module.  Local [t] becomes [Module.t], and paths through a direct child
+    module such as [Child.t] become [Module.Child.t]. *)
+let prefix_local_paths (module_name : Name.t)
+    (local_type_names : Name.Set.t) (local_module_names : Name.Set.t)
+    (typ : t) : t =
+  let rec prefix typ =
+    match typ with
+    | Variable _ | Kind _ | String _ | Error _ -> typ
+    | Arrow (left, right) -> Arrow (prefix left, prefix right)
+    | Eq (left, right) -> Eq (prefix left, prefix right)
+    | Tuple types -> Tuple (List.map prefix types)
+    | Apply (path, arguments) ->
+        let path =
+          match path with
+          | MixedPath.PathName { PathName.path = []; base }
+            when Name.Set.mem base local_type_names ->
+              MixedPath.PathName
+                { PathName.path = [ module_name ]; base }
+          | MixedPath.PathName
+              ({ PathName.path = first :: _; _ } as path_name)
+            when Name.Set.mem first local_module_names ->
+              MixedPath.PathName
+                {
+                  path_name with
+                  PathName.path = module_name :: path_name.path;
+                }
+          | path -> path
+        in
+        Apply
+          ( path,
+            List.map
+              (fun (argument, tag) -> (prefix argument, tag))
+              arguments )
+    | Signature (path, parameters) ->
+        Signature
+          ( path,
+            List.map
+              (fun (name, typ) -> (name, Option.map prefix typ))
+              parameters )
+    | InferModule typ -> InferModule (prefix typ)
+    | ForallModule (name, parameter, result) ->
+        ForallModule (name, prefix parameter, prefix result)
+    | ExistTyps (parameters, body) ->
+        ExistTyps (parameters, prefix body)
+    | ForallTyps (parameters, body) ->
+        ForallTyps (parameters, prefix body)
+    | FunTyps (parameters, body) ->
+        FunTyps (parameters, prefix body)
+    | Let (name, value, body) ->
+        Let (name, prefix value, prefix body)
+  in
+  prefix typ
+
+(** Replace selected unqualified type constructors with projected paths from
+    an instantiated module record. *)
+let project_type_names (project : Name.t -> MixedPath.t option) (typ : t) : t =
+  let rec rewrite typ =
+    match typ with
+    | Variable name -> (
+        match project name with
+        | Some path -> Apply (path, [])
+        | None -> typ)
+    | Kind _ | String _ | Error _ -> typ
+    | Arrow (left, right) -> Arrow (rewrite left, rewrite right)
+    | Eq (left, right) -> Eq (rewrite left, rewrite right)
+    | Tuple types -> Tuple (List.map rewrite types)
+    | Apply
+        (MixedPath.PathName { PathName.path = []; base }, arguments) -> (
+        let arguments =
+          List.map
+            (fun (argument, tag) -> (rewrite argument, tag))
+            arguments
+        in
+        match project base with
+        | Some path -> Apply (path, arguments)
+        | None ->
+            Apply
+              (MixedPath.PathName { PathName.path = []; base }, arguments))
+    | Apply (path, arguments) ->
+        Apply
+          ( path,
+            List.map
+              (fun (argument, tag) -> (rewrite argument, tag))
+              arguments )
+    | Signature (path, parameters) ->
+        Signature
+          ( path,
+            List.map
+              (fun (name, typ) -> (name, Option.map rewrite typ))
+              parameters )
+    | InferModule typ -> InferModule (rewrite typ)
+    | ForallModule (name, parameter, result) ->
+        ForallModule (name, rewrite parameter, rewrite result)
+    | ExistTyps (parameters, body) ->
+        ExistTyps (parameters, rewrite body)
+    | ForallTyps (parameters, body) ->
+        ForallTyps (parameters, rewrite body)
+    | FunTyps (parameters, body) ->
+        FunTyps (parameters, rewrite body)
+    | Let (name, value, body) ->
+        Let (name, rewrite value, rewrite body)
+  in
+  rewrite typ
+
 (** Rewrite the result of a partial function using the manifest definition of
     its source monad.  This is needed for specialized functor signatures:
     OCaml may expand [State.t A] to [state -> M (A * state)], but the partial

@@ -5,7 +5,7 @@ type payload = {
 
 let extension = ".rocq-assumptions"
 let magic = "rocq-of-ocaml assumption metadata\n"
-let version = 1
+let version = 3
 
 let write (file_name : string)
     (specs : Structure.qualified_assumption_call_specs) : unit =

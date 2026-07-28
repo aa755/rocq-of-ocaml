@@ -752,6 +752,7 @@ let rec qualified_assumption_call_specs prefix definitions =
              ( String.concat "." (prefix @ [ Name.to_string name ]),
                {
                  Exp.call_typ = typ;
+                 projected_types = Name.Map.empty;
                  Exp.result_typ = Type.arrow_result typ;
                  requirements;
                } );
@@ -779,6 +780,50 @@ let propagate_assumption_calls
     (definitions : t list) : t list =
   let merge_specs left right =
     Name.Map.union (fun _ _ right -> Some right) left right
+  in
+  let local_type_names definitions =
+    definitions
+    |> List.fold_left
+         (fun names -> function
+           | TypeDefinition (TypeDefinition.Inductive { typs; _ }) ->
+               List.fold_left
+                 (fun names (name, _, _) -> Name.Set.add name names)
+                 names typs
+           | TypeDefinition (TypeDefinition.Record (name, _, _, _))
+           | TypeDefinition (TypeDefinition.Synonym (name, _, _))
+           | TypeDefinition (TypeDefinition.ExtensibleTyp name)
+           | TypeDefinition (TypeDefinition.Abstract (name, _))
+           | TypeSynonym (name, _) ->
+               Name.Set.add name names
+           | _ -> names)
+         Name.Set.empty
+  in
+  let local_module_names definitions =
+    definitions
+    |> List.fold_left
+         (fun names -> function
+           | Module (name, _, _, _)
+           | ModuleExpression (name, _, _, _)
+           | ModuleSynonym (name, _, _) ->
+               Name.Set.add name names
+           | _ -> names)
+         Name.Set.empty
+  in
+  let prefix_spec module_name local_types local_modules
+      ({ Exp.call_typ; projected_types; result_typ; requirements } :
+        Exp.assumption_call_spec) =
+    let prefix =
+      Type.prefix_local_paths module_name local_types local_modules
+    in
+    {
+      Exp.call_typ = prefix call_typ;
+      projected_types;
+      Exp.result_typ = prefix result_typ;
+      requirements =
+        List.map
+          (fun (kind, typ) -> (kind, prefix typ))
+          requirements;
+    }
   in
   let rec specs_of_definitions definitions =
     definitions
@@ -808,22 +853,27 @@ let propagate_assumption_calls
                    Name.Map.add name
                      {
                        Exp.call_typ;
+                       projected_types = Name.Map.empty;
                        Exp.result_typ;
                        requirements;
                      }
                      specs)
            | Signature (_, signature) ->
-               merge_specs specs
+               merge_specs
                  (Signature.assumption_call_specs signature)
+                 specs
            | Module (module_name, _, nested, _) ->
                let nested_specs = specs_of_definitions nested in
+               let local_types = local_type_names nested in
+               let local_modules = local_module_names nested in
                Name.Map.fold
                  (fun nested_name spec specs ->
                    Name.Map.add
                      (Name.of_string_raw
-                        (Name.to_string module_name ^ "_"
+                       (Name.to_string module_name ^ "_"
                        ^ Name.to_string nested_name))
-                     spec specs)
+                     (prefix_spec module_name local_types local_modules spec)
+                     specs)
                  nested_specs specs
            | Documentation (_, nested)
            | ErrorMessage (_, Documentation (_, nested)) ->
@@ -949,9 +999,36 @@ let propagate_assumption_calls
            | comparison -> comparison)
     |> List.find_map (fun (_, _, spec) -> Some spec)
   in
-  let instantiate_requirements typ
-      ({ Exp.call_typ = declared_call; result_typ = declared_result;
-         requirements } :
+  let project_associated_type mixed_path projected_types typ =
+    let replace_last fields name =
+      match List.rev fields with
+      | [] -> None
+      | field :: fields ->
+          Some
+            (List.rev
+               ({ field with PathName.base = name } :: fields))
+    in
+    let project name =
+      match Name.Map.find_opt name projected_types with
+      | None -> None
+      | Some projected_name ->
+        match mixed_path with
+        | MixedPath.Access (root, fields) ->
+            Option.map
+              (fun fields -> MixedPath.Access (root, fields))
+              (replace_last fields projected_name)
+        | MixedPath.AppliedAccess (root, applications, fields) ->
+            Option.map
+              (fun fields ->
+                MixedPath.AppliedAccess (root, applications, fields))
+              (replace_last fields projected_name)
+        | MixedPath.PathName _ -> None
+    in
+    Type.project_type_names project typ
+  in
+  let instantiate_requirements mixed_path typ
+      ({ Exp.call_typ = declared_call; projected_types;
+         result_typ = declared_result; requirements } :
         Exp.assumption_call_spec) =
     match typ with
     | None -> requirements
@@ -960,7 +1037,7 @@ let propagate_assumption_calls
         let actual_result = Type.arrow_result typ in
         requirements
         |> List.map (fun (kind, required_typ) ->
-               ( kind,
+               let specialized =
                  match
                    Type.specialize_matched_type
                      ~relaxed_constructors:true declared_call actual_call
@@ -970,7 +1047,11 @@ let propagate_assumption_calls
                  | None ->
                      if compare required_typ declared_result = 0 then
                        actual_result
-                     else required_typ ))
+                     else required_typ
+               in
+               ( kind,
+                 project_associated_type mixed_path projected_types
+                   specialized ))
         |> Exp.sort_uniq_assumptions
   in
   let rec annotate_projected_requirements qualified_specs definitions =
@@ -981,7 +1062,8 @@ let propagate_assumption_calls
              let requirements =
                match find_projected_spec qualified_specs mixed_path with
                | None -> stored_requirements
-               | Some spec -> instantiate_requirements typ spec
+               | Some spec ->
+                   instantiate_requirements mixed_path typ spec
              in
              ModuleIncludeItem
                (kind, name, typ_vars, typ, mixed_path, requirements)

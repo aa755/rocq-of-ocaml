@@ -123,3 +123,48 @@ module Consumer (X : sig end) = struct
   let head values =
     List.hd values
 end
+
+module Operator_result (X : sig end) = struct
+  module Nested = struct
+    let checked value =
+      if value >= 0 then value else assert false
+
+    let ( + ) left right =
+      checked (Stdlib.( + ) left right)
+  end
+end
+
+module Hidden_result (X : sig
+  type left
+  type right
+
+  val left_value : left
+end) =
+struct
+  module Right = struct
+    type t = X.right
+
+    let failed () : t =
+      assert false
+  end
+
+  module Left = struct
+    type t = X.left
+
+    let after_hidden_failure () : t =
+      let (_ : Right.t) = Right.failed () in
+      X.left_value
+  end
+end
+
+module Hidden_applied = Hidden_result (struct
+  type left = bool
+  type right = int
+
+  let left_value = true
+end)
+
+module Hidden_left = Hidden_applied.Left
+
+let hidden_failure () =
+  Hidden_left.after_hidden_failure ()
