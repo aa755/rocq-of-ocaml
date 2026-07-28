@@ -197,11 +197,20 @@ let is_value_to_escape (configuration : t) (name : string) : bool =
 let is_definition_excluded (configuration : t) (definition_path : string list)
     : bool =
   let definition = String.concat "." definition_path in
+  let definition_matches configured =
+    if String.starts_with ~prefix:"*" configured then
+      let suffix =
+        String.sub configured 1 (String.length configured - 1)
+      in
+      String.ends_with ~suffix definition
+    else
+      configured = definition
+      || String.ends_with ~suffix:("." ^ configured) definition
+  in
   configuration.excluded_definitions
   |> List.exists (fun { DefinitionExclusion.source; definition = configured } ->
          filename_matches configuration.file_name source
-         && (configured = definition
-            || String.ends_with ~suffix:("." ^ configured) definition))
+         && definition_matches configured)
 
 let get_equality_override (configuration : t) (definition_path : string list) :
     string option =

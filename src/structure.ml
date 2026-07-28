@@ -2320,9 +2320,17 @@ let rec of_structure ?(has_functor_parameters = false)
                      ^ ") is not handled."))
             | Tstr_primitive { val_id; val_val = { val_type; _ }; _ } ->
                 let* name = Name.of_ident true val_id in
-                Type.of_typ_expr true Name.Map.empty val_type
-                >>= fun (typ, _, free_typ_vars) ->
-                return [ AbstractValue (name, List.map fst free_typ_vars, typ) ]
+                let* configuration = get_configuration in
+                let* enclosing_path = get_definition_path in
+                if
+                  Configuration.is_definition_excluded configuration
+                    (enclosing_path @ [ Name.to_string name ])
+                then return []
+                else
+                  Type.of_typ_expr true Name.Map.empty val_type
+                  >>= fun (typ, _, free_typ_vars) ->
+                  return
+                    [ AbstractValue (name, List.map fst free_typ_vars, typ) ]
             | Tstr_typext { tyext_constructors; _ } ->
                 Monad.List.concat_map typ_definitions_of_typ_extension
                   tyext_constructors
@@ -2336,21 +2344,28 @@ let rec of_structure ?(has_functor_parameters = false)
                   "Structure item `class_type` not handled."
             | Tstr_include { incl_attributes; incl_type; _ }
               when has_raw_attribute "merlin.hide" incl_attributes ->
+                let* configuration = get_configuration in
+                let* enclosing_path = get_definition_path in
                 incl_type
                 |> Monad.List.filter_map (function
                      | Types.Sig_value
                          (ident, { Types.val_type; _ }, _)
                        when not (String.equal (Ident.name ident) "_") ->
                          let* name = Name.of_ident true ident in
-                         let* typ, _, free_typ_vars =
-                           Type.of_typ_expr true Name.Map.empty val_type
-                         in
-                         return
-                           (Some
-                              (AbstractValue
-                                 ( name,
-                                   List.map fst free_typ_vars,
-                                   typ )))
+                         if
+                           Configuration.is_definition_excluded configuration
+                             (enclosing_path @ [ Name.to_string name ])
+                         then return None
+                         else
+                           let* typ, _, free_typ_vars =
+                             Type.of_typ_expr true Name.Map.empty val_type
+                           in
+                           return
+                             (Some
+                                (AbstractValue
+                                   ( name,
+                                     List.map fst free_typ_vars,
+                                     typ )))
                      | _ -> return None)
             | Tstr_include
                 {

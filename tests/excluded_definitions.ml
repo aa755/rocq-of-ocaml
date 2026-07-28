@@ -1,5 +1,7 @@
 let keep = 1
 let drop = 2
+let drop_by_suffix = 5
+external drop_external : int -> int = "drop_external"
 
 module Nested = struct
   let keep_nested = 3

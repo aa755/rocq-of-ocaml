@@ -1,6 +1,8 @@
 {
   "excluded_definitions": [
     ["tests/excluded_definitions.ml", "drop"],
+    ["tests/excluded_definitions.ml", "*_by_suffix"],
+    ["tests/excluded_definitions.ml", "drop_external"],
     ["tests/excluded_definitions.ml", "Nested.drop_nested"]
   ]
 }
