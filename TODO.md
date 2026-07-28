@@ -22,17 +22,15 @@ mechanisms below.
 - `assert`, `raise`, `invalid_arg`, ordinary `failwith`, unmatched exception
   propagation, and unmatched dynamic variants use `Unreachable`.
 - Only `failwith "todo ..."` uses `Unimplemented`.
-- Concrete result types receive only the type-specific admitted instances
-  required by the generated program. There is no universal instance for
-  either class.
-- Polymorphic definitions expose the required class constraints, and those
-  constraints propagate through calls, module projections, signatures, and
-  synthesized functor-result records.
+- Every definition exposes the required type-specific class constraints,
+  including requirements at concrete result types. Those constraints
+  propagate through calls, module projections, signatures, and synthesized
+  functor-result records. The translator does not synthesize inhabitants.
 - The translator warns with the source location whenever it introduces either
   assumption.
-- It is the user's responsibility to prove that every admitted
-  `Unreachable` occurrence is unreachable, and that every `Unimplemented`
-  occurrence is outside the executions covered by a correctness theorem.
+- It is the user's responsibility to prove that every `Unreachable`
+  occurrence is unreachable, and that every `Unimplemented` occurrence is
+  outside the executions covered by a correctness theorem.
 
 ## Coinductive types (partial computations implemented)
 

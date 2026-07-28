@@ -11,13 +11,7 @@ module Value = struct
     definition : Exp.t option Exp.Definition.t;
   }
 
-  let concrete_assumptions ({ definition; _ } : t) =
-    definition.Exp.Definition.cases
-    |> List.concat_map (fun (_, body) ->
-           match body with
-           | None -> []
-           | Some body -> Exp.concrete_assumption_requirements body)
-    |> Exp.sort_uniq_assumptions
+  let concrete_assumptions (_ : t) = []
 
   let to_coq_typ_vars (header : Exp.Header.t) : SmartPrint.t =
     let { Exp.Header.typ_vars; _ } = header in

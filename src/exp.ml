@@ -1421,29 +1421,21 @@ let assumption_requirement_of_class_type (typ : Type.t) :
       | _ -> None)
   | _ -> None
 
-let concrete_assumption_requirements (e : t) : assumption_requirement list =
-  assumption_requirements e
-  |> List.filter (fun (_, typ) -> Name.Set.is_empty (Type.typ_args_of_typ typ))
-  |> sort_uniq_assumptions
+let concrete_assumption_requirements (_e : t) : assumption_requirement list =
+  []
 
-(** Add explicit class parameters for assumptions whose result depends on a
-    translated OCaml type parameter.  Concrete assumptions are declared by
-    [Structure.Value.to_coq] instead. *)
+(** Add explicit class parameters for every exceptional result required by a
+    translated definition.  Keeping concrete requirements explicit is as
+    important as keeping polymorphic ones explicit: synthesizing a local
+    inhabitant would turn a source precondition into an axiom. *)
 let add_assumption_instance_args (definition : t option Definition.t) :
     t option Definition.t =
   let add_case (header, body) =
     match body with
     | None -> (header, body)
     | Some body ->
-        let header_typ_vars =
-          header.Header.typ_vars |> List.map fst |> Name.Set.of_list
-        in
         let requirements =
           assumption_requirements body
-          |> List.filter (fun (_, typ) ->
-                 let free_vars = Type.typ_args_of_typ typ in
-                 (not (Name.Set.is_empty free_vars))
-                 && Name.Set.subset free_vars header_typ_vars)
           |> sort_uniq_assumptions
         in
         let generated_args =
