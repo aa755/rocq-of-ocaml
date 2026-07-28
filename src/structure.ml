@@ -43,14 +43,43 @@ module Value = struct
       SmartPrint.t =
     if
       List.exists
-        (fun ({ Exp.Header.typ_vars; instance_args; is_notation; _ }, _) ->
-          typ_vars <> [] || instance_args <> [] || is_notation)
+        (fun ({ Exp.Header.typ_vars; is_notation; _ }, _) ->
+          typ_vars <> [] || is_notation)
         cases
     then
       failwith
-        "mutual well-founded recursion with polymorphic, instance, or \
-         notation parameters is not supported"
+        "mutual well-founded recursion with polymorphic or notation \
+         parameters is not supported"
     else
+      let common_instance_args =
+        match cases with
+        | ({ Exp.Header.instance_args; _ }, _) :: rest ->
+            if
+              List.for_all
+                (fun ({ Exp.Header.instance_args = candidate; _ }, _) ->
+                  compare instance_args candidate = 0)
+                rest
+            then instance_args
+            else
+              failwith
+                "all functions in a mutual well-founded group must require \
+                 the same instance parameters"
+        | [] -> []
+      in
+      let render_common_instance_args =
+        Exp.Header.to_coq_instance_args
+          {
+            Exp.Header.name = Name.of_string_raw "_";
+            typ_vars = [];
+            args = [];
+            instance_args = common_instance_args;
+            structs = [];
+            typ =
+              Type.Apply
+                (MixedPath.of_name (Name.of_string_raw "unit"), []);
+            is_notation = false;
+          }
+      in
       let tuple_type (arguments : (Name.t * Type.t) list) : Type.t =
         match List.map snd arguments with
         | [] ->
@@ -135,6 +164,7 @@ module Value = struct
       in
       let render_alias index (header : Exp.Header.t) =
         !^"let" ^^ Name.to_coq header.Exp.Header.name
+        ^^ Exp.Header.to_coq_instance_args header
         ^^ render_arguments header
         ^^ !^":" ^^ Type.to_coq None None header.Exp.Header.typ
         ^^ !^":=" ^^ Name.to_coq recurse_name
@@ -187,6 +217,7 @@ module Value = struct
       let dispatch_definition =
         !^"Program Definition" ^^ Name.to_coq dispatch_name
         ^^ FArgs.to_coq fargs
+        ^^ render_common_instance_args
         ^^ parens
              (Name.to_coq call_name ^^ !^":"
              ^^ Type.to_coq None None call_type)
@@ -218,7 +249,9 @@ module Value = struct
         cases
         |> List.mapi (fun index (header, _) ->
                !^"Definition" ^^ Name.to_coq header.Exp.Header.name
-               ^^ FArgs.to_coq fargs ^^ render_arguments header
+               ^^ FArgs.to_coq fargs
+               ^^ Exp.Header.to_coq_instance_args header
+               ^^ render_arguments header
                ^^ !^":" ^^ Type.to_coq None None header.Exp.Header.typ
                ^^ !^":=" ^^ Name.to_coq dispatch_name
                ^^ inject index (tuple_value header.Exp.Header.args)
