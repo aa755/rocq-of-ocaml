@@ -1550,6 +1550,25 @@ let assumption_call_specs_of_definition (definition : t option Definition.t) :
 let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
     : t =
   let map_option f = Option.map f in
+  let local_callee = function
+    | Variable (MixedPath.PathName { PathName.path = []; base }, _) ->
+        Name.Map.find_opt base specs
+    | _ -> None
+  in
+  let add_requirements declared_result actual_result requirements body =
+    let substitutions =
+      match Type.match_variables declared_result actual_result with
+      | Some substitutions -> substitutions
+      | None -> []
+    in
+    List.fold_right
+      (fun (kind, required_typ) body ->
+        RequiresAssumption
+          ( kind,
+            Type.subst_variables substitutions required_typ,
+            body ))
+      requirements body
+  in
   let rec map_definition (definition : t option Definition.t) =
     {
       definition with
@@ -1561,7 +1580,13 @@ let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
   and transform covered expression =
     let recurse = transform false in
     match expression with
-    | Constant _ | Variable _ | Error _ | ErrorTyp _ | Ltac _ -> expression
+    | Constant _ | Error _ | ErrorTyp _ | Ltac _ -> expression
+    | Variable _ when covered -> expression
+    | Variable _ -> (
+        match local_callee expression with
+        | None -> expression
+        | Some { result_typ; requirements } ->
+            add_requirements result_typ result_typ requirements expression)
     | Tuple values -> Tuple (List.map recurse values)
     | Constructor (name, implicits, values) ->
         Constructor (name, implicits, List.map recurse values)
@@ -1571,36 +1596,19 @@ let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
         ConstructorVariant
           (tag, Option.map (fun (typ, value) -> (typ, recurse value)) value)
     | Apply (f, arguments) ->
-        Apply (recurse f, List.map (map_option recurse) arguments)
+        Apply (transform true f, List.map (map_option recurse) arguments)
     | SourceApply (f, arguments, result_typ) ->
-        let f = recurse f in
+        let callee = local_callee f in
+        let f = transform true f in
         let arguments = List.map (map_option recurse) arguments in
         let application = SourceApply (f, arguments, result_typ) in
         if covered then application
         else
-          let callee =
-            match f with
-            | Variable
-                ( MixedPath.PathName { PathName.path = []; base },
-                  _ ) ->
-                Name.Map.find_opt base specs
-            | _ -> None
-          in
           (match callee with
           | None -> application
           | Some { result_typ = declared_result; requirements } ->
-              let substitutions =
-                match Type.match_variables declared_result result_typ with
-                | Some substitutions -> substitutions
-                | None -> []
-              in
-              List.fold_right
-                (fun (kind, required_typ) body ->
-                  RequiresAssumption
-                    ( kind,
-                      Type.subst_variables substitutions required_typ,
-                      body ))
-                requirements application)
+              add_requirements declared_result result_typ requirements
+                application)
     | Return (operator, value) -> Return (operator, recurse value)
     | InfixOperator (operator, left, right) ->
         InfixOperator (operator, recurse left, recurse right)

@@ -43,6 +43,60 @@ Definition failed_poly_int
   let '_ := function_parameter in
   failed_poly tt.
 
+Module Scoped_value_X_signature.
+  Record signature : Set := {
+    value : Variant.t;
+  }.
+End Scoped_value_X_signature.
+Definition Scoped_value_X_signature := Scoped_value_X_signature.signature.
+
+Module Scoped_value.
+  Class FArgs := {
+    X : Scoped_value_X_signature;
+  }.
+  
+  Definition number `{_fargs : FArgs}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+    let _variant_value := X.(Scoped_value_X_signature.value) in
+    match _variant_value with
+    | Variant.Build _variant_tag _ _variant_payload =>
+      if String.eqb _variant_tag "Number" then
+        let value := cast int _variant_payload in
+        value
+      else
+        (@RocqOfOCaml.Basics.unreachable int _)
+    end.
+  
+  Module Nested.
+    Definition copied_number `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+      number.
+  End Nested.
+  
+  Module Scoped_value_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      number :
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}, int;
+      Nested_copied_number :
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}, int;
+    }.
+  End Scoped_value_result.
+  Definition Scoped_value_result `{_fargs : FArgs} :=
+    @Scoped_value_result.signature _.
+  Arguments Scoped_value_result {_}.
+  
+  (* Scoped_value *)
+  Definition functor `{_fargs : FArgs} :@Scoped_value_result _fargs :=
+    ({|
+      Scoped_value_result.number (_fargs := _fargs) _ :=
+        (number (_fargs := _fargs));
+      Scoped_value_result.Nested_copied_number (_fargs := _fargs) _ :=
+        (Nested.copied_number (_fargs := _fargs))
+    |} : @Scoped_value_result _fargs).
+End Scoped_value.
+Definition Scoped_value (X : Scoped_value_X_signature) :=
+  @Scoped_value.functor (Scoped_value.Build_FArgs X).
+
 Module Outer_X_signature.
   Record signature {t : Set} : Set := {
     t := t;

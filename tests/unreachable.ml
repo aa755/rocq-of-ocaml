@@ -18,6 +18,19 @@ let failed_poly () : 'a =
 let failed_poly_int () : int =
   failed_poly ()
 
+module Scoped_value (X : sig
+  val value : [> `Number of int]
+end) =
+struct
+  let number =
+    match X.value with
+    | `Number value -> value
+
+  module Nested = struct
+    let copied_number = number
+  end
+end
+
 module Outer (X : sig
   type t
 

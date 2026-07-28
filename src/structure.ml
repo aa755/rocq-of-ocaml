@@ -795,23 +795,27 @@ let propagate_assumption_calls (definitions : t list) : t list =
         Module
           ( name,
             parameters,
-            fixed_point nested,
+            fixed_point ~inherited:specs nested,
             expression )
     | Documentation (text, nested) ->
         Documentation (text, List.map (transform specs) nested)
     | ErrorMessage (message, nested) ->
         ErrorMessage (message, transform specs nested)
     | definition -> definition
-  and fixed_point definitions =
-    let before = specs_of_definitions definitions in
+  and fixed_point ?(inherited = Name.Map.empty) definitions =
+    let before =
+      merge_specs inherited (specs_of_definitions definitions)
+    in
     let transformed = List.map (transform before) definitions in
-    let after = specs_of_definitions transformed in
+    let after =
+      merge_specs inherited (specs_of_definitions transformed)
+    in
     if
       Name.Map.equal
         (fun left right -> compare left right = 0)
         before after
     then transformed
-    else fixed_point transformed
+    else fixed_point ~inherited transformed
   in
   let rec update_signatures_scope definitions =
     let specs = specs_of_definitions definitions in
