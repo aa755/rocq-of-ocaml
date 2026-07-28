@@ -40,6 +40,15 @@ end)
 let failed_projected () : unit =
   Projected.failed_unit ()
 
+module Shadowed_pattern = struct
+  let hd values =
+    List.hd values
+
+  let first_or_zero = function
+    | hd :: _ -> hd
+    | [] -> 0
+end
+
 module Scoped_value (X : sig
   val value : [> `Number of int]
 end) =

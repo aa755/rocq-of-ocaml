@@ -1549,8 +1549,28 @@ let assumption_call_specs_of_definition (definition : t option Definition.t) :
     instance. *)
 let propagate_call_assumptions
     ?(projected_callee = fun (_ : MixedPath.t) -> None)
-    (specs : assumption_call_specs) (expression : t) : t =
+    ?(bound = Name.Set.empty) (specs : assumption_call_specs)
+    (expression : t) : t =
   let map_option f = Option.map f in
+  let add_names bound names =
+    List.fold_left
+      (fun bound name -> Name.Set.add name bound)
+      bound names
+  in
+  let add_header_bound bound (header : Header.t) =
+    add_names bound
+      (List.map fst header.Header.args
+      @ List.map fst header.Header.instance_args)
+  in
+  let dynamic_pattern_bound = function
+    | Pattern.VariantCase (_, pattern, _, whole) ->
+        Name.Set.union
+          (Pattern.get_free_vars pattern)
+          (match whole with
+          | Some whole -> Pattern.get_free_vars whole
+          | None -> Name.Set.empty)
+    | Pattern.VariantDefault pattern -> Pattern.get_free_vars pattern
+  in
   let rec qualified_spec path base =
     match path with
     | [] -> Name.Map.find_opt base specs
@@ -1572,7 +1592,11 @@ let propagate_call_assumptions
             | [] -> None
             | _ :: _ -> qualified_spec remaining base))
   in
-  let local_callee = function
+  let local_callee bound = function
+    | Variable
+        (MixedPath.PathName { PathName.path = []; base }, _)
+      when Name.Set.mem base bound ->
+        None
     | Variable
         (MixedPath.PathName { PathName.path; base } as mixed_path, _) -> (
         match qualified_spec path base with
@@ -1595,21 +1619,31 @@ let propagate_call_assumptions
             body ))
       requirements body
   in
-  let rec map_definition (definition : t option Definition.t) =
+  let rec map_definition bound (definition : t option Definition.t) =
+    let names =
+      definition.Definition.cases
+      |> List.map (fun (header, _) -> header.Header.name)
+    in
+    let recursive_bound =
+      if definition.Definition.is_rec then add_names bound names else bound
+    in
     {
       definition with
       Definition.cases =
         definition.cases
         |> List.map (fun (header, body) ->
-               (header, Option.map (transform false) body));
+               ( header,
+                 Option.map
+                   (transform (add_header_bound recursive_bound header) false)
+                   body ));
     }
-  and transform covered expression =
-    let recurse = transform false in
+  and transform bound covered expression =
+    let recurse = transform bound false in
     match expression with
     | Constant _ | Error _ | ErrorTyp _ | Ltac _ -> expression
     | Variable _ when covered -> expression
     | Variable _ -> (
-        match local_callee expression with
+        match local_callee bound expression with
         | None -> expression
         | Some { result_typ; requirements } ->
             add_requirements result_typ result_typ requirements expression)
@@ -1622,10 +1656,11 @@ let propagate_call_assumptions
         ConstructorVariant
           (tag, Option.map (fun (typ, value) -> (typ, recurse value)) value)
     | Apply (f, arguments) ->
-        Apply (transform true f, List.map (map_option recurse) arguments)
+        Apply
+          (transform bound true f, List.map (map_option recurse) arguments)
     | SourceApply (f, arguments, result_typ) ->
-        let callee = local_callee f in
-        let f = transform true f in
+        let callee = local_callee bound f in
+        let f = transform bound true f in
         let arguments = List.map (map_option recurse) arguments in
         let application = SourceApply (f, arguments, result_typ) in
         if covered then application
@@ -1638,24 +1673,51 @@ let propagate_call_assumptions
     | Return (operator, value) -> Return (operator, recurse value)
     | InfixOperator (operator, left, right) ->
         InfixOperator (operator, recurse left, recurse right)
-    | Function (name, typ, body) -> Function (name, typ, recurse body)
-    | Functions (names, body) -> Functions (names, recurse body)
+    | Function (name, typ, body) ->
+        Function
+          (name, typ, transform (Name.Set.add name bound) false body)
+    | Functions (names, body) ->
+        Functions
+          (names, transform (add_names bound names) false body)
     | LetVar (operator, name, typ_vars, value, body) ->
         LetVar
-          (operator, name, typ_vars, recurse value, recurse body)
+          ( operator,
+            name,
+            typ_vars,
+            recurse value,
+            transform (Name.Set.add name bound) false body )
     | LetFun (definition, body) ->
-        LetFun (map_definition definition, recurse body)
+        let names =
+          definition.Definition.cases
+          |> List.map (fun (header, _) -> header.Header.name)
+        in
+        LetFun
+          ( map_definition bound definition,
+            transform (add_names bound names) false body )
     | LetTyp (name, parameters, typ, body) ->
         LetTyp (name, parameters, typ, recurse body)
     | LetModuleUnpack (name, path, body) ->
-        LetModuleUnpack (name, path, recurse body)
+        LetModuleUnpack
+          (name, path, transform (Name.Set.add name bound) false body)
     | Match (scrutinee, dependent, cases, default) ->
         Match
           ( recurse scrutinee,
             dependent,
             List.map
               (fun (pattern, cast, body) ->
-                (pattern, cast, recurse body))
+                let pattern_bound =
+                  match cast with
+                  | Some { bound_vars; _ } ->
+                      add_names
+                        (Pattern.get_free_vars pattern)
+                        (List.map fst bound_vars)
+                  | None -> Pattern.get_free_vars pattern
+                in
+                ( pattern,
+                  cast,
+                  transform
+                    (Name.Set.union bound pattern_bound)
+                    false body ))
               cases,
             default )
     | MatchExtensible (scrutinee, typ, cases) ->
@@ -1663,14 +1725,27 @@ let propagate_call_assumptions
           ( recurse scrutinee,
             typ,
             List.map
-              (fun (pattern, body) -> (pattern, recurse body))
+              (fun (pattern, body) ->
+                let pattern_bound =
+                  match pattern with
+                  | Some (_, pattern, _) -> Pattern.get_free_vars pattern
+                  | None -> Name.Set.empty
+                in
+                ( pattern,
+                  transform
+                    (Name.Set.union bound pattern_bound)
+                    false body ))
               cases )
     | MatchVariant (scrutinee, typ, cases) ->
         MatchVariant
           ( recurse scrutinee,
             typ,
             List.map
-              (fun (pattern, body) -> (pattern, recurse body))
+              (fun (pattern, body) ->
+                ( pattern,
+                  transform
+                    (Name.Set.union bound (dynamic_pattern_bound pattern))
+                    false body ))
               cases )
     | Record fields ->
         Record
@@ -1687,18 +1762,20 @@ let propagate_call_assumptions
               (fun (name, arity, value) -> (name, arity, recurse value))
               fields )
     | ModulePack (arity, value) -> ModulePack (arity, recurse value)
-    | Functor (name, typ, body) -> Functor (name, typ, recurse body)
+    | Functor (name, typ, body) ->
+        Functor
+          (name, typ, transform (Name.Set.add name bound) false body)
     | Cast (value, typ) -> Cast (recurse value, typ)
     | TypAnnotation (value, typ) -> TypAnnotation (recurse value, typ)
     | Assert (typ, condition) -> Assert (typ, recurse condition)
     | Assumption (kind, typ, arguments) ->
         Assumption (kind, typ, List.map recurse arguments)
     | RequiresAssumption (kind, typ, body) ->
-        RequiresAssumption (kind, typ, transform true body)
+        RequiresAssumption (kind, typ, transform bound true body)
     | ErrorArray values -> ErrorArray (List.map recurse values)
     | ErrorMessage (body, message) -> ErrorMessage (recurse body, message)
   in
-  transform false expression
+  transform bound false expression
 
 let propagate_definition_call_assumptions
     ?(projected_callee = fun (_ : MixedPath.t) -> None)
@@ -1712,7 +1789,14 @@ let propagate_definition_call_assumptions
         |> List.map (fun (header, body) ->
                ( header,
                  Option.map
-                   (propagate_call_assumptions ~projected_callee specs)
+                   (propagate_call_assumptions ~projected_callee
+                      ~bound:
+                        (List.fold_left
+                           (fun bound name -> Name.Set.add name bound)
+                           Name.Set.empty
+                           (List.map fst header.Header.args
+                           @ List.map fst header.Header.instance_args))
+                      specs)
                    body ));
     }
   in

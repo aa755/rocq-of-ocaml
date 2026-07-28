@@ -222,7 +222,7 @@ let rec get_free_vars (p : t) : Name.Set.t =
   | Variable x -> Name.Set.singleton x
   | Tuple es -> get_free_vars_of_list es
   | Constructor (_, es) -> get_free_vars_of_list es
-  | Alias (e, _) -> get_free_vars e
+  | Alias (e, x) -> Name.Set.add x (get_free_vars e)
   | ModuleUnpack x -> Name.Set.singleton x
   | Record entries -> get_free_vars_of_list (List.map snd entries)
   | Or (e1, e2) -> get_free_vars_of_list [ e1; e2 ]

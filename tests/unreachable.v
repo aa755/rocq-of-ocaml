@@ -68,13 +68,13 @@ Module Make_projected.
   Class FArgs := {
     X : Make_projected_X_signature;
   }.
-
+  
   Definition failed_unit `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
     (function_parameter : unit) : unit :=
     let '_ := function_parameter in
     if false then tt else (@RocqOfOCaml.Basics.unreachable unit _).
-
+  
   Module Make_projected_result.
     Record signature `{_fargs : FArgs} : Set := {
       failed_unit :
@@ -85,7 +85,7 @@ Module Make_projected.
   Definition Make_projected_result `{_fargs : FArgs} :=
     @Make_projected_result.signature _.
   Arguments Make_projected_result {_}.
-
+  
   (* Make_projected *)
   Definition functor `{_fargs : FArgs} :@Make_projected_result _fargs :=
     ({|
@@ -116,6 +116,18 @@ Definition failed_projected
   (function_parameter : unit) : unit :=
   let '_ := function_parameter in
   Projected.(Make_projected.Make_projected_result.failed_unit) tt.
+
+Module Shadowed_pattern.
+  Definition hd {A : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
+    : A := RocqOfOCaml.OCamlList.hd values.
+  
+  Definition first_or_zero (function_parameter : list int) : int :=
+    match function_parameter with
+    | Datatypes.cons hd _ => hd
+    | [] => 0
+    end.
+End Shadowed_pattern.
 
 Module Scoped_value_X_signature.
   Record signature : Set := {
