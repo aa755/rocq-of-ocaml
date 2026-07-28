@@ -68,6 +68,9 @@ module Included_failure = struct
   include Observed_failure
 end
 
+let failed_included () : Included_failure.t =
+  Included_failure.failed ()
+
 module Shadowed_pattern = struct
   let hd values =
     List.hd values

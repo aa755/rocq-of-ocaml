@@ -1624,10 +1624,16 @@ let propagate_call_assumptions
     in
     List.fold_right
       (fun (kind, required_typ) body ->
+        let required_typ =
+          match
+            Type.specialize_matched_type ~relaxed_constructors:true
+              declared_result actual_result required_typ
+          with
+          | Some specialized -> specialized
+          | None -> Type.subst_variables substitutions required_typ
+        in
         RequiresAssumption
-          ( kind,
-            Type.subst_variables substitutions required_typ,
-            body ))
+          (kind, required_typ, body))
       requirements body
   in
   let rec map_definition bound (definition : t option Definition.t) =

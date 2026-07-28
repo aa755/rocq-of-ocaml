@@ -224,6 +224,12 @@ Module Included_failure.
     Observed_failure.(Abstract_failure.Abstract_failure_result.observes_failure).
 End Included_failure.
 
+Definition failed_included
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Included_failure.t}
+  (function_parameter : unit) : Included_failure.t :=
+  let '_ := function_parameter in
+  Included_failure.failed tt.
+
 Module Shadowed_pattern.
   Definition hd {A : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
