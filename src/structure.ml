@@ -1767,14 +1767,13 @@ let rec of_structure ?(has_functor_parameters = false)
            (enclosing_path @ reference_path @ prefix @ [ name ])
     in
     let* env = get_env in
-    let has_configured_value_exclusion =
+    let has_configured_exclusion =
       match Mtype.scrape env mod_type with
       | Mty_signature signature ->
           List.exists
-            (function
-              | Types.Sig_value (ident, _, _) ->
-                  definition_is_excluded [] (Ident.name ident)
-              | _ -> false)
+            (fun signature_item ->
+              let ident = Types.signature_item_id signature_item in
+              definition_is_excluded [] (Ident.name ident))
             signature
       | _ -> false
     in
@@ -2315,18 +2314,23 @@ let rec of_structure ?(has_functor_parameters = false)
               "Unexpected include of functor."
       )
     | _ -> (
-        match (exclude_list, has_configured_value_exclusion) with
+        match (exclude_list, has_configured_exclusion) with
         | [], false -> return [ ModuleInclude reference ]
         | _, _ -> (
             match Mtype.scrape env mod_type with
             | Mty_signature signature ->
                 signature
                 |> Monad.List.concat_map (fun signature_item ->
+                       let ident = Types.signature_item_id signature_item in
+                       let source_name = Ident.name ident in
+                       if
+                         List.mem source_name exclude_list
+                         || definition_is_excluded [] source_name
+                       then return []
+                       else
                        match signature_item with
                        | Types.Sig_modtype
-                           (ident, modtype_declaration, _)
-                         when not
-                                (List.mem (Ident.name ident) exclude_list) -> (
+                           (ident, modtype_declaration, _) -> (
                            match modtype_declaration.mtd_type with
                            | None ->
                                error_message
@@ -2356,13 +2360,7 @@ let rec of_structure ?(has_functor_parameters = false)
                                    SignatureSynonym
                                      (name, field_reference, nb_typ_params);
                                  ])
-                       | Types.Sig_modtype _ -> return []
-                       | Types.Sig_value (ident, { val_type; _ }, _)
-                         when
-                           not
-                             (List.mem (Ident.name ident) exclude_list
-                             || definition_is_excluded []
-                                  (Ident.name ident)) ->
+                       | Types.Sig_value (ident, { val_type; _ }, _) ->
                            let* name = Name.of_ident true ident in
                            let* typ, _, typ_vars =
                              Type.of_typ_expr true Name.Map.empty val_type
@@ -2373,9 +2371,7 @@ let rec of_structure ?(has_functor_parameters = false)
                                  (List.map fst typ_vars) (Some typ);
                              ]
                        | Types.Sig_type
-                           (ident, { type_params; _ }, _, _)
-                         when not
-                                (List.mem (Ident.name ident) exclude_list) ->
+                           (ident, { type_params; _ }, _, _) ->
                            let* name = Name.of_ident false ident in
                            let* _, _, typ_vars =
                              Type.of_typs_exprs true type_params Name.Map.empty
@@ -2386,9 +2382,7 @@ let rec of_structure ?(has_functor_parameters = false)
                                  (List.map fst typ_vars) None;
                              ]
                        | Types.Sig_module
-                           (ident, _, { md_type; _ }, _, _)
-                         when not
-                                (List.mem (Ident.name ident) exclude_list) ->
+                           (ident, _, { md_type; _ }, _, _) ->
                            let source_name = Ident.name ident in
                            let* name = Name.of_ident false ident in
                            let module_reference = field_reference name in
@@ -2417,24 +2411,13 @@ let rec of_structure ?(has_functor_parameters = false)
                            return aliases
                        | signature_item ->
                            let ident = Types.signature_item_id signature_item in
-                           if
-                             List.mem (Ident.name ident) exclude_list
-                             ||
-                             match signature_item with
-                             | Types.Sig_value _ ->
-                                 definition_is_excluded []
-                                   (Ident.name ident)
-                             | _ -> false
-                           then
-                             return []
-                           else
-                             error_message
-                               (Error
-                                  "unsupported_partial_namespace_include_item")
-                               NotSupported
-                               ("Cannot yet copy `" ^ Ident.name ident
-                              ^ "` from a partially shadowed namespace \
-                                 include."))
+                           error_message
+                             (Error
+                                "unsupported_partial_namespace_include_item")
+                             NotSupported
+                             ("Cannot yet copy `" ^ Ident.name ident
+                            ^ "` from a partially shadowed namespace \
+                               include."))
             | _ ->
                 error_message (Error "partial_non_namespace_include")
                   NotSupported

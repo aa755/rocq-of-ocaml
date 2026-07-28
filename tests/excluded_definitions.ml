@@ -23,6 +23,7 @@ module Packed_alias = Packed
 module Plain = struct
   let keep_plain = 8
   let drop_plain = 9
+  exception Drop_plain
 end
 
 include Plain
