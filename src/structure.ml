@@ -781,32 +781,36 @@ let propagate_assumption_calls (definitions : t list) : t list =
            | _ -> specs)
          Name.Map.empty
   in
-  let rec transform specs definition =
+  let rec transform projected_callee specs definition =
     match definition with
     | Value value ->
         Value
           {
             value with
             Value.definition =
-              Exp.propagate_definition_call_assumptions specs
+              Exp.propagate_definition_call_assumptions ~projected_callee specs
                 value.Value.definition;
           }
     | Module (name, parameters, nested, expression) ->
         Module
           ( name,
             parameters,
-            fixed_point ~inherited:specs nested,
+            fixed_point ~inherited:specs ~projected_callee nested,
             expression )
     | Documentation (text, nested) ->
-        Documentation (text, List.map (transform specs) nested)
+        Documentation
+          (text, List.map (transform projected_callee specs) nested)
     | ErrorMessage (message, nested) ->
-        ErrorMessage (message, transform specs nested)
+        ErrorMessage (message, transform projected_callee specs nested)
     | definition -> definition
-  and fixed_point ?(inherited = Name.Map.empty) definitions =
+  and fixed_point ?(inherited = Name.Map.empty)
+      ?(projected_callee = fun (_ : MixedPath.t) -> None) definitions =
     let before =
       merge_specs inherited (specs_of_definitions definitions)
     in
-    let transformed = List.map (transform before) definitions in
+    let transformed =
+      List.map (transform projected_callee before) definitions
+    in
     let after =
       merge_specs inherited (specs_of_definitions transformed)
     in
@@ -815,7 +819,7 @@ let propagate_assumption_calls (definitions : t list) : t list =
         (fun left right -> compare left right = 0)
         before after
     then transformed
-    else fixed_point ~inherited transformed
+    else fixed_point ~inherited ~projected_callee transformed
   in
   let rec update_signatures_scope definitions =
     let specs = specs_of_definitions definitions in
@@ -972,8 +976,16 @@ let propagate_assumption_calls (definitions : t list) : t list =
          | definition -> definition)
   in
   let rec close_assumptions definitions =
+    let qualified_specs =
+      qualified_signature_specs [] definitions
+    in
+    let projected_callee mixed_path =
+      find_projected_spec qualified_specs mixed_path
+    in
     let updated =
-      definitions |> fixed_point |> update_signatures_scope
+      definitions
+      |> fixed_point ~projected_callee
+      |> update_signatures_scope
     in
     let qualified_specs = qualified_signature_specs [] updated in
     let updated =

@@ -1547,8 +1547,9 @@ let assumption_call_specs_of_definition (definition : t option Definition.t) :
     Matching the callee's declared result against the typed call result
     instantiates polymorphic requirements without inventing a universal
     instance. *)
-let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
-    : t =
+let propagate_call_assumptions
+    ?(projected_callee = fun (_ : MixedPath.t) -> None)
+    (specs : assumption_call_specs) (expression : t) : t =
   let map_option f = Option.map f in
   let rec qualified_spec path base =
     match path with
@@ -1572,8 +1573,12 @@ let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
             | _ :: _ -> qualified_spec remaining base))
   in
   let local_callee = function
-    | Variable (MixedPath.PathName { PathName.path; base }, _) ->
-        qualified_spec path base
+    | Variable
+        (MixedPath.PathName { PathName.path; base } as mixed_path, _) -> (
+        match qualified_spec path base with
+        | Some spec -> Some spec
+        | None -> projected_callee mixed_path)
+    | Variable (path, _) -> projected_callee path
     | _ -> None
   in
   let add_requirements declared_result actual_result requirements body =
@@ -1695,7 +1700,9 @@ let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
   in
   transform false expression
 
-let propagate_definition_call_assumptions (specs : assumption_call_specs)
+let propagate_definition_call_assumptions
+    ?(projected_callee = fun (_ : MixedPath.t) -> None)
+    (specs : assumption_call_specs)
     (definition : t option Definition.t) : t option Definition.t =
   let definition =
     {
@@ -1703,7 +1710,10 @@ let propagate_definition_call_assumptions (specs : assumption_call_specs)
       Definition.cases =
         definition.cases
         |> List.map (fun (header, body) ->
-               (header, Option.map (propagate_call_assumptions specs) body));
+               ( header,
+                 Option.map
+                   (propagate_call_assumptions ~projected_callee specs)
+                   body ));
     }
   in
   add_assumption_instance_args definition

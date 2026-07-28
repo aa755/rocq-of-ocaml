@@ -57,6 +57,66 @@ Definition failed_qualified
   let '_ := function_parameter in
   Qualified.failed_unit tt.
 
+Module Make_projected_X_signature.
+  Record signature : Set := {
+    marker : unit;
+  }.
+End Make_projected_X_signature.
+Definition Make_projected_X_signature := Make_projected_X_signature.signature.
+
+Module Make_projected.
+  Class FArgs := {
+    X : Make_projected_X_signature;
+  }.
+
+  Definition failed_unit `{_fargs : FArgs}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
+    (function_parameter : unit) : unit :=
+    let '_ := function_parameter in
+    if false then tt else (@RocqOfOCaml.Basics.unreachable unit _).
+
+  Module Make_projected_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      failed_unit :
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit},
+          unit -> unit;
+    }.
+  End Make_projected_result.
+  Definition Make_projected_result `{_fargs : FArgs} :=
+    @Make_projected_result.signature _.
+  Arguments Make_projected_result {_}.
+
+  (* Make_projected *)
+  Definition functor `{_fargs : FArgs} :@Make_projected_result _fargs :=
+    ({|
+      Make_projected_result.failed_unit (_fargs := _fargs) _ :=
+        (failed_unit (_fargs := _fargs))
+    |} : @Make_projected_result _fargs).
+End Make_projected.
+Definition Make_projected (X : Make_projected_X_signature) :=
+  @Make_projected.functor (Make_projected.Build_FArgs X).
+
+Definition Projected_fargs :=
+  Make_projected.Build_FArgs
+    (let marker := tt in
+    ({|
+      Make_projected_X_signature.marker := marker
+    |} : Make_projected_X_signature)).
+
+Definition Projected :
+  Make_projected.Make_projected_result (_fargs := Projected_fargs) :=
+  Make_projected
+    (let marker := tt in
+    ({|
+      Make_projected_X_signature.marker := marker
+    |} : Make_projected_X_signature)).
+
+Definition failed_projected
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
+  (function_parameter : unit) : unit :=
+  let '_ := function_parameter in
+  Projected.(Make_projected.Make_projected_result.failed_unit) tt.
+
 Module Scoped_value_X_signature.
   Record signature : Set := {
     value : Variant.t;

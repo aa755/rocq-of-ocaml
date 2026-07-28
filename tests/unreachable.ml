@@ -26,6 +26,20 @@ end
 let failed_qualified () : unit =
   Qualified.failed_unit ()
 
+module Make_projected (X : sig
+  val marker : unit
+end) = struct
+  let failed_unit () : unit =
+    assert false
+end
+
+module Projected = Make_projected (struct
+  let marker = ()
+end)
+
+let failed_projected () : unit =
+  Projected.failed_unit ()
+
 module Scoped_value (X : sig
   val value : [> `Number of int]
 end) =
