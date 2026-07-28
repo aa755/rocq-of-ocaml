@@ -6,6 +6,10 @@ module DefinitionExclusion = struct
   type t = { source : string; definition : string }
 end
 
+module DefinitionOverride = struct
+  type t = { source : string; definition : string; target : string }
+end
+
 module Import = struct
   type t = { source : string; target : string }
 end
@@ -78,9 +82,11 @@ type t = {
   error_category_blacklist : string list;
   error_filename_blacklist : string list;
   error_message_blacklist : string list;
+  equality_overrides : DefinitionOverride.t list;
   excluded_definitions : DefinitionExclusion.t list;
   escape_value : string list;
   file_name : string;
+  file_head_suffixes : Import.t list;
   first_class_module_path_blacklist : string list;
   first_class_module_signature_blacklist : string list;
   head_suffix : string;
@@ -113,9 +119,11 @@ let default (file_name : string) : t =
     error_category_blacklist = [];
     error_filename_blacklist = [];
     error_message_blacklist = [];
+    equality_overrides = [];
     excluded_definitions = [];
     escape_value = [];
     file_name;
+    file_head_suffixes = [];
     first_class_module_path_blacklist = [];
     first_class_module_signature_blacklist = [];
     head_suffix = "";
@@ -194,6 +202,28 @@ let is_definition_excluded (configuration : t) (definition_path : string list)
          filename_matches configuration.file_name source
          && (configured = definition
             || String.ends_with ~suffix:("." ^ configured) definition))
+
+let get_equality_override (configuration : t) (definition_path : string list) :
+    string option =
+  let definition = String.concat "." definition_path in
+  configuration.equality_overrides
+  |> List.find_map
+       (fun { DefinitionOverride.source; definition = configured; target } ->
+         if
+           filename_matches configuration.file_name source
+           && (configured = definition
+              || String.ends_with ~suffix:("." ^ configured) definition)
+         then Some target
+         else None)
+
+let get_head_suffix (configuration : t) : string =
+  let suffixes =
+    configuration.file_head_suffixes
+    |> List.filter_map (fun { Import.source; target } ->
+           if filename_matches configuration.file_name source then Some target
+           else None)
+  in
+  String.concat "\n" (configuration.head_suffix :: suffixes)
 
 let get_recursion_strategy (configuration : t) (definition_path : string list) :
     RecursionStrategy.kind option =
@@ -471,6 +501,18 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
           | "error_message_blacklist" ->
               let entry = get_string_list "error_message_blacklist" entry in
               { configuration with error_message_blacklist = entry }
+          | "equality_overrides" ->
+              let entry =
+                entry
+                |> get_string_triple_list "equality_overrides"
+                |> List.map (fun (source, definition, target) ->
+                       if definition = "" || target = "" then
+                         failwith
+                           "Expected qualified definition and target names in \
+                            equality_overrides";
+                       { DefinitionOverride.source; definition; target })
+              in
+              { configuration with equality_overrides = entry }
           | "excluded_definitions" ->
               let entry =
                 entry
@@ -502,6 +544,13 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
           | "head_suffix" ->
               let entry = get_string "head_suffix" entry in
               { configuration with head_suffix = entry }
+          | "file_head_suffixes" ->
+              let entry =
+                entry
+                |> get_string_couple_list "file_head_suffixes"
+                |> List.map (fun (source, target) -> { Import.source; target })
+              in
+              { configuration with file_head_suffixes = entry }
           | "merge_returns" ->
               let entry =
                 entry

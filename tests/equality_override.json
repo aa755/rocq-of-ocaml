@@ -1,0 +1,9 @@
+{
+  "head_suffix": "Parameter configured_equal : forall {A : Set}, A -> A -> bool.",
+  "file_head_suffixes": [
+    ["tests/equality_override.ml", "Definition file_marker := true."]
+  ],
+  "equality_overrides": [
+    ["tests/equality_override.ml", "equal_opaque", "configured_equal"]
+  ]
+}

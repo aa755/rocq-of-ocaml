@@ -57,7 +57,7 @@ let of_typedtree (typedtree : Mtyper.typedtree) (typedtree_errors : exn list) :
   return
     {
       content;
-      head_suffix = configuration.head_suffix;
+      head_suffix = Configuration.get_head_suffix configuration;
       without_default_imports =
         Configuration.is_without_default_imports configuration;
       without_guard_checking =

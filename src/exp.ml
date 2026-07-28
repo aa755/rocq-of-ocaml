@@ -1813,6 +1813,12 @@ let names_bound_by_pattern (pattern : value general_pattern) :
   Typedtree.pat_bound_idents_full pattern
   |> Monad.List.map (fun (ident, _, _, _) -> Name.of_ident true ident)
 
+let mixed_path_of_dotted_name (name : string) : MixedPath.t =
+  match List.rev (String.split_on_char '.' name) with
+  | [] -> failwith "empty configured Rocq path"
+  | base :: path ->
+      MixedPath.PathName (PathName.__make (List.rev path) base)
+
 let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
     t Monad.t =
   set_env e.exp_env
@@ -1825,24 +1831,37 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
           | Texp_ident (path, _, _) ->
               let implicits = Attribute.get_implicits attributes in
               let* x = MixedPath.of_path true path in
+              let is_unsupported_equality =
+                String.equal (MixedPath.to_string x) "equiv_decb"
+                && not (equality_argument_has_rocq_eq_dec e)
+              in
+              let* equality_override =
+                if not is_unsupported_equality then return None
+                else
+                  let* configuration = get_configuration in
+                  let* definition_path = get_definition_path in
+                  return
+                    (Configuration.get_equality_override configuration
+                       definition_path)
+              in
               let x =
-                if
-                  String.equal (MixedPath.to_string x) "equiv_decb"
-                  && not (equality_argument_has_rocq_eq_dec e)
-                then
+                match equality_override with
+                | Some target -> mixed_path_of_dotted_name target
+                | None when is_unsupported_equality ->
                   MixedPath.PathName
                     (PathName.__make
                        [ "RocqOfOCaml"; "Basics"; "Stdlib" ]
                        "polymorphic_equal")
-                else if
+                | None
+                  when
                   String.equal (MixedPath.to_string x) "nequiv_decb"
                   && not (equality_argument_has_rocq_eq_dec e)
-                then
+                  ->
                   MixedPath.PathName
                     (PathName.__make
                        [ "RocqOfOCaml"; "Basics"; "Stdlib" ]
                        "polymorphic_not_equal")
-                else x
+                | None -> x
               in
               let variable = Variable (x, implicits) in
               if not (is_partial_operation_path path) then return variable
