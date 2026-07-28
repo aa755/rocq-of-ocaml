@@ -3,14 +3,25 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 From Stdlib Require Import Program.Wf.
 
+Definition unwrap {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}
+  (function_parameter : option A) : A :=
+  match function_parameter with
+  | Some value => value
+  | None =>
+    let '_ := false in
+    (@RocqOfOCaml.Basics.unreachable A _)
+  end.
+
 Definition _rocq_mutual_result_first (_rocq_call : sum int int) : Set :=
   match _rocq_call with
   | inl _ => bool
   | inr (_) => int
   end.
 
-Program Definition _rocq_mutual_dispatch_first (_rocq_call : sum int int) :
-_rocq_mutual_result_first _rocq_call :=
+Program Definition _rocq_mutual_dispatch_first
+`{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool} (_rocq_call :
+sum int int) : _rocq_mutual_result_first _rocq_call :=
   let _rocq_measure (_rocq_call : sum int int) : nat := RocqOfOCaml.Basics.well_founded_measure "first" _rocq_call in
   @Fix (sum int int) (ltof (sum int int) _rocq_measure) (well_founded_ltof (sum
     int int) _rocq_measure) (fun _rocq_call => _rocq_mutual_result_first _rocq_call) (fun
@@ -18,16 +29,20 @@ _rocq_mutual_result_first _rocq_call :=
     match _rocq_call as _rocq_call return _rocq_mutual_result_first _rocq_call with
     | inl _rocq_state =>
       let value := _rocq_state in
-      let first (value : int) : bool := _rocq_recurse (inl value) _ in
-      let second (value : int) : int := _rocq_recurse (inr value) _ in
+      let first `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool} (value
+        : int) : bool := _rocq_recurse (inl value) _ in
+      let second `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool} (value
+        : int) : int := _rocq_recurse (inr value) _ in
       if equiv_decb value 0 then
-        true
+        unwrap (Some true)
       else
         equiv_decb (second (Z.sub value 1)) 0
     | inr (_rocq_state) =>
       let value := _rocq_state in
-      let first (value : int) : bool := _rocq_recurse (inl value) _ in
-      let second (value : int) : int := _rocq_recurse (inr value) _ in
+      let first `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool} (value
+        : int) : bool := _rocq_recurse (inl value) _ in
+      let second `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool} (value
+        : int) : int := _rocq_recurse (inr value) _ in
       if equiv_decb value 0 then
         0
       else
@@ -39,8 +54,8 @@ _rocq_mutual_result_first _rocq_call :=
 
 Admit Obligations.
 
-Definition first (value : int) : bool := _rocq_mutual_dispatch_first (inl
-value).
+Definition first `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool}
+(value : int) : bool := _rocq_mutual_dispatch_first (inl value).
 
-Definition second (value : int) : int := _rocq_mutual_dispatch_first (inr
-value).
+Definition second `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool}
+(value : int) : int := _rocq_mutual_dispatch_first (inr value).

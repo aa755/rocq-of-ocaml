@@ -1452,13 +1452,32 @@ let concrete_assumption_requirements (_e : t) : assumption_requirement list =
     inhabitant would turn a source precondition into an axiom. *)
 let add_assumption_instance_args (definition : t option Definition.t) :
     t option Definition.t =
+  let shared_requirements =
+    match definition.Definition.recursion_strategy with
+    | (Definition.WellFounded _
+      | Definition.Partial
+          { recursion = Definition.WellFoundedTerminates _; _ })
+      when List.length definition.cases > 1 ->
+        Some
+          (definition.cases
+          |> List.concat_map (function
+               | _, None -> []
+               | _, Some body -> assumption_requirements body)
+          |> sort_uniq_assumptions)
+    | Definition.Structural | Definition.Partial _
+    | Definition.Convergent _ | Definition.WellFounded _ ->
+        None
+  in
   let add_case (header, body) =
     match body with
     | None -> (header, body)
     | Some body ->
         let requirements =
-          assumption_requirements body
-          |> sort_uniq_assumptions
+          match shared_requirements with
+          | Some requirements -> requirements
+          | None ->
+              assumption_requirements body
+              |> sort_uniq_assumptions
         in
         let generated_args =
           requirements
