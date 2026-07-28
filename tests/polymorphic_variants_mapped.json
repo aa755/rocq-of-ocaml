@@ -1,0 +1,11 @@
+{
+  "head_suffix": "Module Mapped.\n  Inductive t : Set := A | B (n : Z).\nEnd Mapped.",
+  "variant_constructors": [
+    ["A", "Mapped.A"],
+    ["B", "Mapped.B"]
+  ],
+  "variant_types": [
+    ["A", "Mapped.t"],
+    ["B", "Mapped.t"]
+  ]
+}

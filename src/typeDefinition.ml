@@ -367,6 +367,14 @@ let generic_variant_type : Type.t =
   Type.Apply
     (MixedPath.of_name (Name.of_string_raw "Variant.t"), [])
 
+let variant_type (row_desc : Types.row_desc) : Type.t Monad.t =
+  let labels = Types.row_fields row_desc |> List.map fst in
+  let* mapped = PathName.typ_of_variants labels in
+  return
+    (match mapped with
+    | Some path -> Type.Apply (MixedPath.PathName path, [])
+    | None -> generic_variant_type)
+
 let filter_in_free_vars (typ_args : Name.t list) (free_vars : Name.Set.t) :
     Name.t list =
   typ_args
@@ -406,8 +414,9 @@ let of_ocaml_non_abstract_typs (typs : type_declaration list) : t Monad.t =
       AdtParameters.of_ocaml type_params >>= fun ind_vars ->
       let typ_args = AdtParameters.get_parameters ind_vars in
       match Types.get_desc typ with
-      | Tvariant _ ->
-          return (Synonym (name, [], generic_variant_type))
+      | Tvariant row_desc ->
+          let* typ = variant_type row_desc in
+          return (Synonym (name, [], typ))
       | _ ->
           Type.of_type_expr_without_free_vars typ >>= fun typ ->
           let free_vars = Type.typ_args_of_typ typ in
@@ -453,10 +462,11 @@ let of_ocaml_non_abstract_typs (typs : type_declaration list) : t Monad.t =
                 match typ with
                 | { typ_type = { type_manifest = Some typ; _ }; _ } -> (
                     match Types.get_desc typ with
-                    | Tvariant _ ->
+                    | Tvariant row_desc ->
+                        let* typ = variant_type row_desc in
                         return
                           ( constructor_records,
-                            (name, [], generic_variant_type) :: notations,
+                            (name, [], typ) :: notations,
                             records,
                             typs )
                     | _ ->

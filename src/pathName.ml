@@ -355,8 +355,7 @@ let typ_of_variant (label : string) : t option Monad.t =
   | None -> return None
 
 let typ_of_variants (labels : string list) : t option Monad.t =
-  let* typs = labels |> Monad.List.filter_map typ_of_variant in
-  let typs = typs |> List.sort_uniq compare in
+  let* mapped_typs = labels |> Monad.List.map typ_of_variant in
   let variants_message =
     String.concat ", " (labels |> List.map (fun label -> "`" ^ label))
   in
@@ -364,15 +363,36 @@ let typ_of_variants (labels : string list) : t option Monad.t =
     "Try using non-variant algebraic data types, or configure the "
     ^ "variants in the configuration file."
   in
-  match typs with
-  | [] -> return None
-  | [ typ ] -> return (Some typ)
-  | typ :: _ :: _ ->
+  let mapped_count =
+    List.fold_left
+      (fun count -> function Some _ -> count + 1 | None -> count)
+      0 mapped_typs
+  in
+  if mapped_count = 0 then return None
+  else if mapped_count <> List.length mapped_typs then
+    let missing =
+      List.combine labels mapped_typs
+      |> List.filter_map (fun (label, typ) ->
+             match typ with None -> Some ("`" ^ label) | Some _ -> None)
+    in
+    raise None NotSupported
+      ("Only part of the polymorphic-variant row " ^ variants_message
+     ^ " is configured. Missing mappings for:\n- "
+      ^ String.concat "\n- " missing
+      ^ "\n\n" ^ variant_help_error_message)
+  else
+    let typs =
+      mapped_typs |> List.filter_map Fun.id |> List.sort_uniq compare
+    in
+    match typs with
+    | [ typ ] -> return (Some typ)
+    | [] -> return None
+    | typ :: _ :: _ ->
       raise (Some typ) NotSupported
         ("At least two types found for the variants " ^ variants_message ^ ":\n"
-        ^ String.concat "\n"
+       ^ String.concat "\n"
             (typs |> List.map (fun typ -> "- " ^ Pp.to_string (to_coq typ)))
-        ^ "\n\n" ^ variant_help_error_message)
+       ^ "\n\n" ^ variant_help_error_message)
 
 let is_variant_declaration (path : Path.t) :
     (Types.constructor_declaration list * Types.type_expr list) option Monad.t =

@@ -2785,6 +2785,16 @@ and of_match :
         variant_labels (pattern :> value general_pattern)
     | _ -> []
   in
+  let rec pattern_is_catch_all :
+      type kind. kind general_pattern -> bool =
+   fun pattern ->
+    match pattern.pat_desc with
+    | Tpat_any | Tpat_var _ -> true
+    | Tpat_alias (pattern, _, _, _, _) -> pattern_is_catch_all pattern
+    | Tpat_value pattern ->
+        pattern_is_catch_all (pattern :> value general_pattern)
+    | _ -> false
+  in
   let* is_dynamic_variant_match =
     cases
     |> Monad.List.fold_left
@@ -2796,6 +2806,49 @@ and of_match :
                   return (found || Option.is_none constructor))
                 found)
          false
+  in
+  let* mapped_variant_needs_default =
+    match cases with
+    | [] -> return false
+    | { c_lhs = ({ pat_type; _ } as c_lhs); _ } :: _ -> (
+        let typ =
+          try
+            Ctype.full_expand ~may_forget_scope:false
+              c_lhs.pat_env pat_type
+          with _ -> pat_type
+        in
+        match Types.get_desc typ with
+        | Tvariant row_desc when not is_dynamic_variant_match ->
+            let labels = Types.row_fields row_desc |> List.map fst in
+            let* configuration = get_configuration in
+            let covered_labels =
+              cases
+              |> List.concat_map (fun { c_lhs; _ } -> variant_labels c_lhs)
+              |> List.sort_uniq String.compare
+            in
+            let source_has_default =
+              List.exists
+                (fun { c_lhs; _ } -> pattern_is_catch_all c_lhs)
+                cases
+            in
+            return
+              (not source_has_default
+              &&
+              (not (Types.row_closed row_desc)
+              || not (Configuration.variant_row_is_exact configuration labels)
+              || not
+                   (List.equal String.equal covered_labels
+                      (List.sort_uniq String.compare labels))))
+        | _ -> return false)
+  in
+  let* match_result_typ =
+    match cases with
+    | [] -> return (Type.Error "empty_match")
+    | { c_rhs; _ } :: _ ->
+        let* typ, _, _ =
+          Type.of_typ_expr false typ_vars c_rhs.exp_type
+        in
+        return typ
   in
   if is_dynamic_variant_match then of_match_variant typ_vars e cases
   else if is_extensible_type_match then of_match_extensible typ_vars e cases
@@ -2955,6 +3008,23 @@ and of_match :
                    (p :: any_patterns_with_ith_true is_guarded !i nb_guards)
              in
              (p, existential_cast, rhs))
+    in
+    let* cases =
+      if not mapped_variant_needs_default then return cases
+      else
+        let* () =
+          warn
+            "a configured polymorphic-variant target admits tags outside this \
+             match; the corresponding Match_failure is represented by an \
+             Unreachable result"
+        in
+        return
+          (cases
+          @ [
+              ( Pattern.Any,
+                None,
+                Assumption (Unreachable, match_result_typ, []) );
+            ])
     in
     (* We remove unused existential type variables *)
     let cases =

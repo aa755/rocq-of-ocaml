@@ -360,6 +360,22 @@ let get_variant_typ (configuration : t) (name : string) : string option =
   |> List.find_opt (fun { VariantMapping.source; _ } -> source = name)
   |> Option.map (fun { VariantMapping.target; _ } -> target)
 
+let variant_row_is_exact (configuration : t) (labels : string list) : bool =
+  match labels with
+  | [] -> false
+  | first :: _ -> (
+      match get_variant_typ configuration first with
+      | None -> false
+      | Some target ->
+          let labels = List.sort_uniq String.compare labels in
+          let configured_labels =
+            configuration.variant_types
+            |> List.filter_map (fun { VariantMapping.source; target = mapped } ->
+                   if String.equal mapped target then Some source else None)
+            |> List.sort_uniq String.compare
+          in
+          List.equal String.equal labels configured_labels)
+
 let is_without_guard_checking (configuration : t) : bool =
   filename_is_listed configuration.file_name configuration.without_guard_checking
 
