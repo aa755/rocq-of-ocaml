@@ -4,9 +4,17 @@ Require Import RocqOfOCaml.Settings.
 
 Definition b_eq : bool := equiv_decb 1 2.
 
-Definition b_neq1 : bool := nequiv_decb true false.
+Definition b_neq1 : bool :=
+  negb
+    match true with
+    | false => true
+    | _ => false
+    end.
 
-Definition b_neq2 : bool := nequiv_decb tt tt.
+Definition b_neq2 : bool :=
+  negb
+    (let '_ := tt in
+    true).
 
 Definition generic_equal {A : Set} (x_value : A) (y_value : A) : bool :=
   RocqOfOCaml.Basics.Stdlib.polymorphic_equal x_value y_value.

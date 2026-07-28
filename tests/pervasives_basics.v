@@ -3,7 +3,15 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Definition b_value : bool :=
-  orb (equiv_decb false true) (andb (nequiv_decb tt tt) (negb true)).
+  orb
+    match false with
+    | true => true
+    | _ => false
+    end
+    (andb
+      (negb
+        (let '_ := tt in
+        true)) (negb true)).
 
 Definition n1 : int := Z.add 1 (Z.mul 2 3).
 

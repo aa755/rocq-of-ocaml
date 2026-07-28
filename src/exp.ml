@@ -305,6 +305,7 @@ type constructor_equality = {
   scrutinee : expression;
   constructor : Data_types.constructor_description;
   payloads : expression list;
+  exhaustive : bool;
 }
 
 let constructor_equality_application (path : Path.t)
@@ -343,11 +344,27 @@ let constructor_equality_application (path : Path.t)
   | Some negate, [ left; right ] -> (
       match as_constructor right with
       | Some (constructor, payloads) ->
-          Some { negate; scrutinee = left; constructor; payloads }
+          Some
+            {
+              negate;
+              scrutinee = left;
+              constructor;
+              payloads;
+              exhaustive =
+                constructor.cstr_consts + constructor.cstr_nonconsts = 1;
+            }
       | None -> (
           match as_constructor left with
           | Some (constructor, payloads) ->
-              Some { negate; scrutinee = right; constructor; payloads }
+              Some
+                {
+                  negate;
+                  scrutinee = right;
+                  constructor;
+                  payloads;
+                  exhaustive =
+                    constructor.cstr_consts + constructor.cstr_nonconsts = 1;
+                }
           | None -> None))
   | _ -> None
 
@@ -2131,7 +2148,14 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 e_xs )
             when Option.is_some (constructor_equality_application path e_xs) -> (
               match constructor_equality_application path e_xs with
-              | Some { negate; scrutinee; constructor; payloads } ->
+              | Some
+                  {
+                    negate;
+                    scrutinee;
+                    constructor;
+                    payloads;
+                    exhaustive;
+                  } ->
                   let* scrutinee = of_expression typ_vars scrutinee in
                   let* payloads =
                     Monad.List.map (of_expression typ_vars) payloads
@@ -2176,20 +2200,25 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                                [ Some result; Some equality ] ))
                          true_value
                   in
+                  let branches =
+                    [
+                      ( Pattern.Constructor
+                          ( constructor,
+                            List.map
+                              (fun name -> Pattern.Variable name)
+                              actual_names ),
+                        None,
+                        equal_payloads );
+                    ]
+                    @
+                    if exhaustive then []
+                    else [ (Pattern.Any, None, false_value) ]
+                  in
                   let equality =
                     Match
                       ( scrutinee,
                         None,
-                        [
-                          ( Pattern.Constructor
-                              ( constructor,
-                                List.map
-                                  (fun name -> Pattern.Variable name)
-                                  actual_names ),
-                            None,
-                            equal_payloads );
-                          (Pattern.Any, None, false_value);
-                        ],
+                        branches,
                         false )
                   in
                   let equality =
