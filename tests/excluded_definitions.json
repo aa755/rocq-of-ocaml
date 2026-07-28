@@ -1,0 +1,6 @@
+{
+  "excluded_definitions": [
+    ["tests/excluded_definitions.ml", "drop"],
+    ["tests/excluded_definitions.ml", "Nested.drop_nested"]
+  ]
+}

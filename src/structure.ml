@@ -2233,7 +2233,36 @@ let rec of_structure ?(has_functor_parameters = false)
                    let definition =
                      Exp.add_assumption_instance_args definition
                    in
-                   return [ Value { use_unsafe_fixpoints; definition } ])
+                   let* configuration = get_configuration in
+                   let* enclosing_path = get_definition_path in
+                   let included, excluded =
+                     definition.Exp.Definition.cases
+                     |> List.partition (fun (header, _) ->
+                            not
+                              (Configuration.is_definition_excluded
+                                 configuration
+                                 (enclosing_path
+                                 @ [
+                                     Name.to_string
+                                       header.Exp.Header.name;
+                                   ])))
+                   in
+                   match (included, excluded) with
+                   | [], _ -> return []
+                   | _, [] ->
+                       return
+                         [
+                           Value
+                             {
+                               use_unsafe_fixpoints;
+                               definition;
+                             };
+                         ]
+                   | _ :: _, _ :: _ ->
+                       raise []
+                         Error.Category.NotSupported
+                         "excluded_definitions cannot remove only part of a \
+                          recursive or simultaneous value-definition group")
             | Tstr_type (_, typs) ->
                 (* Because types may be recursive, so we need the types to already be in
                    the environment. This is useful for example for the detection of

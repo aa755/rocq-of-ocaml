@@ -2,6 +2,10 @@ module ConstructorMapping = struct
   type t = { source : string; target : string; typ : string }
 end
 
+module DefinitionExclusion = struct
+  type t = { source : string; definition : string }
+end
+
 module Import = struct
   type t = { source : string; target : string }
 end
@@ -74,6 +78,7 @@ type t = {
   error_category_blacklist : string list;
   error_filename_blacklist : string list;
   error_message_blacklist : string list;
+  excluded_definitions : DefinitionExclusion.t list;
   escape_value : string list;
   file_name : string;
   first_class_module_path_blacklist : string list;
@@ -108,6 +113,7 @@ let default (file_name : string) : t =
     error_category_blacklist = [];
     error_filename_blacklist = [];
     error_message_blacklist = [];
+    excluded_definitions = [];
     escape_value = [];
     file_name;
     first_class_module_path_blacklist = [];
@@ -179,6 +185,15 @@ let is_message_in_error_blacklist (configuration : t) (message : string) : bool
 
 let is_value_to_escape (configuration : t) (name : string) : bool =
   List.mem name configuration.escape_value
+
+let is_definition_excluded (configuration : t) (definition_path : string list)
+    : bool =
+  let definition = String.concat "." definition_path in
+  configuration.excluded_definitions
+  |> List.exists (fun { DefinitionExclusion.source; definition = configured } ->
+         filename_matches configuration.file_name source
+         && (configured = definition
+            || String.ends_with ~suffix:("." ^ configured) definition))
 
 let get_recursion_strategy (configuration : t) (definition_path : string list) :
     RecursionStrategy.kind option =
@@ -456,6 +471,18 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
           | "error_message_blacklist" ->
               let entry = get_string_list "error_message_blacklist" entry in
               { configuration with error_message_blacklist = entry }
+          | "excluded_definitions" ->
+              let entry =
+                entry
+                |> get_string_couple_list "excluded_definitions"
+                |> List.map (fun (source, definition) ->
+                       if definition = "" then
+                         failwith
+                           "Expected a qualified definition name in \
+                            excluded_definitions";
+                       { DefinitionExclusion.source; definition })
+              in
+              { configuration with excluded_definitions = entry }
           | "escape_value" ->
               let entry = get_string_list "escape_value" entry in
               { configuration with escape_value = entry }
