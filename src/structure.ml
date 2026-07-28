@@ -1468,14 +1468,28 @@ let rec of_structure ?(has_functor_parameters = false)
       (mod_type : Types.module_type) (exclude_list : string list) :
       t list Monad.t =
     let* env = get_env in
-    let rec items_of_signature (alias : IncludedRecordAliasTarget.t)
+    let* configuration = get_configuration in
+    let* enclosing_path = get_definition_path in
+    let definition_is_excluded prefix name =
+      Configuration.is_definition_excluded configuration
+        (enclosing_path @ prefix @ [ name ])
+    in
+    let rec items_of_signature (prefix : string list)
+        (alias : IncludedRecordAliasTarget.t)
         (exclude : string list) (signature : Types.signature) :
         t list Monad.t =
       signature
       |> Monad.List.concat_map (fun signature_item ->
              let ident = Types.signature_item_id signature_item in
              let source_name = Ident.name ident in
-             if List.mem source_name exclude then return []
+             if
+               List.mem source_name exclude
+               ||
+               match signature_item with
+               | Types.Sig_value _ ->
+                   definition_is_excluded prefix source_name
+               | _ -> false
+             then return []
              else
                match signature_item with
                | Types.Sig_value (ident, { val_type; _ }, _) ->
@@ -1529,7 +1543,8 @@ let rec of_structure ?(has_functor_parameters = false)
                          }
                        in
                        let* nested_items =
-                         items_of_signature nested_alias [] nested_signature
+                         items_of_signature (prefix @ [ source_name ])
+                           nested_alias [] nested_signature
                        in
                        return
                          [
@@ -1546,7 +1561,7 @@ let rec of_structure ?(has_functor_parameters = false)
     match Mtype.scrape env mod_type with
     | Mty_signature signature ->
         let* items =
-          items_of_signature alias exclude_list signature
+          items_of_signature [] alias exclude_list signature
         in
         return
           [
@@ -1562,6 +1577,17 @@ let rec of_structure ?(has_functor_parameters = false)
       (fallback_signature_path : Path.t option) (reference : PathName.t)
       (mod_type : Types.module_type) (exclude_list : string list) : t list Monad.t
       =
+    let* configuration = get_configuration in
+    let* enclosing_path = get_definition_path in
+    let reference_path =
+      List.map Name.to_string (reference.path @ [ reference.base ])
+    in
+    let definition_is_excluded prefix name =
+      Configuration.is_definition_excluded configuration
+        (enclosing_path @ prefix @ [ name ])
+      || Configuration.is_definition_excluded configuration
+           (enclosing_path @ reference_path @ prefix @ [ name ])
+    in
     let field_reference (name : Name.t) : PathName.t =
       {
         PathName.path = reference.path @ [ reference.base ];
@@ -1885,7 +1911,14 @@ let rec of_structure ?(has_functor_parameters = false)
               |> Monad.List.concat_map (fun (item_index, signature_item) ->
                      let ident = Types.signature_item_id signature_item in
                      let source_name = Ident.name ident in
-                     if List.mem source_name exclude then return []
+                     if
+                       List.mem source_name exclude
+                       ||
+                       match signature_item with
+                       | Types.Sig_value _ ->
+                           definition_is_excluded prefix source_name
+                       | _ -> false
+                     then return []
                      else
                        match signature_item with
                        | Types.Sig_value
@@ -2136,8 +2169,11 @@ let rec of_structure ?(has_functor_parameters = false)
                                  ])
                        | Types.Sig_modtype _ -> return []
                        | Types.Sig_value (ident, { val_type; _ }, _)
-                         when not
-                                (List.mem (Ident.name ident) exclude_list) ->
+                         when
+                           not
+                             (List.mem (Ident.name ident) exclude_list
+                             || definition_is_excluded []
+                                  (Ident.name ident)) ->
                            let* name = Name.of_ident true ident in
                            let* typ, _, typ_vars =
                              Type.of_typ_expr true Name.Map.empty val_type
@@ -2192,7 +2228,15 @@ let rec of_structure ?(has_functor_parameters = false)
                            return aliases
                        | signature_item ->
                            let ident = Types.signature_item_id signature_item in
-                           if List.mem (Ident.name ident) exclude_list then
+                           if
+                             List.mem (Ident.name ident) exclude_list
+                             ||
+                             match signature_item with
+                             | Types.Sig_value _ ->
+                                 definition_is_excluded []
+                                   (Ident.name ident)
+                             | _ -> false
+                           then
                              return []
                            else
                              error_message
@@ -2851,9 +2895,14 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false)
             let* module_typ_params_arity =
               ModuleTypParams.get_module_typ_typ_params_arity module_type
             in
+            let* configuration = get_configuration in
+            let* enclosing_path = get_definition_path in
             let* values =
               Exp.ModuleTypValues.get
                 ~skip_functors:(Option.is_some synthetic_typ_params)
+                ~exclude_value:(fun path ->
+                  Configuration.is_definition_excluded configuration
+                    (enclosing_path @ path))
                 typ_vars module_type
             in
             let _, parameters, _ = functor_parameters in

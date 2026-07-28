@@ -384,7 +384,9 @@ module ModuleTypValues = struct
     nb_free_vars : int;
   }
 
-  let get ?(skip_functors = false) (typ_vars : Name.t Name.Map.t)
+  let get ?(skip_functors = false)
+      ?(exclude_value = fun (_ : string list) -> false)
+      (typ_vars : Name.t Name.Map.t)
       (module_typ : Types.module_type) :
       t list Monad.t =
     get_env >>= fun env ->
@@ -394,21 +396,24 @@ module ModuleTypValues = struct
       |> Monad.List.concat_map (fun item ->
              match item with
              | Types.Sig_value (ident, { val_type; _ }, _) ->
-                 let* value = Name.of_ident true ident in
-                 let* field =
-                   Name.of_strings true (prefix @ [ Ident.name ident ])
-                 in
-                 let* _, _, new_typ_vars =
-                   Type.of_typ_expr true typ_vars val_type
-                 in
-                 return
-                   [
-                     {
-                       field;
-                       access = access @ [ value ];
-                       nb_free_vars = List.length new_typ_vars;
-                     };
-                   ]
+                 if exclude_value (prefix @ [ Ident.name ident ]) then
+                   return []
+                 else
+                   let* value = Name.of_ident true ident in
+                   let* field =
+                     Name.of_strings true (prefix @ [ Ident.name ident ])
+                   in
+                   let* _, _, new_typ_vars =
+                     Type.of_typ_expr true typ_vars val_type
+                   in
+                   return
+                     [
+                       {
+                         field;
+                         access = access @ [ value ];
+                         nb_free_vars = List.length new_typ_vars;
+                       };
+                     ]
              | Sig_module (ident, _, _, _, _)
                when Ident.name ident = "Internal_for_tests" ->
                  return []

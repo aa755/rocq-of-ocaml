@@ -7,3 +7,24 @@ Definition keep : int := 1.
 Module Nested.
   Definition keep_nested : int := 3.
 End Nested.
+
+Module Packed.
+  Definition keep_packed : int := 6.
+  
+  Module Packed_signature.
+    Record signature : Set := {
+      keep_packed : int;
+    }.
+  End Packed_signature.
+  Definition Packed_signature := Packed_signature.signature.
+  
+  (* Packed *)
+  Definition module :Packed_signature :=
+    {|
+      Packed_signature.keep_packed := keep_packed
+    |}.
+End Packed.
+Definition Packed := Packed.module.
+
+(** Inclusion of the module [Packed] *)
+Definition keep_packed : int := Packed.(Packed.Packed_signature.keep_packed).

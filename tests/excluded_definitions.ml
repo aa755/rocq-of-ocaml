@@ -7,3 +7,13 @@ module Nested = struct
   let keep_nested = 3
   let drop_nested = 4
 end
+
+module Packed : sig
+  val keep_packed : int
+  val drop_packed : int
+end = struct
+  let keep_packed = 6
+  let drop_packed = 7
+end
+
+include Packed

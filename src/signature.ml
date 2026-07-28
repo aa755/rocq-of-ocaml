@@ -1377,14 +1377,30 @@ let rec items_of_types_signature
   match signature with
   | [] -> return ([], let_in_type)
   | item :: items ->
-      let* item, let_in_type = of_types_signature_item item in
-      let* items, let_in_type =
+      let* excluded =
+        match item with
+        | Sig_value (ident, _, _) ->
+            let* configuration = get_configuration in
+            let* enclosing_path = get_definition_path in
+            return
+              (Configuration.is_definition_excluded configuration
+                 (enclosing_path @ prefix @ [ Ident.name ident ]))
+        | _ -> return false
+      in
+      if excluded then
         items_of_types_signature ~abstract_functor_applications ~expand_aliases
           ?signature_path
           ?partial_monad_manifest:effective_partial_monad_manifest
           prefix let_in_type items
-      in
-      return (item :: items, let_in_type)
+      else
+        let* item, let_in_type = of_types_signature_item item in
+        let* items, let_in_type =
+          items_of_types_signature ~abstract_functor_applications ~expand_aliases
+            ?signature_path
+            ?partial_monad_manifest:effective_partial_monad_manifest
+            prefix let_in_type items
+        in
+        return (item :: items, let_in_type)
 
 let of_types_signature ?(abstract_functor_applications = false)
     ?(expand_aliases = false) ?signature_path
@@ -1630,23 +1646,30 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
                       "Mutual type definitions in signatures not handled.")
             | Tsig_typext _ -> return ([], let_in_type)
             | Tsig_value { val_id; val_desc = { ctyp_type; _ }; _ } ->
-                let* prefixed_name =
-                  Name.of_strings true (prefix @ [ Ident.name val_id ])
-                in
-                let* typ = quantified_value_type ctyp_type in
-                let typ_with_let_in_type =
-                  apply_let_in_type let_in_type typ
-                in
-                let requirements =
-                  partial_value_requirements prefix (Ident.name val_id)
-                    typ_with_let_in_type
-                in
-                return
-                  ( [
-                      Value
-                        (prefixed_name, typ_with_let_in_type, requirements);
-                    ],
-                    let_in_type ))))
+                let* configuration = get_configuration in
+                let* enclosing_path = get_definition_path in
+                if
+                  Configuration.is_definition_excluded configuration
+                    (enclosing_path @ prefix @ [ Ident.name val_id ])
+                then return ([], let_in_type)
+                else
+                  let* prefixed_name =
+                    Name.of_strings true (prefix @ [ Ident.name val_id ])
+                  in
+                  let* typ = quantified_value_type ctyp_type in
+                  let typ_with_let_in_type =
+                    apply_let_in_type let_in_type typ
+                  in
+                  let requirements =
+                    partial_value_requirements prefix (Ident.name val_id)
+                      typ_with_let_in_type
+                  in
+                  return
+                    ( [
+                        Value
+                          (prefixed_name, typ_with_let_in_type, requirements);
+                      ],
+                      let_in_type ))))
   in
   match items with
   | [] -> return []
