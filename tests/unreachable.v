@@ -43,6 +43,17 @@ Definition failed_poly_int
   let '_ := function_parameter in
   failed_poly tt.
 
+Definition failed_function
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+  (function_parameter : unit) : int :=
+  let '_ := function_parameter in
+  let '_ := "impossible function" in
+  (@RocqOfOCaml.Basics.unreachable int _).
+
+Definition failed_function_alias
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : unit -> int :=
+  failed_function.
+
 Module Qualified.
   Definition failed_unit
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}

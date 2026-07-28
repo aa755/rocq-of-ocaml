@@ -1539,7 +1539,10 @@ let assumption_call_specs_of_definition (definition : t option Definition.t) :
          | [] -> specs
          | _ :: _ ->
              Name.Map.add header.Header.name
-               { result_typ = header.Header.typ; requirements }
+               {
+                 result_typ = Type.arrow_result header.Header.typ;
+                 requirements;
+               }
                specs)
        Name.Map.empty
 

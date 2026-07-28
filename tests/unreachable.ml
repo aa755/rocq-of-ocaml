@@ -18,6 +18,12 @@ let failed_poly () : 'a =
 let failed_poly_int () : int =
   failed_poly ()
 
+let failed_function (_ : unit) : int =
+  failwith "impossible function"
+
+let failed_function_alias =
+  failed_function
+
 module Qualified = struct
   let failed_unit () : unit =
     assert false
