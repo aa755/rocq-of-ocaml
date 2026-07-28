@@ -22,6 +22,13 @@ end
 
 let unwrap_int = function Some value -> value | None -> assert false
 
+(** A nested failure whose result type must be qualified in exported metadata. *)
+module Local_failure = struct
+  type t = Token of int
+
+  let unwrap = function Some value -> value | None -> assert false
+end
+
 module Applied = Fixed (DefaultArgument)
 
 module Aliased (Argument : ARGUMENT) = struct

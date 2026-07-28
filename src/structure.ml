@@ -728,48 +728,138 @@ let module_include_assumptions kind typ_vars typ mixed_path =
 type qualified_assumption_call_specs =
   (string * Exp.assumption_call_spec) list
 
-let rec qualified_assumption_call_specs prefix definitions =
-  definitions
-  |> List.concat_map (function
-       | Value { Value.definition; _ } ->
-           Exp.assumption_call_specs_of_definition definition
-           |> Name.Map.bindings
-           |> List.map (fun (name, spec) ->
-                  ( String.concat "." (prefix @ [ Name.to_string name ]),
-                    spec ))
-       | Module (name, _, nested, _) ->
-           qualified_assumption_call_specs
-             (prefix @ [ Name.to_string name ])
-             nested
-       | ModuleIncludeItem
-           ( (IncludeValue | IncludeProjectedValue),
-             name,
-             _,
-             Some typ,
-             _,
-             (_ :: _ as requirements) ) ->
-           [
-             ( String.concat "." (prefix @ [ Name.to_string name ]),
-               {
-                 Exp.call_typ = typ;
-                 projected_types = Name.Map.empty;
-                 Exp.result_typ = Type.arrow_result typ;
-                 requirements;
-               } );
-           ]
-       | Signature (name, signature) ->
-           Signature.assumption_call_specs signature
-           |> Name.Map.bindings
-           |> List.map (fun (field, spec) ->
-                  ( String.concat "."
-                      (prefix
-                      @ [ Name.to_string name; Name.to_string field ]),
-                    spec ))
-       | Documentation (_, nested) ->
-           qualified_assumption_call_specs prefix nested
-       | ErrorMessage (_, nested) ->
-           qualified_assumption_call_specs prefix [ nested ]
-       | _ -> [])
+let local_type_names definitions =
+  let rec collect names = function
+    | TypeDefinition (TypeDefinition.Inductive { typs; _ }) ->
+        List.fold_left
+          (fun names (name, _, _) -> Name.Set.add name names)
+          names typs
+    | TypeDefinition (TypeDefinition.Record (name, _, _, _))
+    | TypeDefinition (TypeDefinition.Synonym (name, _, _))
+    | TypeDefinition (TypeDefinition.ExtensibleTyp name)
+    | TypeDefinition (TypeDefinition.Abstract (name, _))
+    | ModuleIncludeItem (IncludeType, name, _, _, _, _)
+    | TypeSynonym (name, _) ->
+        Name.Set.add name names
+    | Documentation (_, nested) ->
+        List.fold_left collect names nested
+    | ErrorMessage (_, Documentation (_, nested)) ->
+        List.fold_left collect names nested
+    | ErrorMessage (_, nested) -> collect names nested
+    | _ -> names
+  in
+  List.fold_left collect Name.Set.empty definitions
+
+let local_module_names definitions =
+  let rec collect names = function
+    | Module (name, _, _, _)
+    | ModuleExpression (name, _, _, _)
+    | ModuleSynonym (name, _, _) ->
+        Name.Set.add name names
+    | Documentation (_, nested) ->
+        List.fold_left collect names nested
+    | ErrorMessage (_, Documentation (_, nested)) ->
+        List.fold_left collect names nested
+    | ErrorMessage (_, nested) -> collect names nested
+    | _ -> names
+  in
+  List.fold_left collect Name.Set.empty definitions
+
+let prefix_assumption_spec module_name local_types local_modules
+    ({ Exp.call_typ; projected_types; result_typ; requirements } :
+      Exp.assumption_call_spec) =
+  let prefix =
+    Type.prefix_local_paths module_name local_types local_modules
+  in
+  {
+    Exp.call_typ = prefix call_typ;
+    projected_types;
+    Exp.result_typ = prefix result_typ;
+    requirements =
+      List.map
+        (fun (kind, typ) -> (kind, prefix typ))
+        requirements;
+  }
+
+(** Export a call specification from its lexical module.  Requirement types
+    must be qualified along with the value path: a requirement on [t] inside
+    [Numeric.U256] is [Numeric.U256.t] to a caller in another unit. *)
+let qualify_exported_assumption_spec prefix definitions spec =
+  match List.rev prefix with
+  | [] -> spec
+  | compilation_unit :: parents ->
+      let compilation_unit = Name.of_string_raw compilation_unit in
+      let spec =
+        prefix_assumption_spec compilation_unit
+          (local_type_names definitions)
+          (local_module_names definitions)
+          spec
+      in
+      let _, spec =
+        List.fold_left
+          (fun (child, spec) parent ->
+            let parent = Name.of_string_raw parent in
+            ( parent,
+              prefix_assumption_spec parent Name.Set.empty
+                (Name.Set.singleton child) spec ))
+          (compilation_unit, spec) parents
+      in
+      spec
+
+let qualified_assumption_call_specs prefix definitions =
+  let qualify_exported_types = prefix <> [] in
+  let rec collect path definitions =
+    definitions
+    |> List.concat_map (function
+         | Value { Value.definition; _ } ->
+             Exp.assumption_call_specs_of_definition definition
+             |> Name.Map.bindings
+             |> List.map (fun (name, spec) -> (path @ [ name ], spec))
+         | Module (name, _, nested, _) ->
+             let local_types = local_type_names nested in
+             let local_modules = local_module_names nested in
+             collect (path @ [ name ]) nested
+             |> List.map (fun (qualified_name, spec) ->
+                    let spec =
+                      if qualify_exported_types then
+                        prefix_assumption_spec name local_types local_modules
+                          spec
+                      else spec
+                    in
+                    (qualified_name, spec))
+         | ModuleIncludeItem
+             ( (IncludeValue | IncludeProjectedValue),
+               name,
+               _,
+               Some typ,
+               _,
+               (_ :: _ as requirements) ) ->
+             [
+               ( path @ [ name ],
+                 {
+                   Exp.call_typ = typ;
+                   projected_types = Name.Map.empty;
+                   Exp.result_typ = Type.arrow_result typ;
+                   requirements;
+                 } );
+             ]
+         | Signature (name, signature) ->
+             Signature.assumption_call_specs signature
+             |> Name.Map.bindings
+             |> List.map (fun (field, spec) ->
+                    (path @ [ name; field ], spec))
+         | Documentation (_, nested) -> collect path nested
+         | ErrorMessage (_, nested) -> collect path [ nested ]
+         | _ -> [])
+  in
+  collect [] definitions
+  |> List.map (fun (path, spec) ->
+         let spec =
+           qualify_exported_assumption_spec prefix definitions spec
+         in
+         ( String.concat "."
+             (prefix @ List.map Name.to_string path),
+           spec ))
 
 (** Propagate generated assumption parameters through calls between values in
     the same OCaml structure.  The pass reaches a fixed point because adding a
@@ -780,50 +870,6 @@ let propagate_assumption_calls
     (definitions : t list) : t list =
   let merge_specs left right =
     Name.Map.union (fun _ _ right -> Some right) left right
-  in
-  let local_type_names definitions =
-    definitions
-    |> List.fold_left
-         (fun names -> function
-           | TypeDefinition (TypeDefinition.Inductive { typs; _ }) ->
-               List.fold_left
-                 (fun names (name, _, _) -> Name.Set.add name names)
-                 names typs
-           | TypeDefinition (TypeDefinition.Record (name, _, _, _))
-           | TypeDefinition (TypeDefinition.Synonym (name, _, _))
-           | TypeDefinition (TypeDefinition.ExtensibleTyp name)
-           | TypeDefinition (TypeDefinition.Abstract (name, _))
-           | TypeSynonym (name, _) ->
-               Name.Set.add name names
-           | _ -> names)
-         Name.Set.empty
-  in
-  let local_module_names definitions =
-    definitions
-    |> List.fold_left
-         (fun names -> function
-           | Module (name, _, _, _)
-           | ModuleExpression (name, _, _, _)
-           | ModuleSynonym (name, _, _) ->
-               Name.Set.add name names
-           | _ -> names)
-         Name.Set.empty
-  in
-  let prefix_spec module_name local_types local_modules
-      ({ Exp.call_typ; projected_types; result_typ; requirements } :
-        Exp.assumption_call_spec) =
-    let prefix =
-      Type.prefix_local_paths module_name local_types local_modules
-    in
-    {
-      Exp.call_typ = prefix call_typ;
-      projected_types;
-      Exp.result_typ = prefix result_typ;
-      requirements =
-        List.map
-          (fun (kind, typ) -> (kind, prefix typ))
-          requirements;
-    }
   in
   let rec specs_of_definitions definitions =
     definitions
@@ -872,7 +918,8 @@ let propagate_assumption_calls
                      (Name.of_string_raw
                        (Name.to_string module_name ^ "_"
                        ^ Name.to_string nested_name))
-                     (prefix_spec module_name local_types local_modules spec)
+                     (prefix_assumption_spec module_name local_types
+                        local_modules spec)
                      specs)
                  nested_specs specs
            | Documentation (_, nested)

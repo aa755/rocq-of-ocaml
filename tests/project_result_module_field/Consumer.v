@@ -6,7 +6,7 @@ Require TestProject.Provider.
 
 Module Argument.
   Definition token : unit := tt.
-  
+
   (* Argument *)
   Definition module :Provider.ARGUMENT :=
     {|
@@ -22,6 +22,10 @@ Definition unwrapped
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
   Provider.unwrap_int None.
 
+Definition local_failure
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Provider.Local_failure.t} : Provider.Local_failure.t :=
+  Provider.Local_failure.unwrap None.
+
 Definition Result_fargs := Provider.Outer.Build_FArgs Argument.
 
 Definition Result : Provider.Outer.Outer_result (_fargs := Result_fargs) :=
@@ -29,26 +33,26 @@ Definition Result : Provider.Outer.Outer_result (_fargs := Result_fargs) :=
 
 Module Alias.
   Definition t := int.
-  
+
   Definition identity {A : Set} :=
     Result.(Provider.Outer.Outer_result.Namespace_identity) (A := A).
-  
+
   Module Repr.
     Definition t :=
       Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.t).
-    
+
     Module Map.
       Definition t :=
         Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
-      
+
       Definition empty :=
         Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
     End Map.
-    
+
     Definition Map :=
       Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).
   End Repr.
-  
+
   Definition Repr := Result.(Provider.Outer.Outer_result.Namespace_Repr).
 End Alias.
 
@@ -61,15 +65,15 @@ Definition AliasedResult :
 Module AliasedField.
   Definition t :=
     AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.t).
-  
+
   Module Map.
     Definition t :=
       AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
-    
+
     Definition empty :=
       AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
   End Map.
-  
+
   Definition Map :=
     AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).
 End AliasedField.
@@ -97,13 +101,13 @@ Module Produce.
   Class FArgs := {
     Input : Provider.INPUT;
   }.
-  
+
   Definition result_value `{_fargs : FArgs} : int :=
     Input.(Provider.INPUT.value).
-  
+
   Definition extra `{_fargs : FArgs} : int :=
     Z.add Input.(Provider.INPUT.value) 1.
-  
+
   Module Produce_result.
     Record signature `{_fargs : FArgs} : Set := {
       result_value : int;
@@ -112,7 +116,7 @@ Module Produce.
   End Produce_result.
   Definition Produce_result `{_fargs : FArgs} := @Produce_result.signature _.
   Arguments Produce_result {_}.
-  
+
   (* Produce *)
   Definition functor `{_fargs : FArgs} :@Produce_result _fargs :=
     ({|
@@ -126,7 +130,7 @@ Definition Produce (Input : Provider.INPUT) :=
 
 Module Concrete.
   Definition value : int := 41.
-  
+
   (* Concrete *)
   Definition module :Provider.INPUT :=
     {|
