@@ -128,6 +128,102 @@ Definition failed_projected
   let '_ := function_parameter in
   Projected.(Make_projected.Make_projected_result.failed_unit) tt.
 
+Module Abstract_failure_Value_signature.
+  Record signature {t : Set} : Set := {
+    t := t;
+  }.
+End Abstract_failure_Value_signature.
+Definition Abstract_failure_Value_signature :=
+  @Abstract_failure_Value_signature.signature.
+Arguments Abstract_failure_Value_signature {_}.
+
+Module Abstract_failure.
+  Class FArgs {Value_t : Set} := {
+    Value : Abstract_failure_Value_signature (t := Value_t);
+  }.
+  Arguments Build_FArgs {_}.
+  
+  Definition t `{_fargs : FArgs} : Set :=
+    Value.(Abstract_failure_Value_signature.t).
+  
+  Definition failed `{_fargs : FArgs}
+    `{_rocq_assumption_0 :
+      RocqOfOCaml.Basics.Unreachable Value.(Abstract_failure_Value_signature.t)}
+    (function_parameter : unit) : Value.(Abstract_failure_Value_signature.t) :=
+    let '_ := function_parameter in
+    let '_ := false in
+    (@RocqOfOCaml.Basics.unreachable Value.(Abstract_failure_Value_signature.t)
+      _).
+  
+  Definition observes_failure `{_fargs : FArgs}
+    `{_rocq_assumption_0 :
+      RocqOfOCaml.Basics.Unreachable Value.(Abstract_failure_Value_signature.t)}
+    (function_parameter : t) : bool :=
+    let '_ := function_parameter in
+    let '_ := failed tt in
+    true.
+  
+  Module Abstract_failure_result.
+    Record signature `{_fargs : FArgs} : Set := {
+      t := Value.(Abstract_failure_Value_signature.t);
+      failed :
+        forall
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable
+              Value.(Abstract_failure_Value_signature.t)},
+          unit -> Value.(Abstract_failure_Value_signature.t);
+      observes_failure :
+        forall
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable
+              Value.(Abstract_failure_Value_signature.t)},
+          Value.(Abstract_failure_Value_signature.t) -> bool;
+    }.
+  End Abstract_failure_result.
+  Definition Abstract_failure_result `{_fargs : FArgs} :=
+    @Abstract_failure_result.signature _ _.
+  Arguments Abstract_failure_result {_ _}.
+  
+  (* Abstract_failure *)
+  Definition functor `{_fargs : FArgs} :@Abstract_failure_result Value_t _fargs
+    :=
+    ({|
+      Abstract_failure_result.failed (Value_t := Value_t) (_fargs := _fargs) _
+      := (failed (_fargs := _fargs));
+      Abstract_failure_result.observes_failure (Value_t := Value_t) (_fargs :=
+        _fargs) _ := (observes_failure (_fargs := _fargs))
+    |} : @Abstract_failure_result Value_t _fargs).
+End Abstract_failure.
+Definition Abstract_failure {Value_t : Set}
+  (Value : Abstract_failure_Value_signature (t := Value_t)) :=
+  @Abstract_failure.functor Value_t (Abstract_failure.Build_FArgs Value).
+
+Definition Observed_failure_fargs :=
+  Abstract_failure.Build_FArgs
+    (let t : Set := int in
+    ((ltac:(constructor) : Abstract_failure_Value_signature (t := t)) :
+      Abstract_failure_Value_signature (t := t))).
+
+Definition Observed_failure :
+  Abstract_failure.Abstract_failure_result (_fargs := Observed_failure_fargs) :=
+  Abstract_failure
+    (let t : Set := int in
+    ((ltac:(constructor) : Abstract_failure_Value_signature (t := t)) :
+      Abstract_failure_Value_signature (t := t))).
+
+Module Included_failure.
+  (** Inclusion of the module [Observed_failure] *)
+  Definition t := Observed_failure.(Abstract_failure.Abstract_failure_result.t).
+  
+  Definition failed `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} :
+    unit -> t :=
+    Observed_failure.(Abstract_failure.Abstract_failure_result.failed).
+  
+  Definition observes_failure
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : t -> bool :=
+    Observed_failure.(Abstract_failure.Abstract_failure_result.observes_failure).
+End Included_failure.
+
 Module Shadowed_pattern.
   Definition hd {A : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)

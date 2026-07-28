@@ -470,6 +470,12 @@ let match_variables ?(relaxed_constructors = false) (pattern : t)
     | _ -> None
   and match_typ substitutions pattern actual =
     match (pattern, actual) with
+    | ForallTyps ([], pattern), actual
+    | FunTyps ([], pattern), actual ->
+        match_typ substitutions pattern actual
+    | pattern, ForallTyps ([], actual)
+    | pattern, FunTyps ([], actual) ->
+        match_typ substitutions pattern actual
     | Variable name, actual -> add_binding substitutions name actual
     | Arrow (p1, p2), Arrow (a1, a2)
     | Eq (p1, p2), Eq (a1, a2) ->
@@ -481,12 +487,115 @@ let match_variables ?(relaxed_constructors = false) (pattern : t)
         (relaxed_constructors || compare p_path a_path = 0)
         && List.length p_args = List.length a_args ->
         match_list substitutions (List.map fst p_args) (List.map fst a_args)
+    | Apply (_, []), Variable _ when relaxed_constructors ->
+        Some substitutions
     | InferModule pattern, InferModule actual ->
         match_typ substitutions pattern actual
     | _ ->
         if compare pattern actual = 0 then Some substitutions else None
   in
   match_typ [] pattern actual
+
+(** Specialize [typ] using corresponding subtypes in a successful match from
+    [pattern] to [actual].  Unlike variable substitution alone, this also
+    preserves OCaml's checked correspondence between abstract type paths in a
+    functor signature and the concrete paths at an include/projection site. *)
+let specialize_matched_type ?(relaxed_constructors = false) (pattern : t)
+    (actual : t) (typ : t) : t option =
+  match match_variables ~relaxed_constructors pattern actual with
+  | None -> None
+  | Some _ ->
+      let rec collect pattern actual correspondences =
+        let correspondences = (pattern, actual) :: correspondences in
+        match (pattern, actual) with
+        | ForallTyps ([], pattern), actual
+        | FunTyps ([], pattern), actual ->
+            collect pattern actual correspondences
+        | pattern, ForallTyps ([], actual)
+        | pattern, FunTyps ([], actual) ->
+            collect pattern actual correspondences
+        | Arrow (p1, p2), Arrow (a1, a2)
+        | Eq (p1, p2), Eq (a1, a2) ->
+            collect p2 a2 (collect p1 a1 correspondences)
+        | Tuple patterns, Tuple actuals
+          when List.length patterns = List.length actuals ->
+            List.fold_left2
+              (fun correspondences pattern actual ->
+                collect pattern actual correspondences)
+              correspondences patterns actuals
+        | Apply (pattern_path, patterns), Apply (actual_path, actuals)
+          when
+            List.length patterns = List.length actuals
+            && (relaxed_constructors
+               || compare pattern_path actual_path = 0) ->
+            List.fold_left2
+              (fun correspondences (pattern, _) (actual, _) ->
+                collect pattern actual correspondences)
+              correspondences patterns actuals
+        | InferModule pattern, InferModule actual ->
+            collect pattern actual correspondences
+        | _ -> correspondences
+      in
+      let correspondences = collect pattern actual [] in
+      let rec same_source left right =
+        compare left right = 0
+        ||
+        match (left, right) with
+        | Apply (left_path, left_arguments),
+          Apply (right_path, right_arguments) ->
+            String.equal
+              (MixedPath.to_string left_path)
+              (MixedPath.to_string right_path)
+            && List.length left_arguments = List.length right_arguments
+            && List.for_all2
+                 (fun (left, left_tag) (right, right_tag) ->
+                   Bool.equal left_tag right_tag
+                   && same_source left right)
+                 left_arguments right_arguments
+        | _ -> false
+      in
+      let corresponding typ =
+        correspondences
+        |> List.find_map (fun (source, target) ->
+               if same_source source typ then Some target else None)
+      in
+      let rec specialize typ =
+        match corresponding typ with
+        | Some target -> target
+        | None -> (
+            match typ with
+            | Variable _ | Kind _ | String _ | Error _ -> typ
+            | Arrow (left, right) ->
+                Arrow (specialize left, specialize right)
+            | Eq (left, right) -> Eq (specialize left, specialize right)
+            | Tuple types -> Tuple (List.map specialize types)
+            | Apply (path, arguments) ->
+                Apply
+                  ( path,
+                    List.map
+                      (fun (argument, tag) -> (specialize argument, tag))
+                      arguments )
+            | Signature (path, parameters) ->
+                Signature
+                  ( path,
+                    List.map
+                      (fun (name, typ) ->
+                        (name, Option.map specialize typ))
+                      parameters )
+            | InferModule typ -> InferModule (specialize typ)
+            | ForallModule (name, parameter, result) ->
+                ForallModule
+                  (name, specialize parameter, specialize result)
+            | ExistTyps (parameters, body) ->
+                ExistTyps (parameters, specialize body)
+            | ForallTyps (parameters, body) ->
+                ForallTyps (parameters, specialize body)
+            | FunTyps (parameters, body) ->
+                FunTyps (parameters, specialize body)
+            | Let (name, value, body) ->
+                Let (name, specialize value, specialize body))
+      in
+      Some (specialize typ)
 
 (** Rewrite the result of a partial function using the manifest definition of
     its source monad.  This is needed for specialized functor signatures:

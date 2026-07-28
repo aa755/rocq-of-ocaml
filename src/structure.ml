@@ -754,8 +754,10 @@ let propagate_assumption_calls (definitions : t list) : t list =
                      | Some typ -> Type.arrow_result typ
                      | None -> first_required_type
                    in
+                   let call_typ = Option.value typ ~default:result_typ in
                    Name.Map.add name
                      {
+                       Exp.call_typ;
                        Exp.result_typ;
                        requirements;
                      }
@@ -919,37 +921,37 @@ let propagate_assumption_calls (definitions : t list) : t list =
     |> List.find_map (fun (_, _, spec) -> Some spec)
   in
   let instantiate_requirements typ
-      ({ Exp.result_typ = declared_result; requirements } :
+      ({ Exp.call_typ = declared_call; result_typ = declared_result;
+         requirements } :
         Exp.assumption_call_spec) =
     match typ with
     | None -> requirements
     | Some typ ->
+        let actual_call = typ in
         let actual_result = Type.arrow_result typ in
-        let substitutions =
-          match
-            Type.match_variables ~relaxed_constructors:true
-              declared_result actual_result
-          with
-          | Some substitutions -> substitutions
-          | None -> []
-        in
         requirements
         |> List.map (fun (kind, required_typ) ->
                ( kind,
-                 if compare required_typ declared_result = 0 then
-                   actual_result
-                 else
-                   Type.subst_variables substitutions required_typ ))
+                 match
+                   Type.specialize_matched_type
+                     ~relaxed_constructors:true declared_call actual_call
+                     required_typ
+                 with
+                 | Some specialized -> specialized
+                 | None ->
+                     if compare required_typ declared_result = 0 then
+                       actual_result
+                     else required_typ ))
         |> Exp.sort_uniq_assumptions
   in
   let rec annotate_projected_requirements qualified_specs definitions =
     definitions
     |> List.map (function
          | ModuleIncludeItem
-             (kind, name, typ_vars, typ, mixed_path, []) ->
+             (kind, name, typ_vars, typ, mixed_path, stored_requirements) ->
              let requirements =
                match find_projected_spec qualified_specs mixed_path with
-               | None -> []
+               | None -> stored_requirements
                | Some spec -> instantiate_requirements typ spec
              in
              ModuleIncludeItem

@@ -1484,6 +1484,7 @@ let add_assumption_instance_args (definition : t option Definition.t) :
   { definition with Definition.cases = List.map add_case definition.cases }
 
 type assumption_call_spec = {
+  call_typ : Type.t;
   result_typ : Type.t;
   requirements : assumption_requirement list;
 }
@@ -1538,9 +1539,16 @@ let assumption_call_specs_of_definition (definition : t option Definition.t) :
          match requirements with
          | [] -> specs
          | _ :: _ ->
+             let call_typ =
+               List.fold_right
+                 (fun (_, argument_typ) result_typ ->
+                   Type.Arrow (argument_typ, result_typ))
+                 header.Header.args header.Header.typ
+             in
              Name.Map.add header.Header.name
                {
-                 result_typ = Type.arrow_result header.Header.typ;
+                 call_typ;
+                 result_typ = Type.arrow_result call_typ;
                  requirements;
                }
                specs)
@@ -1648,7 +1656,7 @@ let propagate_call_assumptions
     | Variable _ -> (
         match local_callee bound expression with
         | None -> expression
-        | Some { result_typ; requirements } ->
+        | Some { result_typ; requirements; _ } ->
             add_requirements result_typ result_typ requirements expression)
     | Tuple values -> Tuple (List.map recurse values)
     | Constructor (name, implicits, values) ->
@@ -1670,7 +1678,7 @@ let propagate_call_assumptions
         else
           (match callee with
           | None -> application
-          | Some { result_typ = declared_result; requirements } ->
+          | Some { result_typ = declared_result; requirements; _ } ->
               add_requirements declared_result result_typ requirements
                 application)
     | Return (operator, value) -> Return (operator, recurse value)

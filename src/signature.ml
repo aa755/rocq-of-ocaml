@@ -35,26 +35,27 @@ let add_assumption_requirements (specs : Exp.assumption_call_specs)
           | None -> existing_requirements
           | Some
               {
+                Exp.call_typ = declared_call;
                 Exp.result_typ = declared_result;
                 requirements = inferred_requirements;
               } ->
-              let actual_result = Type.arrow_result typ in
-              let substitutions =
-                match
-                  Type.match_variables ~relaxed_constructors:true
-                    declared_result actual_result
-                with
-                | Some substitutions -> substitutions
-                | None -> []
-              in
+              let actual_call = typ in
               existing_requirements
               @ List.map
                   (fun (kind, required_typ) ->
-                    ( kind,
-                      if compare required_typ declared_result = 0 then
-                        actual_result
-                      else
-                        Type.subst_variables substitutions required_typ ))
+                    let specialized =
+                      match
+                        Type.specialize_matched_type
+                          ~relaxed_constructors:true declared_call
+                          actual_call required_typ
+                      with
+                      | Some specialized -> specialized
+                      | None ->
+                          if compare required_typ declared_result = 0 then
+                            Type.arrow_result actual_call
+                          else required_typ
+                    in
+                    (kind, specialized))
                   inferred_requirements
               |> Exp.sort_uniq_assumptions
         in
@@ -70,6 +71,7 @@ let assumption_call_specs (signature : t) : Exp.assumption_call_specs =
     | Value (name, typ, (_ :: _ as requirements)) ->
         Name.Map.add name
           {
+            Exp.call_typ = typ;
             Exp.result_typ = Type.arrow_result typ;
             requirements;
           }

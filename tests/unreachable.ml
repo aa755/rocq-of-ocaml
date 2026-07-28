@@ -46,6 +46,28 @@ end)
 let failed_projected () : unit =
   Projected.failed_unit ()
 
+module Abstract_failure (Value : sig
+    type t
+  end) =
+struct
+  type t = Value.t
+
+  let failed () : Value.t =
+    assert false
+
+  let observes_failure (_ : t) =
+    let _ = failed () in
+    true
+end
+
+module Observed_failure = Abstract_failure (struct
+  type t = int
+end)
+
+module Included_failure = struct
+  include Observed_failure
+end
+
 module Shadowed_pattern = struct
   let hd values =
     List.hd values
