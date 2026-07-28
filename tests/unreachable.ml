@@ -18,6 +18,14 @@ let failed_poly () : 'a =
 let failed_poly_int () : int =
   failed_poly ()
 
+module Qualified = struct
+  let failed_unit () : unit =
+    assert false
+end
+
+let failed_qualified () : unit =
+  Qualified.failed_unit ()
+
 module Scoped_value (X : sig
   val value : [> `Number of int]
 end) =

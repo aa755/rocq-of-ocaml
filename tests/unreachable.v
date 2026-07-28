@@ -43,6 +43,20 @@ Definition failed_poly_int
   let '_ := function_parameter in
   failed_poly tt.
 
+Module Qualified.
+  Definition failed_unit
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
+    (function_parameter : unit) : unit :=
+    let '_ := function_parameter in
+    if false then tt else (@RocqOfOCaml.Basics.unreachable unit _).
+End Qualified.
+
+Definition failed_qualified
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
+  (function_parameter : unit) : unit :=
+  let '_ := function_parameter in
+  Qualified.failed_unit tt.
+
 Module Scoped_value_X_signature.
   Record signature : Set := {
     value : Variant.t;

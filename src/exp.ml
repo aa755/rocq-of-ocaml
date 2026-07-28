@@ -1550,9 +1550,30 @@ let assumption_call_specs_of_definition (definition : t option Definition.t) :
 let propagate_call_assumptions (specs : assumption_call_specs) (expression : t)
     : t =
   let map_option f = Option.map f in
+  let rec qualified_spec path base =
+    match path with
+    | [] -> Name.Map.find_opt base specs
+    | _ :: remaining ->
+        let flattened =
+          path @ [ base ]
+          |> List.map Name.to_string
+          |> String.concat "_"
+          |> Name.of_string_raw
+        in
+        (match Name.Map.find_opt flattened specs with
+        | Some spec -> Some spec
+        | None ->
+            (* Structure-level specifications omit enclosing compilation-unit
+               names, so retry successively shorter module suffixes.  Keep at
+               least one module component to avoid confusing unrelated
+               qualified values with the same final name. *)
+            (match remaining with
+            | [] -> None
+            | _ :: _ -> qualified_spec remaining base))
+  in
   let local_callee = function
-    | Variable (MixedPath.PathName { PathName.path = []; base }, _) ->
-        Name.Map.find_opt base specs
+    | Variable (MixedPath.PathName { PathName.path; base }, _) ->
+        qualified_spec path base
     | _ -> None
   in
   let add_requirements declared_result actual_result requirements body =
