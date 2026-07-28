@@ -98,7 +98,12 @@ class ProjectResultModuleFieldTest < Test
   end
 
   def rocq_of_ocaml_cmd
-    ['rocq-of-ocaml', '-project-cmt-dir', '<temporary CMT directory>', @source_file]
+    [
+      'rocq-of-ocaml',
+      '-project-cmt-dir', '<temporary CMT directory>',
+      '-assumption-metadata-dir', '<temporary metadata directory>',
+      @source_file
+    ]
   end
 
   def capture_translation(command, directory)
@@ -115,6 +120,8 @@ class ProjectResultModuleFieldTest < Test
     executable = File.expand_path('_build/default/src/rocqOfOCaml.exe')
     snapshots = {}
     Dir.mktmpdir('rocq-of-ocaml-project-test') do |directory|
+      metadata_directory = File.join(directory, 'metadata')
+      FileUtils.mkdir_p(metadata_directory)
       ['Provider.ml', 'Project.ml', 'Consumer.ml', 'Consumer.json'].each do |name|
         FileUtils.cp(File.join(@directory, name), directory)
       end
@@ -128,7 +135,15 @@ class ProjectResultModuleFieldTest < Test
       end
       snapshots['Provider.v'] =
         capture_translation(
-          [executable, '-output', '/dev/stdout', 'Provider.ml'],
+          [
+            executable,
+            '-assumption-prefix', 'Project.Provider',
+            '-assumption-prefix', 'Provider',
+            '-assumption-metadata-output',
+            File.join(metadata_directory, 'provider.rocq-assumptions'),
+            '-output', '/dev/stdout',
+            'Provider.ml'
+          ],
           directory
         )
       snapshots['Consumer.v'] =
@@ -137,6 +152,7 @@ class ProjectResultModuleFieldTest < Test
             executable,
             '-config', 'Consumer.json',
             '-project-cmt-dir', '.',
+            '-assumption-metadata-dir', metadata_directory,
             '-output', '/dev/stdout',
             'Consumer.ml'
           ],

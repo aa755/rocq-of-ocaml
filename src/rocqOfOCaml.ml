@@ -1,5 +1,6 @@
 module Output = struct
   type t = {
+    assumption_specs : Structure.qualified_assumption_call_specs;
     error_message : string;
     generated_file : (string * string) option;
     has_errors : bool;
@@ -8,13 +9,19 @@ module Output = struct
     warning_message : string;
   }
 
-  let write (json_mode : bool) (output : t) : unit =
+  let write (json_mode : bool) (assumption_metadata_output : string option)
+      (output : t) : unit =
     if output.warning_message <> "" then prerr_string output.warning_message;
     if json_mode then
       let error_file_name = output.source_file_name ^ ".errors" in
       Util.File.write error_file_name output.error_message
     else if output.has_errors then print_endline output.error_message;
     print_endline output.success_message;
+    if not output.has_errors then
+      Option.iter
+        (fun file_name ->
+          AssumptionMetadata.write file_name output.assumption_specs)
+        assumption_metadata_output;
     match output.generated_file with
     | None -> ()
     | Some (generated_file_name, generated_file_content) ->
@@ -23,10 +30,16 @@ end
 
 let exp (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     (typedtree_errors : exn list) (source_file_name : string)
-    (source_file_content : string) (json_mode : bool) :
+    (source_file_content : string)
+    (external_assumption_specs :
+      Structure.qualified_assumption_call_specs)
+    (json_mode : bool) :
     Ast.t * MonadEval.Import.t list * string * bool * string =
   let { MonadEval.Result.errors; imports; value; warnings; _ } =
-    MonadEval.eval (Ast.of_typedtree typedtree typedtree_errors) context
+    MonadEval.eval
+      (Ast.of_typedtree ~external_assumption_specs typedtree
+         typedtree_errors)
+      context
   in
   let imports = MonadEval.Import.merge [] imports in
   let error_message =
@@ -40,10 +53,13 @@ let exp (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
 let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     (typedtree_errors : exn list) (source_file_name : string)
     (source_file_content : string) (output_file_name : string option)
+    (assumption_prefixes : string list list)
+    (external_assumption_specs :
+      Structure.qualified_assumption_call_specs)
     (json_mode : bool) : Output.t =
   let ast, imports, error_message, has_errors, warning_message =
     exp context typedtree typedtree_errors source_file_name source_file_content
-      json_mode
+      external_assumption_specs json_mode
   in
   let document = Ast.to_coq imports ast in
   let generated_file_name =
@@ -78,6 +94,11 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
       ^ Printf.sprintf "File '%s' successfully generated" generated_file_name
   in
   {
+    assumption_specs =
+      assumption_prefixes
+      |> List.concat_map (fun prefix ->
+             Ast.qualified_assumption_call_specs prefix ast)
+      |> List.sort_uniq compare;
     error_message;
     generated_file = Some (generated_file_name, generated_file_content);
     has_errors;
@@ -100,6 +121,9 @@ let main () =
   let configuration_file_name = ref None in
   let project_cmt_directory = ref None in
   let output_file_name = ref None in
+  let assumption_metadata_directory = ref None in
+  let assumption_metadata_output = ref None in
+  let assumption_prefixes = ref [] in
   let options =
     [
       ( "-config",
@@ -111,6 +135,17 @@ let main () =
       ( "-project-cmt-dir",
         Arg.String (fun value -> project_cmt_directory := Some value),
         "dir    load cross-file module hints from project CMT files" );
+      ( "-assumption-metadata-dir",
+        Arg.String
+          (fun value -> assumption_metadata_directory := Some value),
+        "dir    load translated call requirements from this directory" );
+      ( "-assumption-metadata-output",
+        Arg.String (fun value -> assumption_metadata_output := Some value),
+        "file   write translated call requirements to this sidecar" );
+      ( "-assumption-prefix",
+        Arg.String
+          (fun value -> assumption_prefixes := value :: !assumption_prefixes),
+        "path   source module path for exported call requirements (repeatable)" );
       ( "-json-mode",
         Arg.Set json_mode,
         "    produce the list of error messages in a JSON file" );
@@ -131,6 +166,27 @@ let main () =
         match !project_cmt_directory with
         | None -> ProjectHints.empty
         | Some directory -> ProjectHints.of_directory directory
+      in
+      let external_assumption_specs =
+        match !assumption_metadata_directory with
+        | None -> []
+        | Some directory -> AssumptionMetadata.of_directory directory
+      in
+      let assumption_prefixes =
+        match List.rev !assumption_prefixes with
+        | [] ->
+            [
+              [
+                file_name |> Filename.basename
+                |> Filename.remove_extension
+                |> String.capitalize_ascii;
+              ];
+            ]
+        | prefixes ->
+            prefixes
+            |> List.map (fun prefix ->
+                   String.split_on_char '.' prefix
+                   |> List.filter (fun component -> component <> ""))
       in
 
       let merlin_config =
@@ -185,9 +241,10 @@ let main () =
 
           let output =
             of_ocaml context typedtree typedtree_errors file_name file_content
-              !output_file_name !json_mode
+              !output_file_name assumption_prefixes
+              external_assumption_specs !json_mode
           in
-          Output.write !json_mode output;
+          Output.write !json_mode !assumption_metadata_output output;
           exit context output)
 ;;
 

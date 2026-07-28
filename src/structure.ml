@@ -722,11 +722,61 @@ let module_include_assumptions kind typ_vars typ mixed_path =
       |> Exp.sort_uniq_assumptions
   | _ -> []
 
+(** Requirements exported by translated values, indexed by their
+    source-level qualified paths.  These specifications are also the
+    cross-compilation-unit interface used by [propagate_assumption_calls]. *)
+type qualified_assumption_call_specs =
+  (string * Exp.assumption_call_spec) list
+
+let rec qualified_assumption_call_specs prefix definitions =
+  definitions
+  |> List.concat_map (function
+       | Value { Value.definition; _ } ->
+           Exp.assumption_call_specs_of_definition definition
+           |> Name.Map.bindings
+           |> List.map (fun (name, spec) ->
+                  ( String.concat "." (prefix @ [ Name.to_string name ]),
+                    spec ))
+       | Module (name, _, nested, _) ->
+           qualified_assumption_call_specs
+             (prefix @ [ Name.to_string name ])
+             nested
+       | ModuleIncludeItem
+           ( (IncludeValue | IncludeProjectedValue),
+             name,
+             _,
+             Some typ,
+             _,
+             (_ :: _ as requirements) ) ->
+           [
+             ( String.concat "." (prefix @ [ Name.to_string name ]),
+               {
+                 Exp.call_typ = typ;
+                 Exp.result_typ = Type.arrow_result typ;
+                 requirements;
+               } );
+           ]
+       | Signature (name, signature) ->
+           Signature.assumption_call_specs signature
+           |> Name.Map.bindings
+           |> List.map (fun (field, spec) ->
+                  ( String.concat "."
+                      (prefix
+                      @ [ Name.to_string name; Name.to_string field ]),
+                    spec ))
+       | Documentation (_, nested) ->
+           qualified_assumption_call_specs prefix nested
+       | ErrorMessage (_, nested) ->
+           qualified_assumption_call_specs prefix [ nested ]
+       | _ -> [])
+
 (** Propagate generated assumption parameters through calls between values in
     the same OCaml structure.  The pass reaches a fixed point because adding a
     requirement to one value may make its callers require the same
     type-specific class. *)
-let propagate_assumption_calls (definitions : t list) : t list =
+let propagate_assumption_calls
+    ?(external_specs : qualified_assumption_call_specs = [])
+    (definitions : t list) : t list =
   let merge_specs left right =
     Name.Map.union (fun _ _ right -> Some right) left right
   in
@@ -871,27 +921,6 @@ let propagate_assumption_calls (definitions : t list) : t list =
     in
     substring_length = 0 || search 0
   in
-  let rec qualified_signature_specs prefix definitions =
-    definitions
-    |> List.concat_map (function
-         | Module (name, _, nested, _) ->
-             qualified_signature_specs
-               (prefix @ [ Name.to_string name ])
-               nested
-         | Signature (name, signature) ->
-             Signature.assumption_call_specs signature
-             |> Name.Map.bindings
-             |> List.map (fun (field, spec) ->
-                    ( String.concat "."
-                        (prefix
-                        @ [ Name.to_string name; Name.to_string field ]),
-                      spec ))
-         | Documentation (_, nested) ->
-             qualified_signature_specs prefix nested
-         | ErrorMessage (_, nested) ->
-             qualified_signature_specs prefix [ nested ]
-         | _ -> [])
-  in
   let find_projected_spec qualified_specs mixed_path =
     let target =
       normalize_projection_path (MixedPath.to_string mixed_path)
@@ -979,7 +1008,7 @@ let propagate_assumption_calls (definitions : t list) : t list =
   in
   let rec close_assumptions definitions =
     let qualified_specs =
-      qualified_signature_specs [] definitions
+      qualified_assumption_call_specs [] definitions @ external_specs
     in
     let projected_callee mixed_path =
       find_projected_spec qualified_specs mixed_path
@@ -989,7 +1018,9 @@ let propagate_assumption_calls (definitions : t list) : t list =
       |> fixed_point ~projected_callee
       |> update_signatures_scope
     in
-    let qualified_specs = qualified_signature_specs [] updated in
+    let qualified_specs =
+      qualified_assumption_call_specs [] updated @ external_specs
+    in
     let updated =
       annotate_projected_requirements qualified_specs updated
     in

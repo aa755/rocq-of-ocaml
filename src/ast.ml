@@ -41,14 +41,20 @@ let report_errors (typedtree_errors : exn list) : unit Monad.t =
                (raise () Error.Category.Merlin (Buffer.contents error_buffer))
          | _ -> return ())
 
-let of_typedtree (typedtree : Mtyper.typedtree) (typedtree_errors : exn list) :
-    t Monad.t =
+let of_typedtree
+    ?(external_assumption_specs :
+       Structure.qualified_assumption_call_specs =
+      [])
+    (typedtree : Mtyper.typedtree) (typedtree_errors : exn list) : t Monad.t =
   (report_errors typedtree_errors
   >>
   match typedtree with
   | `Implementation structure ->
       Structure.of_structure structure >>= fun structure ->
-      return (Structure (Structure.propagate_assumption_calls structure))
+      return
+        (Structure
+           (Structure.propagate_assumption_calls
+              ~external_specs:external_assumption_specs structure))
   | `Interface signature ->
       SignatureAxioms.of_signature signature >>= fun signature ->
       return (SignatureAxioms signature))
@@ -65,6 +71,13 @@ let of_typedtree (typedtree : Mtyper.typedtree) (typedtree_errors : exn list) :
       without_positivity_checking =
         Configuration.is_without_positivity_checking configuration;
     }
+
+let qualified_assumption_call_specs (prefix : string list) (ast : t) :
+    Structure.qualified_assumption_call_specs =
+  match ast.content with
+  | Structure definitions ->
+      Structure.qualified_assumption_call_specs prefix definitions
+  | SignatureAxioms _ -> []
 
 let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
   let uses_well_founded_recursion =

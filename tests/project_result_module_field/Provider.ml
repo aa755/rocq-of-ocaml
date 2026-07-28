@@ -20,6 +20,8 @@ module DefaultArgument = struct
   let token = ()
 end
 
+let unwrap_int = function Some value -> value | None -> assert false
+
 module Applied = Fixed (DefaultArgument)
 
 module Aliased (Argument : ARGUMENT) = struct

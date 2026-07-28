@@ -4,6 +4,8 @@ end
 
 type direct_map = Project.Provider.Applied.Map.t
 
+let unwrapped = Project.Provider.unwrap_int (None : int option)
+
 module Result = Project.Provider.Outer (Argument)
 module Alias = Result.Namespace
 

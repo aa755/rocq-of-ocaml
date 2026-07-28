@@ -18,6 +18,10 @@ Definition Argument := Argument.module.
 Definition direct_map : Set :=
   Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
 
+Definition unwrapped
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  Provider.unwrap_int None.
+
 Definition Result_fargs := Provider.Outer.Build_FArgs Argument.
 
 Definition Result : Provider.Outer.Outer_result (_fargs := Result_fargs) :=

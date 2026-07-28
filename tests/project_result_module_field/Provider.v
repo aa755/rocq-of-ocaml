@@ -67,6 +67,16 @@ Module DefaultArgument.
 End DefaultArgument.
 Definition DefaultArgument := DefaultArgument.module.
 
+Definition unwrap_int {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}
+  (function_parameter : option A) : A :=
+  match function_parameter with
+  | Some value => value
+  | None =>
+    let '_ := false in
+    (@RocqOfOCaml.Basics.unreachable A _)
+  end.
+
 Definition Applied_fargs := Fixed.Build_FArgs DefaultArgument.
 
 Definition Applied : Fixed.Fixed_result (_fargs := Applied_fargs) :=
