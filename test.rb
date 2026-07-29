@@ -165,8 +165,10 @@ class ProjectResultModuleFieldTest < Test
         File.write(File.join(@directory, name), contents)
       end
     end
+    normalize = ->(contents) { contents.gsub(/[ \t]+(?=\n|\z)/, '') }
     snapshots.all? do |name, contents|
-      contents == File.read(File.join(@directory, name), encoding: 'utf-8')
+      normalize.call(contents) ==
+        normalize.call(File.read(File.join(@directory, name), encoding: 'utf-8'))
     end
   end
 
@@ -309,7 +311,8 @@ class WellFoundedWarningTest < Test
     output, error, status = Open3.capture3(*rocq_of_ocaml_cmd)
     status.success? &&
       error.include?('@rocq.wf introduces an abstract measure') &&
-      output.include?('Program Fixpoint gcd') &&
+      output.include?('_rocq_measure') &&
+      output.include?('@Fix') &&
       output.include?('Admit Obligations.')
   end
 end

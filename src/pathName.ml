@@ -17,18 +17,22 @@ let to_string (x : t) : string =
 
 let to_string_base (x : t) : string = Name.to_string x.base
 
-let try_to_use (head : string) (name : string) : bool Monad.t =
+let target_path (target : string) : string list =
+  String.split_on_char '.' target
+  |> List.filter (fun component -> not (String.equal component ""))
+
+let try_to_use (head : string) (name : string) : string list option Monad.t =
   let* configuration = get_configuration in
   let require = Configuration.should_require configuration head in
   let require_import = Configuration.should_require_import configuration head in
   match (require, require_import) with
   | _, Some require_import ->
       let* () = use (RequireImport require_import) in
-      return true
+      return (Some [])
   | Some require, _ ->
       let* () = use (Require (require, name)) in
-      return true
-  | None, None -> return false
+      return (Some (target_path require))
+  | None, None -> return None
 
 (* Convert an identifier from OCaml to its Rocq's equivalent, or [None] if no
    conversion is needed. We consider all the paths in the standard library
@@ -42,11 +46,15 @@ let try_convert (path_name : t) : t option Monad.t =
   let* renamed_path_name =
     match (path, base) with
     | source :: name :: rest, _ ->
-        let* is_import = try_to_use source name in
-        if is_import then make (name :: rest) base else return None
+        let* required_path = try_to_use source name in
+        (match required_path with
+        | Some required_path -> make (required_path @ (name :: rest)) base
+        | None -> return None)
     | [ source ], name ->
-        let* is_import = try_to_use source name in
-        if is_import then make [] base else return None
+        let* required_path = try_to_use source name in
+        (match required_path with
+        | Some required_path -> make required_path base
+        | None -> return None)
     | _ -> return None
   in
   let* configuration = get_configuration in

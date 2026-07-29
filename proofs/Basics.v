@@ -18,7 +18,8 @@ Notation "{ x : A @ P }" := (sigS (A := A) (fun x => P)) : type_scope.
 Notation "{ ' pat : A @ P }" := (sigS (A := A) (fun pat => P)) : type_scope.
 
 (** Conversion from a module to a first-class module. *)
-Definition pack {A : Type} {P : A -> Set} (M : {x : A & P x}) : {x : A @ P x} :=
+Definition pack {A : Type} {P : A -> Set}
+    (M : {x : A & P x}) : {x : A @ P x} :=
   let 'existT _ _ M := M in
   existS _ _ M.
 
@@ -49,8 +50,6 @@ Class OrderDec {A R} `(StrictOrder A R) := {
 
 Definition array (A : Set) : Set := list A.
 
-Parameter axiom : forall {A : Set}, A.
-
 (** A uniquely inhabited typeclass used only as Rocq's syntactic structural
     parameter when translated OCaml recursion has no inductive argument.
     Calls do not expose it: typeclass inference always supplies the global
@@ -71,15 +70,19 @@ Global Instance default_general_recursion_guard : GeneralRecursionGuard :=
 Parameter well_founded_measure :
   forall {A : Set}, string -> A -> nat.
 
-(** OCaml accepts recursive modules when their initialization dependencies are
-    safe.  Gallina has no corresponding module-level fixed point, so translated
-    recursive modules use the same trusted guard-check bypass as general OCaml
-    value recursion.  Keeping the fixed point reducible is important: a tuple
-    of modules whose fields are functions can still compute by lazy reduction. *)
-#[bypass_check(guard)]
-Fixpoint recursive_module_fix {A : Set} (f : A -> A)
-    `{guard : GeneralRecursionGuard} {struct guard} : A :=
-  f (recursive_module_fix f).
+(** A total, step-indexed approximation of an OCaml recursive-module knot.
+    The generated definition receives [seed] through an [Unreachable]
+    requirement, making the approximation boundary explicit.  Projects that
+    execute recursive modules must replace the seed and justify a sufficient
+    unrolling bound; there is no sound general fixed-point operator on [Set]. *)
+Definition recursive_module_default_fuel : nat := 1024%nat.
+
+Fixpoint recursive_module_unroll {A : Set} (fuel : nat) (seed : A)
+    (f : A -> A) : A :=
+  match fuel with
+  | O => seed
+  | S remaining => f (recursive_module_unroll remaining seed f)
+  end.
 
 Class Unreachable (T : Type) := {
   unreachable : T;
@@ -92,43 +95,30 @@ Class Unimplemented (T : Type) := {
 Arguments unreachable {T} {_}.
 Arguments unimplemented {T} {_}.
 
+(** Select the value carried by an explicit [Unreachable] instance.  Generated
+    recursive-module code uses this helper to make its finite-unrolling seed a
+    visible functor dependency instead of relying on global type-class search. *)
+Definition use_unreachable {T : Type} (instance : Unreachable T) : T :=
+  @unreachable T instance.
+
+(** Specialize a family carried by an explicit assumption class. *)
+Definition specialize_unreachable {A : Type} {T : A -> Type}
+    (instance : Unreachable (forall x, T x)) (x : A) : Unreachable (T x) :=
+  {| unreachable := @unreachable (forall x, T x) instance x |}.
+
+Definition specialize_unimplemented {A : Type} {T : A -> Type}
+    (instance : Unimplemented (forall x, T x)) (x : A) : Unimplemented (T x) :=
+  {| unimplemented := @unimplemented (forall x, T x) instance x |}.
+
 (** Keep a section variable as an explicit parameter of a generated
     definition even when Rocq can erase every computational use of it. *)
 Definition with_context {Context : Type}
     (_ : Context) (Result : Set) : Set :=
   Result.
 
-Axiom cast : forall {A : Set} (B : Set), A -> B.
-
-Axiom cast_exists : forall {A : Set} {Es : Type} (T : Es -> Set),
-  A -> {vs : Es & T vs}.
-
-Axiom cast_eval : forall {A : Set} {x : A}, cast A x = x.
-
-Axiom cast_exists_eval_eq
-  : forall {A : Set} {Es : Type} {T : Es -> Set} {vs : Es} {x : A}
-  (H_eq : A = T vs),
-  cast_exists (A := A) (Es := Es) T x =
-  existT T vs (eq_rect (A := Set) A (fun x => x) x (T vs) H_eq).
-
-Ltac rewrite_cast_exists_eval_eq vs :=
-  match goal with
-  | [ |- context[cast_exists ?T _] ] =>
-    rewrite (cast_exists_eval_eq (T := T) (vs := vs) eq_refl);
-    simpl
-  end.
-
-Parameter unreachable_gadt_branch : forall {A : Set}, A.
-
-(** Mutation of a record field. *)
-Parameter set_record_field : forall {A B : Set}, A -> string -> B -> unit.
-
 Inductive extensible_type : Set :=
 | Build_extensible : string -> forall (A : Set), A -> extensible_type.
 Arguments Build_extensible : clear implicits.
-
-(** For backward compatibility. *)
-Parameter extensible_type_value : extensible_type.
 
 (** Polymorphic variants. *)
 Module Variant.
@@ -137,12 +127,6 @@ Module Variant.
 
   Arguments Build : clear implicits.
 End Variant.
-
-Parameter Set_oracle : string -> Set.
-
-Axiom Set_oracle_invoke
-  : forall {name : string} (A : Set),
-    Set_oracle name = A.
 
 Definition int := Z.
 
@@ -182,6 +166,7 @@ Module Unit.
       compare_is_sound := fun x y => CompEq _ _ _ |}.
     abstract (now destruct x; destruct y).
   Defined.
+
 End Unit.
 
 Module Bool.
@@ -212,6 +197,7 @@ Module Bool.
       try apply CompLt; try apply CompEq; try apply CompGt;
       constructor).
   Defined.
+
 End Bool.
 
 Module Z.
@@ -220,6 +206,7 @@ Module Z.
   Global Instance order_dec : OrderDec Z.lt_strorder := {|
     compare := Z.compare;
     compare_is_sound := Z.compare_spec |}.
+
 End Z.
 
 (** OCaml functions are converted to their Rocq's counter parts when it is
@@ -251,20 +238,6 @@ Module Stdlib.
 
   Parameter physical_equal : forall {a : Set}, a -> a -> bool.
 
-  (** OCaml's [Lazy], [Atomic], and reference APIs rely on mutable runtime
-      cells.  Gallina has no corresponding effect in this embedding.  The
-      erased carrier for [Lazy.t] and its polymorphic operations therefore
-      form an explicit trusted boundary for translated code that observes
-      sharing or mutation.  Monad VM itself does not use these primitives;
-      they are needed by the complete OCaml [Seq] API that it re-exports. *)
-  Module Lazy.
-    Parameter t : Set.
-
-    Parameter from_fun : forall {a : Set}, (unit -> a) -> t.
-
-    Parameter force : forall {a : Set}, t -> a.
-  End Lazy.
-
   Module Atomic.
     Definition make {a : Set} (value : a) : a := value.
 
@@ -282,54 +255,26 @@ Module Stdlib.
     tt.
 
   (** * Comparisons *)
-  Definition lt {A : Type} {R} `{OrderDec A R} (x y : A) : bool :=
-    match compare x y with
-    | Eq => false
-    | Lt => true
-    | Gt => false
-    end.
+  Definition lt {A : Set} (x y : A) : bool :=
+    Z.ltb (polymorphic_compare x y) 0.
 
-  Definition gt {A : Type} {R} `{OrderDec A R} (x y : A) : bool :=
-    match compare x y with
-    | Eq => false
-    | Lt => false
-    | Gt => true
-    end.
+  Definition gt {A : Set} (x y : A) : bool :=
+    Z.gtb (polymorphic_compare x y) 0.
 
-  Definition le {A : Type} {R} `{OrderDec A R} (x y : A) : bool :=
-    match compare x y with
-    | Eq => true
-    | Lt => true
-    | Gt => false
-    end.
+  Definition le {A : Set} (x y : A) : bool :=
+    Z.leb (polymorphic_compare x y) 0.
 
-  Definition ge {A : Type} {R} `{OrderDec A R} (x y : A) : bool :=
-    match compare x y with
-    | Eq => true
-    | Lt => false
-    | Gt => true
-    end.
+  Definition ge {A : Set} (x y : A) : bool :=
+    Z.geb (polymorphic_compare x y) 0.
 
-  Definition min {A : Type} {R} `{OrderDec A R} (x y : A) : A :=
-    match compare x y with
-    | Eq => x
-    | Lt => x
-    | Gt => y
-    end.
+  Definition min {A : Set} (x y : A) : A :=
+    if le x y then x else y.
 
-  Definition max {A : Type} {R} `{OrderDec A R} (x y : A) : A :=
-    match compare x y with
-    | Eq => x
-    | Lt => y
-    | Gt => x
-    end.
+  Definition max {A : Set} (x y : A) : A :=
+    if ge x y then x else y.
 
-  Definition compare {A : Type} {R} `{OrderDec A R} (x y : A) : Z :=
-    match compare x y with
-    | Eq => 0
-    | Lt => -1
-    | Gt => 1
-    end.
+  Definition compare {A : Set} (x y : A) : Z :=
+    polymorphic_compare x y.
 
   (** * Boolean operations *)
 
@@ -447,6 +392,7 @@ Module Char.
     - exact Hlt.
     - exact Hgt.
   Defined.
+
 End Char.
 
 Module Seq.
@@ -628,15 +574,16 @@ Module String.
       + apply CompGt.
         apply (ltb_spec _ _ (ltb_or_eqb_or_gtb _ _ H_lt H_eq)).
   Defined.
+
 End String.
 
 Module CamlinternalFormatBasics.
-  Inductive padty : Set :=
+  Inductive padty : Type :=
   | Left : padty
   | Right : padty
   | Zeros : padty.
 
-  Inductive int_conv : Set :=
+  Inductive int_conv : Type :=
   | Int_d : int_conv
   | Int_pd : int_conv
   | Int_sd : int_conv
@@ -651,7 +598,7 @@ Module CamlinternalFormatBasics.
   | Int_Co : int_conv
   | Int_u : int_conv.
 
-  Inductive float_conv : Set :=
+  Inductive float_conv : Type :=
   | Float_f : float_conv
   | Float_pf : float_conv
   | Float_sf : float_conv
@@ -675,64 +622,64 @@ Module CamlinternalFormatBasics.
   | Float_pH : float_conv
   | Float_sH : float_conv.
 
-  Definition char_set : Set := string.
+  Definition char_set : Type := string.
 
-  Inductive counter : Set :=
+  Inductive counter : Type :=
   | Line_counter : counter
   | Char_counter : counter
   | Token_counter : counter.
 
   Reserved Notation "'padding".
 
-  Inductive padding_gadt : Set :=
+  Inductive padding_gadt : Type :=
   | No_padding_gadt : padding_gadt
   | Lit_padding_gadt : padty -> int -> padding_gadt
   | Arg_padding_gadt : padty -> padding_gadt
 
-  where "'padding" := (fun (_ _ : Set) => padding_gadt).
+  where "'padding" := (fun (_ _ : Type) => padding_gadt).
 
   Definition padding := 'padding.
 
   Definition No_padding : padding_gadt := No_padding_gadt.
   Definition Lit_padding : padty -> int -> padding_gadt := Lit_padding_gadt.
-  Definition Arg_padding {a : Set} : padty -> padding (int -> a) a :=
+  Definition Arg_padding {a : Type} : padty -> padding (int -> a) a :=
     Arg_padding_gadt.
 
-  Definition pad_option : Set := option int.
+  Definition pad_option : Type := option int.
 
   Reserved Notation "'precision".
 
-  Inductive precision_gadt : Set :=
+  Inductive precision_gadt : Type :=
   | No_precision_gadt : precision_gadt
   | Lit_precision_gadt : int -> precision_gadt
   | Arg_precision_gadt : precision_gadt
 
-  where "'precision" := (fun (_ _ : Set) => precision_gadt).
+  where "'precision" := (fun (_ _ : Type) => precision_gadt).
 
   Definition precision := 'precision.
 
   Definition No_precision : precision_gadt := No_precision_gadt.
-  Definition Lit_precision {a : Set} : int -> precision a a := Lit_precision_gadt.
-  Definition Arg_precision {a : Set} : precision (int -> a) a :=
+  Definition Lit_precision {a : Type} : int -> precision a a := Lit_precision_gadt.
+  Definition Arg_precision {a : Type} : precision (int -> a) a :=
     Arg_precision_gadt.
 
-  Definition prec_option : Set := option int.
+  Definition prec_option : Type := option int.
 
   Reserved Notation "'custom_arity".
 
-  Inductive custom_arity_gadt : Set :=
+  Inductive custom_arity_gadt : Type :=
   | Custom_zero_gadt : custom_arity_gadt
   | Custom_succ_gadt : custom_arity_gadt -> custom_arity_gadt
 
-  where "'custom_arity" := (fun (_ _ _ : Set) => custom_arity_gadt).
+  where "'custom_arity" := (fun (_ _ _ : Type) => custom_arity_gadt).
 
   Definition custom_arity := 'custom_arity.
 
-  Definition Custom_zero {a : Set} : custom_arity a string a := Custom_zero_gadt.
-  Definition Custom_succ {a b c x : Set} :
+  Definition Custom_zero {a : Type} : custom_arity a string a := Custom_zero_gadt.
+  Definition Custom_succ {a b c x : Type} :
     custom_arity a b c -> custom_arity a (x -> b) (x -> c) := Custom_succ_gadt.
 
-  Inductive block_type : Set :=
+  Inductive block_type : Type :=
   | Pp_hbox : block_type
   | Pp_vbox : block_type
   | Pp_hvbox : block_type
@@ -740,7 +687,7 @@ Module CamlinternalFormatBasics.
   | Pp_box : block_type
   | Pp_fits : block_type.
 
-  Inductive formatting_lit : Set :=
+  Inductive formatting_lit : Type :=
   | Close_box : formatting_lit
   | Close_tag : formatting_lit
   | Break : string -> int -> int -> formatting_lit
@@ -759,13 +706,13 @@ Module CamlinternalFormatBasics.
   Reserved Notation "'ignored".
   Reserved Notation "'format6".
 
-  Inductive formatting_gen_gadt : Set :=
-  | Open_tag_gadt : forall {a b c d e f : Set},
+  Inductive formatting_gen_gadt : Type :=
+  | Open_tag_gadt : forall {a b c d e f : Type},
     'format6 a b c d e f -> formatting_gen_gadt
-  | Open_box_gadt : forall {a b c d e f : Set},
+  | Open_box_gadt : forall {a b c d e f : Type},
     'format6 a b c d e f -> formatting_gen_gadt
 
-  with fmtty_rel_gadt : Set :=
+  with fmtty_rel_gadt : Type :=
   | Char_ty_gadt : fmtty_rel_gadt -> fmtty_rel_gadt
   | String_ty_gadt : fmtty_rel_gadt -> fmtty_rel_gadt
   | Int_ty_gadt : fmtty_rel_gadt -> fmtty_rel_gadt
@@ -774,7 +721,7 @@ Module CamlinternalFormatBasics.
   | Int64_ty_gadt : fmtty_rel_gadt -> fmtty_rel_gadt
   | Float_ty_gadt : fmtty_rel_gadt -> fmtty_rel_gadt
   | Bool_ty_gadt : fmtty_rel_gadt -> fmtty_rel_gadt
-  | Format_arg_ty_gadt : forall {g h i j k l : Set},
+  | Format_arg_ty_gadt : forall {g h i j k l : Type},
     'fmtty g h i j k l -> fmtty_rel_gadt -> fmtty_rel_gadt
   | Format_subst_ty_gadt :
     fmtty_rel_gadt -> fmtty_rel_gadt -> fmtty_rel_gadt -> fmtty_rel_gadt
@@ -785,48 +732,48 @@ Module CamlinternalFormatBasics.
   | Ignored_reader_ty_gadt : fmtty_rel_gadt -> fmtty_rel_gadt
   | End_of_fmtty_gadt : fmtty_rel_gadt
 
-  with fmt_gadt : Set :=
+  with fmt_gadt : Type :=
   | Char_gadt : fmt_gadt -> fmt_gadt
   | Caml_char_gadt : fmt_gadt -> fmt_gadt
-  | String_gadt : forall {a x : Set},
+  | String_gadt : forall {a x : Type},
     padding x (string -> a) -> fmt_gadt -> fmt_gadt
-  | Caml_string_gadt : forall {a x : Set},
+  | Caml_string_gadt : forall {a x : Type},
     padding x (string -> a) -> fmt_gadt -> fmt_gadt
-  | Int_gadt : forall {a x y : Set},
+  | Int_gadt : forall {a x y : Type},
     int_conv -> padding x y -> precision y (int -> a) -> fmt_gadt -> fmt_gadt
-  | Int32_gadt : forall {a x y : Set},
+  | Int32_gadt : forall {a x y : Type},
     int_conv -> padding x y -> precision y (int32 -> a) -> fmt_gadt -> fmt_gadt
-  | Nativeint_gadt : forall {a x y : Set},
+  | Nativeint_gadt : forall {a x y : Type},
     int_conv -> padding x y -> precision y (nativeint -> a) -> fmt_gadt ->
     fmt_gadt
-  | Int64_gadt : forall {a x y : Set},
+  | Int64_gadt : forall {a x y : Type},
     int_conv -> padding x y -> precision y (int64 -> a) -> fmt_gadt -> fmt_gadt
-  | Float_gadt : forall {a x y : Set},
+  | Float_gadt : forall {a x y : Type},
     float_conv -> padding x y -> precision y (float -> a) -> fmt_gadt -> fmt_gadt
-  | Bool_gadt : forall {a x : Set}, padding x (bool -> a) -> fmt_gadt -> fmt_gadt
+  | Bool_gadt : forall {a x : Type}, padding x (bool -> a) -> fmt_gadt -> fmt_gadt
   | Flush_gadt : fmt_gadt -> fmt_gadt
   | String_literal_gadt : string -> fmt_gadt -> fmt_gadt
   | Char_literal_gadt : ascii -> fmt_gadt -> fmt_gadt
-  | Format_arg_gadt : forall {g h i j k l : Set},
+  | Format_arg_gadt : forall {g h i j k l : Type},
     pad_option -> 'fmtty g h i j k l -> fmt_gadt -> fmt_gadt
-  | Format_subst_gadt : forall {a b c d g g2 h i j j2 k l : Set},
+  | Format_subst_gadt : forall {a b c d g g2 h i j j2 k l : Type},
     pad_option -> 'fmtty_rel g h i j k l g2 b c j2 d a -> fmt_gadt -> fmt_gadt
   | Alpha_gadt : fmt_gadt -> fmt_gadt
   | Theta_gadt : fmt_gadt -> fmt_gadt
   | Formatting_lit_gadt : formatting_lit -> fmt_gadt -> fmt_gadt
-  | Formatting_gen_gadt : forall {a1 b c d1 e1 f1 : Set},
+  | Formatting_gen_gadt : forall {a1 b c d1 e1 f1 : Type},
     'formatting_gen a1 b c d1 e1 f1 -> fmt_gadt -> fmt_gadt
   | Reader_gadt : fmt_gadt -> fmt_gadt
   | Scan_char_set_gadt : pad_option -> char_set -> fmt_gadt -> fmt_gadt
   | Scan_get_counter_gadt : counter -> fmt_gadt -> fmt_gadt
   | Scan_next_char_gadt : fmt_gadt -> fmt_gadt
-  | Ignored_param_gadt : forall {a b c d x y : Set},
+  | Ignored_param_gadt : forall {a b c d x y : Type},
     'ignored a b c d y x -> fmt_gadt -> fmt_gadt
-  | Custom_gadt : forall {a x y : Set},
+  | Custom_gadt : forall {a x y : Type},
     custom_arity a x y -> (unit -> x) -> fmt_gadt -> fmt_gadt
   | End_of_format_gadt : fmt_gadt
 
-  with ignored_gadt : Set :=
+  with ignored_gadt : Type :=
   | Ignored_char_gadt : ignored_gadt
   | Ignored_caml_char_gadt : ignored_gadt
   | Ignored_string_gadt : pad_option -> ignored_gadt
@@ -837,26 +784,26 @@ Module CamlinternalFormatBasics.
   | Ignored_int64_gadt : int_conv -> pad_option -> ignored_gadt
   | Ignored_float_gadt : pad_option -> prec_option -> ignored_gadt
   | Ignored_bool_gadt : pad_option -> ignored_gadt
-  | Ignored_format_arg_gadt : forall {g h i j k l : Set},
+  | Ignored_format_arg_gadt : forall {g h i j k l : Type},
     pad_option -> 'fmtty g h i j k l -> ignored_gadt
-  | Ignored_format_subst_gadt : forall {a b c d e f : Set},
+  | Ignored_format_subst_gadt : forall {a b c d e f : Type},
     pad_option -> 'fmtty a b c d e f -> ignored_gadt
   | Ignored_reader_gadt : ignored_gadt
   | Ignored_scan_char_set_gadt : pad_option -> char_set -> ignored_gadt
   | Ignored_scan_get_counter_gadt : counter -> ignored_gadt
   | Ignored_scan_next_char_gadt : ignored_gadt
 
-  with format6_gadt : Set :=
-  | Format_gadt : forall {a b c d e f : Set},
+  with format6_gadt : Type :=
+  | Format_gadt : forall {a b c d e f : Type},
     'fmt a b c d e f -> string -> format6_gadt
 
-  where "'formatting_gen" := (fun (_ _ _ _ _ _ : Set) => formatting_gen_gadt)
-  and "'fmtty_rel" := (fun (_ _ _ _ _ _ _ _ _ _ _ _ : Set) => fmtty_rel_gadt)
-  and "'fmtty" := (fun (t_a t_b t_c t_d t_e t_f : Set) =>
+  where "'formatting_gen" := (fun (_ _ _ _ _ _ : Type) => formatting_gen_gadt)
+  and "'fmtty_rel" := (fun (_ _ _ _ _ _ _ _ _ _ _ _ : Type) => fmtty_rel_gadt)
+  and "'fmtty" := (fun (t_a t_b t_c t_d t_e t_f : Type) =>
     'fmtty_rel t_a t_b t_c t_d t_e t_f t_a t_b t_c t_d t_e t_f)
-  and "'fmt" := (fun (_ _ _ _ _ _ : Set) => fmt_gadt)
-  and "'ignored" := (fun (_ _ _ _ _ _ : Set) => ignored_gadt)
-  and "'format6" := (fun (_ _ _ _ _ _ : Set) => format6_gadt).
+  and "'fmt" := (fun (_ _ _ _ _ _ : Type) => fmt_gadt)
+  and "'ignored" := (fun (_ _ _ _ _ _ : Type) => ignored_gadt)
+  and "'format6" := (fun (_ _ _ _ _ _ : Type) => format6_gadt).
 
   Definition formatting_gen := 'formatting_gen.
   Definition fmtty_rel := 'fmtty_rel.
@@ -865,198 +812,198 @@ Module CamlinternalFormatBasics.
   Definition ignored := 'ignored.
   Definition format6 := 'format6.
 
-  Definition Open_tag {a b c d e f : Set} :
+  Definition Open_tag {a b c d e f : Type} :
     format6 a b c d e f -> formatting_gen a b c d e f := Open_tag_gadt (a := a)
     (b := b) (c := c) (d := d) (e := e) (f := f).
-  Definition Open_box {a b c d e f : Set} :
+  Definition Open_box {a b c d e f : Type} :
     format6 a b c d e f -> formatting_gen a b c d e f := Open_box_gadt (a := a)
     (b := b) (c := c) (d := d) (e := e) (f := f).
-  Definition Char_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Char_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (ascii -> a1) b1 c1 d1 e1 f1 (ascii -> a2) b2 c2 d2 e2 f2 :=
     Char_ty_gadt.
-  Definition String_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition String_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (string -> a1) b1 c1 d1 e1 f1 (string -> a2) b2 c2 d2 e2 f2 :=
     String_ty_gadt.
-  Definition Int_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Int_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (int -> a1) b1 c1 d1 e1 f1 (int -> a2) b2 c2 d2 e2 f2 :=
     Int_ty_gadt.
-  Definition Int32_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Int32_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (int32 -> a1) b1 c1 d1 e1 f1 (int32 -> a2) b2 c2 d2 e2 f2 :=
     Int32_ty_gadt.
-  Definition Nativeint_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Nativeint_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (nativeint -> a1) b1 c1 d1 e1 f1 (nativeint -> a2) b2 c2 d2 e2 f2 :=
     Nativeint_ty_gadt.
-  Definition Int64_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Int64_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (int64 -> a1) b1 c1 d1 e1 f1 (int64 -> a2) b2 c2 d2 e2 f2 :=
     Int64_ty_gadt.
-  Definition Float_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Float_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (float -> a1) b1 c1 d1 e1 f1 (float -> a2) b2 c2 d2 e2 f2 :=
     Float_ty_gadt.
-  Definition Bool_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Bool_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (bool -> a1) b1 c1 d1 e1 f1 (bool -> a2) b2 c2 d2 e2 f2 :=
     Bool_ty_gadt.
-  Definition Format_arg_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 g h i j k l : Set}
+  Definition Format_arg_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 g h i j k l : Type}
     :
     fmtty g h i j k l -> fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (format6 g h i j k l -> a1) b1 c1 d1 e1 f1
       (format6 g h i j k l -> a2) b2 c2 d2 e2 f2 := Format_arg_ty_gadt (g := g)
     (h := h) (i := i) (j := j) (k := k) (l := l).
   Definition Format_subst_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 g g1 g2 h i j j1
-    j2 k l : Set} :
+    j2 k l : Type} :
     fmtty_rel g h i j k l g1 b1 c1 j1 d1 a1 ->
     fmtty_rel g h i j k l g2 b2 c2 j2 d2 a2 ->
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (format6 g h i j k l -> g1) b1 c1 j1 e1 f1
       (format6 g h i j k l -> g2) b2 c2 j2 e2 f2 := Format_subst_ty_gadt.
-  Definition Alpha_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Set} :
+  Definition Alpha_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel ((b1 -> x -> c1) -> x -> a1) b1 c1 d1 e1 f1
       ((b2 -> x -> c2) -> x -> a2) b2 c2 d2 e2 f2 := Alpha_ty_gadt.
-  Definition Theta_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Set} :
+  Definition Theta_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel ((b1 -> c1) -> a1) b1 c1 d1 e1 f1 ((b2 -> c2) -> a2) b2 c2 d2 e2 f2
     := Theta_ty_gadt.
-  Definition Any_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Set} :
+  Definition Any_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (x -> a1) b1 c1 d1 e1 f1 (x -> a2) b2 c2 d2 e2 f2 := Any_ty_gadt.
-  Definition Reader_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Set} :
+  Definition Reader_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel (x -> a1) b1 c1 ((b1 -> x) -> d1) e1 f1 (x -> a2) b2 c2
       ((b2 -> x) -> d2) e2 f2 := Reader_ty_gadt.
-  Definition Ignored_reader_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Set} :
+  Definition Ignored_reader_ty {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 x : Type} :
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel a1 b1 c1 ((b1 -> x) -> d1) e1 f1 a2 b2 c2 ((b2 -> x) -> d2) e2 f2 :=
     Ignored_reader_ty_gadt.
-  Definition End_of_fmtty {b1 b2 c1 c2 d1 d2 f1 f2 : Set} :
+  Definition End_of_fmtty {b1 b2 c1 c2 d1 d2 f1 f2 : Type} :
     fmtty_rel f1 b1 c1 d1 d1 f1 f2 b2 c2 d2 d2 f2 := End_of_fmtty_gadt.
-  Definition Char {a b c d e f : Set} :
+  Definition Char {a b c d e f : Type} :
     fmt a b c d e f -> fmt (ascii -> a) b c d e f := Char_gadt.
-  Definition Caml_char {a b c d e f : Set} :
+  Definition Caml_char {a b c d e f : Type} :
     fmt a b c d e f -> fmt (ascii -> a) b c d e f := Caml_char_gadt.
   Definition String
       (padding_value : padding_gadt) (rest : fmt_gadt) : fmt_gadt :=
     @String_gadt unit unit padding_value rest.
-  Definition Caml_string {a b c d e f x : Set} :
+  Definition Caml_string {a b c d e f x : Type} :
     padding x (string -> a) -> fmt a b c d e f -> fmt x b c d e f :=
     Caml_string_gadt (a := a) (x := x).
   Definition Int
       (conversion : int_conv) (padding_value : padding_gadt)
       (precision_value : precision_gadt) (rest : fmt_gadt) : fmt_gadt :=
     @Int_gadt unit unit unit conversion padding_value precision_value rest.
-  Definition Int32 {a b c d e f x y : Set} :
+  Definition Int32 {a b c d e f x y : Type} :
     int_conv -> padding x y -> precision y (int32 -> a) -> fmt a b c d e f ->
     fmt x b c d e f := Int32_gadt (a := a) (x := x) (y := y).
-  Definition Nativeint {a b c d e f x y : Set} :
+  Definition Nativeint {a b c d e f x y : Type} :
     int_conv -> padding x y -> precision y (nativeint -> a) -> fmt a b c d e f ->
     fmt x b c d e f := Nativeint_gadt (a := a) (x := x) (y := y).
   Definition Int64
       (conversion : int_conv) (padding_value : padding_gadt)
       (precision_value : precision_gadt) (rest : fmt_gadt) : fmt_gadt :=
     @Int64_gadt unit unit unit conversion padding_value precision_value rest.
-  Definition Float {a b c d e f x y : Set} :
+  Definition Float {a b c d e f x y : Type} :
     float_conv -> padding x y -> precision y (float -> a) -> fmt a b c d e f ->
     fmt x b c d e f := Float_gadt (a := a) (x := x) (y := y).
-  Definition Bool {a b c d e f x : Set} :
+  Definition Bool {a b c d e f x : Type} :
     padding x (bool -> a) -> fmt a b c d e f -> fmt x b c d e f := Bool_gadt
     (a := a) (x := x).
-  Definition Flush {a b c d e f : Set} : fmt a b c d e f -> fmt a b c d e f :=
+  Definition Flush {a b c d e f : Type} : fmt a b c d e f -> fmt a b c d e f :=
     Flush_gadt.
   Definition String_literal : string -> fmt_gadt -> fmt_gadt :=
     String_literal_gadt.
   Definition Char_literal : ascii -> fmt_gadt -> fmt_gadt :=
     Char_literal_gadt.
-  Definition Format_arg {a b c d e f g h i j k l : Set} :
+  Definition Format_arg {a b c d e f g h i j k l : Type} :
     pad_option -> fmtty g h i j k l -> fmt a b c d e f ->
     fmt (format6 g h i j k l -> a) b c d e f := Format_arg_gadt (g := g) (h := h)
     (i := i) (j := j) (k := k) (l := l).
-  Definition Format_subst {a b c d e f g g2 h i j j2 k l : Set} :
+  Definition Format_subst {a b c d e f g g2 h i j j2 k l : Type} :
     pad_option -> fmtty_rel g h i j k l g2 b c j2 d a -> fmt a b c d e f ->
     fmt (format6 g h i j k l -> g2) b c j2 e f := Format_subst_gadt (a := a)
     (b := b) (c := c) (d := d) (g := g) (g2 := g2) (h := h) (i := i) (j := j)
     (j2 := j2) (k := k) (l := l).
-  Definition Alpha {a b c d e f x : Set} :
+  Definition Alpha {a b c d e f x : Type} :
     fmt a b c d e f -> fmt ((b -> x -> c) -> x -> a) b c d e f := Alpha_gadt.
-  Definition Theta {a b c d e f : Set} :
+  Definition Theta {a b c d e f : Type} :
     fmt a b c d e f -> fmt ((b -> c) -> a) b c d e f := Theta_gadt.
-  Definition Formatting_lit {a b c d e f : Set} :
+  Definition Formatting_lit {a b c d e f : Type} :
     formatting_lit -> fmt a b c d e f -> fmt a b c d e f := Formatting_lit_gadt.
-  Definition Formatting_gen {a1 b c d1 e1 e2 f1 f2 : Set} :
+  Definition Formatting_gen {a1 b c d1 e1 e2 f1 f2 : Type} :
     formatting_gen a1 b c d1 e1 f1 -> fmt f1 b c e1 e2 f2 -> fmt a1 b c d1 e2 f2
     := Formatting_gen_gadt (a1 := a1) (b := b) (c := c) (d1 := d1) (e1 := e1)
     (f1 := f1).
-  Definition Reader {a b c d e f x : Set} :
+  Definition Reader {a b c d e f x : Type} :
     fmt a b c d e f -> fmt (x -> a) b c ((b -> x) -> d) e f := Reader_gadt.
-  Definition Scan_char_set {a b c d e f : Set} :
+  Definition Scan_char_set {a b c d e f : Type} :
     pad_option -> char_set -> fmt a b c d e f -> fmt (string -> a) b c d e f :=
     Scan_char_set_gadt.
-  Definition Scan_get_counter {a b c d e f : Set} :
+  Definition Scan_get_counter {a b c d e f : Type} :
     counter -> fmt a b c d e f -> fmt (int -> a) b c d e f :=
     Scan_get_counter_gadt.
-  Definition Scan_next_char {a b c d e f : Set} :
+  Definition Scan_next_char {a b c d e f : Type} :
     fmt a b c d e f -> fmt (ascii -> a) b c d e f := Scan_next_char_gadt.
-  Definition Ignored_param {a b c d e f x y : Set} :
+  Definition Ignored_param {a b c d e f x y : Type} :
     ignored a b c d y x -> fmt x b c y e f -> fmt a b c d e f :=
     Ignored_param_gadt (a := a) (b := b) (c := c) (d := d) (x := x) (y := y).
-  Definition Custom {a b c d e f x y : Set} :
+  Definition Custom {a b c d e f x y : Type} :
     custom_arity a x y -> (unit -> x) -> fmt a b c d e f -> fmt y b c d e f :=
     Custom_gadt (a := a) (x := x) (y := y).
   Definition End_of_format : fmt_gadt := End_of_format_gadt.
-  Definition Ignored_char {a b c d : Set} : ignored a b c d d a :=
+  Definition Ignored_char {a b c d : Type} : ignored a b c d d a :=
     Ignored_char_gadt.
-  Definition Ignored_caml_char {a b c d : Set} : ignored a b c d d a :=
+  Definition Ignored_caml_char {a b c d : Type} : ignored a b c d d a :=
     Ignored_caml_char_gadt.
-  Definition Ignored_string {a b c d : Set} : pad_option -> ignored a b c d d a :=
+  Definition Ignored_string {a b c d : Type} : pad_option -> ignored a b c d d a :=
     Ignored_string_gadt.
-  Definition Ignored_caml_string {a b c d : Set} :
+  Definition Ignored_caml_string {a b c d : Type} :
     pad_option -> ignored a b c d d a := Ignored_caml_string_gadt.
-  Definition Ignored_int {a b c d : Set} :
+  Definition Ignored_int {a b c d : Type} :
     int_conv -> pad_option -> ignored a b c d d a := Ignored_int_gadt.
-  Definition Ignored_int32 {a b c d : Set} :
+  Definition Ignored_int32 {a b c d : Type} :
     int_conv -> pad_option -> ignored a b c d d a := Ignored_int32_gadt.
-  Definition Ignored_nativeint {a b c d : Set} :
+  Definition Ignored_nativeint {a b c d : Type} :
     int_conv -> pad_option -> ignored a b c d d a := Ignored_nativeint_gadt.
-  Definition Ignored_int64 {a b c d : Set} :
+  Definition Ignored_int64 {a b c d : Type} :
     int_conv -> pad_option -> ignored a b c d d a := Ignored_int64_gadt.
-  Definition Ignored_float {a b c d : Set} :
+  Definition Ignored_float {a b c d : Type} :
     pad_option -> prec_option -> ignored a b c d d a := Ignored_float_gadt.
-  Definition Ignored_bool {a b c d : Set} : pad_option -> ignored a b c d d a :=
+  Definition Ignored_bool {a b c d : Type} : pad_option -> ignored a b c d d a :=
     Ignored_bool_gadt.
-  Definition Ignored_format_arg {a b c d g h i j k l : Set} :
+  Definition Ignored_format_arg {a b c d g h i j k l : Type} :
     pad_option -> fmtty g h i j k l -> ignored a b c d d a :=
     Ignored_format_arg_gadt (g := g) (h := h) (i := i) (j := j) (k := k) (l := l).
-  Definition Ignored_format_subst {a b c d e f : Set} :
+  Definition Ignored_format_subst {a b c d e f : Type} :
     pad_option -> fmtty a b c d e f -> ignored a b c d e f :=
     Ignored_format_subst_gadt (a := a) (b := b) (c := c) (d := d) (e := e)
     (f := f).
-  Definition Ignored_reader {a b c d x : Set} : ignored a b c ((b -> x) -> d) d a
+  Definition Ignored_reader {a b c d x : Type} : ignored a b c ((b -> x) -> d) d a
     := Ignored_reader_gadt.
-  Definition Ignored_scan_char_set {a b c d : Set} :
+  Definition Ignored_scan_char_set {a b c d : Type} :
     pad_option -> char_set -> ignored a b c d d a := Ignored_scan_char_set_gadt.
-  Definition Ignored_scan_get_counter {a b c d : Set} :
+  Definition Ignored_scan_get_counter {a b c d : Type} :
     counter -> ignored a b c d d a := Ignored_scan_get_counter_gadt.
-  Definition Ignored_scan_next_char {a b c d : Set} : ignored a b c d d a :=
+  Definition Ignored_scan_next_char {a b c d : Type} : ignored a b c d d a :=
     Ignored_scan_next_char_gadt.
   Definition Format (format_value : fmt_gadt) (source : string) :
       format6_gadt :=
     @Format_gadt unit unit unit unit unit unit format_value source.
 
   Parameter concat_fmtty : forall
-    {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 g1 g2 j1 j2 : Set},
+    {a1 a2 b1 b2 c1 c2 d1 d2 e1 e2 f1 f2 g1 g2 j1 j2 : Type},
     fmtty_rel g1 b1 c1 j1 d1 a1 g2 b2 c2 j2 d2 a2 ->
     fmtty_rel a1 b1 c1 d1 e1 f1 a2 b2 c2 d2 e2 f2 ->
     fmtty_rel g1 b1 c1 j1 e1 f1 g2 b2 c2 j2 e2 f2.
 
-  Parameter erase_rel : forall {a b c d e f g h i j k l : Set},
+  Parameter erase_rel : forall {a b c d e f g h i j k l : Type},
     fmtty_rel a b c d e f g h i j k l -> fmtty a b c d e f.
 
-  Parameter concat_fmt : forall {a b c d e f g h : Set},
+  Parameter concat_fmt : forall {a b c d e f g h : Type},
     fmt a b c d e f -> fmt f b c e g h -> fmt a b c d g h.
 End CamlinternalFormatBasics.

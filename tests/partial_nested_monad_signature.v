@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module MONAD.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     _return : forall {a : Set} , a -> t a;
     bind : forall {a b : Set} , t a -> (a -> t b) -> t b;
@@ -17,58 +17,47 @@ Module Make.
     M : MONAD (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Seq.
-    CoFixpoint sequence `{_fargs : FArgs} {A : Set}
-      (values : RocqOfOCaml.OCamlSeq.t (M.(MONAD.t) A))
-      : RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) (RocqOfOCaml.OCamlSeq.t A) :=
+    CoFixpoint sequence `{_fargs : FArgs} (value : int)
+      : RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) (list int) :=
       (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
         (fun _ =>
-          match values tt with
-          | RocqOfOCaml.OCamlSeq.Nil =>
-            (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t)))
-              RocqOfOCaml.OCamlSeq.empty
-          | RocqOfOCaml.OCamlSeq.Cons value rest =>
-            (RocqOfOCaml.Partial.Resumption.Bind (M := M.(MONAD.t))) value
-              (fun (value : A) =>
-                (RocqOfOCaml.Partial.Resumption.Compose (M := M.(MONAD.t)))
-                  ((RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
-                    (fun _ => sequence rest))
-                  (fun (rest : RocqOfOCaml.OCamlSeq.t A) =>
-                    (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t)))
-                      (RocqOfOCaml.OCamlSeq.cons value rest)))
-          end).
+          if equiv_decb value 0 then
+            (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t))) nil
+          else
+            (RocqOfOCaml.Partial.Resumption.Compose (M := M.(MONAD.t)))
+              ((RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
+                (fun _ => sequence value))
+              (fun (rest : list int) =>
+                (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t)))
+                  (Datatypes.cons value rest))).
   End Seq.
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Seq_sequence :
-        forall {A : Set} ,
-          RocqOfOCaml.OCamlSeq.t (M.(MONAD.t) A) ->
-          RocqOfOCaml.Partial.Resumption.t M.(MONAD.t)
-            (RocqOfOCaml.OCamlSeq.t A);
+        int -> RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) (list int);
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
-    ({|
-      Make_result.Seq_sequence (M_t := M_t) (_fargs := _fargs) _ :=
-        (Seq.sequence (_fargs := _fargs))
-    |} : @Make_result M_t _fargs).
+    ((@Make_result.Build_signature M_t _fargs Seq.sequence) :
+      @Make_result M_t _fargs).
 End Make.
 Definition Make {M_t : Set -> Set} (M : MONAD (t := M_t)) :=
   @Make.functor M_t (Make.Build_FArgs M).
 
 Module Identity.
   Definition t (a : Set) : Set := a.
-  
+
   Definition _return {A : Set} (value : A) : A := value.
-  
+
   Definition bind {A B : Set} (value : A) (body : A -> B) : B := body value.
-  
+
   (* Identity *)
   Definition module :MONAD (t := fun (a : Set) => a) :=
     {|
@@ -79,7 +68,7 @@ End Identity.
 Definition Identity := Identity.module.
 
 Module State_T_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End State_T_signature.
@@ -92,19 +81,19 @@ Module State.
     Inner_parameter : MONAD (t := Inner_t);
   }.
   Arguments Build_FArgs {_ _}.
-  
+
   Definition state `{_fargs : FArgs} : Set := T.(State_T_signature.t).
-  
+
   Definition Inner `{_fargs : FArgs} := Inner_parameter.
-  
+
   Module M.
     Definition t `{_fargs : FArgs} (a : Set) : Set :=
       state -> Inner.(MONAD.t) (a * state).
-    
+
     Definition _return `{_fargs : FArgs} {A B : Set} (value : A) (state : B)
       : Inner.(MONAD.t) (A * B) :=
       (Inner.(MONAD._return) (a := A * B)) (value, state).
-    
+
     Definition bind `{_fargs : FArgs} {A B C D : Set}
       (computation : A -> Inner.(MONAD.t) (B * C))
       (body : B -> C -> Inner.(MONAD.t) D) (state : A) : Inner.(MONAD.t) D :=
@@ -112,11 +101,11 @@ Module State.
         (fun (function_parameter : B * C) =>
           let '(value, state) := function_parameter in
           body value state).
-    
+
     Definition op_gtgteq `{_fargs : FArgs} {A B C D : Set}
       : (A -> Inner.(MONAD.t) (B * C)) -> (B -> C -> Inner.(MONAD.t) D) -> A ->
       Inner.(MONAD.t) D := bind.
-    
+
     Definition Make_include_fargs `{_fargs : FArgs} :=
       Make.Build_FArgs
         (let t (a : Set) : Set := t a in
@@ -130,7 +119,7 @@ Module State.
           MONAD._return _ := _return;
           MONAD.bind _ _ := bind
         |} : MONAD (t := t))).
-    
+
     Definition Make_include `{_fargs : FArgs} :
       Make.Make_result (_fargs := Make_include_fargs) :=
       Make
@@ -145,16 +134,16 @@ Module State.
           MONAD._return _ := _return;
           MONAD.bind _ _ := bind
         |} : MONAD (t := t))).
-    
+
     (** Inclusion of the module [Make_include] *)
     Module Seq.
-      Definition sequence `{_fargs : FArgs} {A : Set} :=
-        Make_include.(Make.Make_result.Seq_sequence) (A := A).
+      Definition sequence `{_fargs : FArgs} :=
+        Make_include.(Make.Make_result.Seq_sequence).
     End Seq.
   End M.
-  
+
   Module State_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       state := T.(State_T_signature.t);
       Inner : MONAD (t := fun (a : Set) => Inner_parameter.(MONAD.t) a);
       M_t := fun (a : Set) => state -> Inner_parameter.(MONAD.t) (a * state);
@@ -171,30 +160,21 @@ Module State.
           (B -> C -> Inner_parameter.(MONAD.t) D) -> A ->
           Inner_parameter.(MONAD.t) D;
       M_Seq_sequence :
-        forall {A : Set} ,
-          RocqOfOCaml.OCamlSeq.t (M_t A) ->
-          RocqOfOCaml.Partial.Resumption.t
-            (fun (a : Set) => state -> Inner_parameter.(MONAD.t) (a * state))
-            (RocqOfOCaml.OCamlSeq.t A);
+        int ->
+        RocqOfOCaml.Partial.Resumption.t
+          (fun (a : Set) => state -> Inner_parameter.(MONAD.t) (a * state))
+          (list int);
     }.
   End State_result.
   Definition State_result `{_fargs : FArgs} := @State_result.signature _ _ _.
   Arguments State_result {_ _ _}.
-  
+
   (* State *)
   Definition functor `{_fargs : FArgs} :@State_result T_t Inner_t _fargs :=
-    ({|
-      State_result.Inner (T_t := T_t) (Inner_t := Inner_t) (_fargs := _fargs) :=
-        (Inner (_fargs := _fargs));
-      State_result.M_return (T_t := T_t) (Inner_t := Inner_t) (_fargs := _fargs)
-        _ _ := (M._return (_fargs := _fargs));
-      State_result.M_bind (T_t := T_t) (Inner_t := Inner_t) (_fargs := _fargs) _
-        _ _ _ := (M.bind (_fargs := _fargs));
-      State_result.op_M_gtgteq (T_t := T_t) (Inner_t := Inner_t) (_fargs :=
-        _fargs) _ _ _ _ := (M.op_gtgteq (_fargs := _fargs));
-      State_result.M_Seq_sequence (T_t := T_t) (Inner_t := Inner_t) (_fargs :=
-        _fargs) _ := (M.Seq.sequence (_fargs := _fargs))
-    |} : @State_result T_t Inner_t _fargs).
+    ((@State_result.Build_signature T_t Inner_t _fargs Inner
+      (fun _ _ => M._return) (fun _ _ _ _ => M.bind)
+      (fun _ _ _ _ => M.op_gtgteq) M.Seq.sequence) :
+      @State_result T_t Inner_t _fargs).
 End State.
 Definition State {T_t : Set} {Inner_t : Set -> Set}
   (T : State_T_signature (t := T_t)) (Inner_parameter : MONAD (t := Inner_t)) :=
@@ -213,7 +193,7 @@ Definition StateInt : State.State_result (_fargs := StateInt_fargs) :=
       State_T_signature (t := t))) Identity.
 
 Module PARAM.
-  Record signature : Set := {
+  Record signature : Type := {
     enabled : bool;
   }.
 End PARAM.
@@ -223,33 +203,33 @@ Module Instantiate.
   Class FArgs := {
     Param : PARAM;
   }.
-  
+
   Module Host.
     Module M.
       Definition t `{_fargs : FArgs} (a : Set) :=
         StateInt.(State.State_result.M_t) a.
-      
+
       Definition _return `{_fargs : FArgs} {A B : Set} :=
         StateInt.(State.State_result.M_return) (A := A) (B := B).
-      
+
       Definition bind `{_fargs : FArgs} {A B C D : Set} :=
         StateInt.(State.State_result.M_bind) (A := A) (B := B) (C := C) (D := D).
-      
+
       Definition op_gtgteq `{_fargs : FArgs} {A B C D : Set} :=
         StateInt.(State.State_result.op_M_gtgteq) (A := A) (B := B) (C := C) (D
           := D).
-      
+
       Module Seq.
-        Definition sequence `{_fargs : FArgs} {A : Set} :=
-          StateInt.(State.State_result.M_Seq_sequence) (A := A).
+        Definition sequence `{_fargs : FArgs} :=
+          StateInt.(State.State_result.M_Seq_sequence).
       End Seq.
     End M.
   End Host.
-  
+
   Definition enabled `{_fargs : FArgs} : bool := Param.(PARAM.enabled).
-  
+
   Module Instantiate_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Host_M_t := fun (a : Set) => int -> Identity.(MONAD.t) (a * int);
       Host_M_return : forall {A B : Set} , A -> B -> A * B;
       Host_M_bind :
@@ -257,32 +237,21 @@ Module Instantiate.
       op_Host_M_gtgteq :
         forall {A B C D : Set} , (A -> B * C) -> (B -> C -> D) -> A -> D;
       Host_M_Seq_sequence :
-        forall {A : Set} ,
-          RocqOfOCaml.OCamlSeq.t (StateInt.(State.State_result.M_t) A) ->
-          RocqOfOCaml.Partial.Resumption.t
-            (fun (a : Set) => int -> Identity.(MONAD.t) (a * int))
-            (RocqOfOCaml.OCamlSeq.t A);
+        int ->
+        RocqOfOCaml.Partial.Resumption.t
+          (fun (a : Set) => int -> Identity.(MONAD.t) (a * int)) (list int);
       enabled : bool;
     }.
   End Instantiate_result.
   Definition Instantiate_result `{_fargs : FArgs} :=
     @Instantiate_result.signature _.
   Arguments Instantiate_result {_}.
-  
+
   (* Instantiate *)
   Definition functor `{_fargs : FArgs} :@Instantiate_result _fargs :=
-    ({|
-      Instantiate_result.Host_M_return (_fargs := _fargs) _ _ :=
-        (Host.M._return (_fargs := _fargs));
-      Instantiate_result.Host_M_bind (_fargs := _fargs) _ _ _ _ :=
-        (Host.M.bind (_fargs := _fargs));
-      Instantiate_result.op_Host_M_gtgteq (_fargs := _fargs) _ _ _ _ :=
-        (Host.M.op_gtgteq (_fargs := _fargs));
-      Instantiate_result.Host_M_Seq_sequence (_fargs := _fargs) _ :=
-        (Host.M.Seq.sequence (_fargs := _fargs));
-      Instantiate_result.enabled (_fargs := _fargs) :=
-        (enabled (_fargs := _fargs))
-    |} : @Instantiate_result _fargs).
+    ((@Instantiate_result.Build_signature _fargs (fun _ _ => Host.M._return)
+      (fun _ _ _ _ => Host.M.bind) (fun _ _ _ _ => Host.M.op_gtgteq)
+      Host.M.Seq.sequence enabled) : @Instantiate_result _fargs).
 End Instantiate.
 Definition Instantiate (Param : PARAM) :=
   @Instantiate.functor (Instantiate.Build_FArgs Param).
@@ -291,44 +260,43 @@ Module Package.
   Class FArgs := {
     Param : PARAM;
   }.
-  
+
   Definition Instantiation_fargs `{_fargs : FArgs} :=
     Instantiate.Build_FArgs Param.
-  
+
   Definition Instantiation `{_fargs : FArgs} :
     Instantiate.Instantiate_result (_fargs := Instantiation_fargs) :=
     Instantiate Param.
-  
+
   Module Host.
     Module M.
       Definition t `{_fargs : FArgs} (a : Set) :=
         Instantiation.(Instantiate.Instantiate_result.Host_M_t) a.
-      
+
       Definition _return `{_fargs : FArgs} {A B : Set} :=
         Instantiation.(Instantiate.Instantiate_result.Host_M_return) (A := A) (B
           := B).
-      
+
       Definition bind `{_fargs : FArgs} {A B C D : Set} :=
         Instantiation.(Instantiate.Instantiate_result.Host_M_bind) (A := A) (B
           := B) (C := C) (D := D).
-      
+
       Definition op_gtgteq `{_fargs : FArgs} {A B C D : Set} :=
         Instantiation.(Instantiate.Instantiate_result.op_Host_M_gtgteq) (A := A)
           (B := B) (C := C) (D := D).
-      
+
       Module Seq.
-        Definition sequence `{_fargs : FArgs} {A : Set} :=
-          Instantiation.(Instantiate.Instantiate_result.Host_M_Seq_sequence) (A
-            := A).
+        Definition sequence `{_fargs : FArgs} :=
+          Instantiation.(Instantiate.Instantiate_result.Host_M_Seq_sequence).
       End Seq.
     End M.
   End Host.
-  
+
   Definition enabled `{_fargs : FArgs} : bool :=
     Instantiation.(Instantiate.Instantiate_result.enabled).
-  
+
   Module Package_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Instantiation :
         Instantiate.Instantiate_result (_fargs := Instantiation_fargs);
       Host_M_t := fun (a : Set) => int -> Identity.(MONAD.t) (a * int);
@@ -338,32 +306,21 @@ Module Package.
       op_Host_M_gtgteq :
         forall {A B C D : Set} , (A -> B * C) -> (B -> C -> D) -> A -> D;
       Host_M_Seq_sequence :
-        forall {A : Set} ,
-          RocqOfOCaml.OCamlSeq.t (StateInt.(State.State_result.M_t) A) ->
-          RocqOfOCaml.Partial.Resumption.t
-            (fun (a : Set) => int -> Identity.(MONAD.t) (a * int))
-            (RocqOfOCaml.OCamlSeq.t A);
+        int ->
+        RocqOfOCaml.Partial.Resumption.t
+          (fun (a : Set) => int -> Identity.(MONAD.t) (a * int)) (list int);
       enabled : bool;
     }.
   End Package_result.
   Definition Package_result `{_fargs : FArgs} := @Package_result.signature _.
   Arguments Package_result {_}.
-  
+
   (* Package *)
   Definition functor `{_fargs : FArgs} :@Package_result _fargs :=
-    ({|
-      Package_result.Instantiation (_fargs := _fargs) :=
-        (Instantiation (_fargs := _fargs));
-      Package_result.Host_M_return (_fargs := _fargs) _ _ :=
-        (Host.M._return (_fargs := _fargs));
-      Package_result.Host_M_bind (_fargs := _fargs) _ _ _ _ :=
-        (Host.M.bind (_fargs := _fargs));
-      Package_result.op_Host_M_gtgteq (_fargs := _fargs) _ _ _ _ :=
-        (Host.M.op_gtgteq (_fargs := _fargs));
-      Package_result.Host_M_Seq_sequence (_fargs := _fargs) _ :=
-        (Host.M.Seq.sequence (_fargs := _fargs));
-      Package_result.enabled (_fargs := _fargs) := (enabled (_fargs := _fargs))
-    |} : @Package_result _fargs).
+    ((@Package_result.Build_signature _fargs Instantiation
+      (fun _ _ => Host.M._return) (fun _ _ _ _ => Host.M.bind)
+      (fun _ _ _ _ => Host.M.op_gtgteq) Host.M.Seq.sequence enabled) :
+      @Package_result _fargs).
 End Package.
 Definition Package (Param : PARAM) :=
   @Package.functor (Package.Build_FArgs Param).

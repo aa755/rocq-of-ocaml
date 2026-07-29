@@ -21,7 +21,7 @@ Definition OrderedType := @OrderedType.signature.
 Arguments OrderedType {_}.
 
 Module S.
-  Record signature {key : Set} {t : Set -> Set} : Set := {
+  Record signature {key : Set} {t : Set -> Set} : Type := {
     key := key;
     t := t;
     empty : forall {a : Set}, t a;
@@ -39,18 +39,24 @@ Module S.
         (key -> a -> a -> option a) -> t a -> t a -> t a;
     cardinal : forall {a : Set}, t a -> int;
     bindings : forall {a : Set}, t a -> list (key * a);
-    min_binding : forall {a : Set}, t a -> key * a;
+    min_binding :
+      forall {a : Set} `{Unreachable (key * a)}, t a -> key * a;
     min_binding_opt : forall {a : Set}, t a -> option (key * a);
-    max_binding : forall {a : Set}, t a -> key * a;
+    max_binding :
+      forall {a : Set} `{Unreachable (key * a)}, t a -> key * a;
     max_binding_opt : forall {a : Set}, t a -> option (key * a);
-    choose : forall {a : Set}, t a -> key * a;
+    choose : forall {a : Set} `{Unreachable (key * a)}, t a -> key * a;
     choose_opt : forall {a : Set}, t a -> option (key * a);
-    find : forall {a : Set}, key -> t a -> a;
+    find : forall {a : Set} `{Unreachable a}, key -> t a -> a;
     find_opt : forall {a : Set}, key -> t a -> option a;
-    find_first : forall {a : Set}, (key -> bool) -> t a -> key * a;
+    find_first :
+      forall {a : Set} `{Unreachable (key * a)},
+        (key -> bool) -> t a -> key * a;
     find_first_opt :
       forall {a : Set}, (key -> bool) -> t a -> option (key * a);
-    find_last : forall {a : Set}, (key -> bool) -> t a -> key * a;
+    find_last :
+      forall {a : Set} `{Unreachable (key * a)},
+        (key -> bool) -> t a -> key * a;
     find_last_opt :
       forall {a : Set}, (key -> bool) -> t a -> option (key * a);
     iter : forall {a : Set}, (key -> a -> unit) -> t a -> unit;
@@ -134,10 +140,11 @@ Module Make.
             find_opt key_value tail
       end.
 
-    Definition find {a : Set} (key_value : key) (map : t a) : a :=
+    Definition find {a : Set} `{Unreachable a}
+        (key_value : key) (map : t a) : a :=
       match find_opt key_value map with
       | Some value => value
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
     Definition update {a : Set}
@@ -242,19 +249,22 @@ Module Make.
     Definition choose_opt {a : Set} (map : t a) : option (key * a) :=
       min_binding_opt map.
 
-    Definition min_binding {a : Set} (map : t a) : key * a :=
+    Definition min_binding {a : Set} `{Unreachable (key * a)}
+        (map : t a) : key * a :=
       match min_binding_opt map with
       | Some binding => binding
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
-    Definition max_binding {a : Set} (map : t a) : key * a :=
+    Definition max_binding {a : Set} `{Unreachable (key * a)}
+        (map : t a) : key * a :=
       match max_binding_opt map with
       | Some binding => binding
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
-    Definition choose {a : Set} (map : t a) : key * a :=
+    Definition choose {a : Set} `{Unreachable (key * a)}
+        (map : t a) : key * a :=
       min_binding map.
 
     Fixpoint find_first_opt {a : Set}
@@ -280,18 +290,18 @@ Module Make.
         (predicate : key -> bool) (map : t a) : option (key * a) :=
       find_last_acc predicate map None.
 
-    Definition find_first {a : Set}
+    Definition find_first {a : Set} `{Unreachable (key * a)}
         (predicate : key -> bool) (map : t a) : key * a :=
       match find_first_opt predicate map with
       | Some binding => binding
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
-    Definition find_last {a : Set}
+    Definition find_last {a : Set} `{Unreachable (key * a)}
         (predicate : key -> bool) (map : t a) : key * a :=
       match find_last_opt predicate map with
       | Some binding => binding
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
     Fixpoint iter {a : Set}
@@ -469,17 +479,17 @@ Module Make.
          S.union _ := union;
          S.cardinal _ := cardinal;
          S.bindings _ := bindings;
-         S.min_binding _ := min_binding;
+         S.min_binding _ _ := min_binding;
          S.min_binding_opt _ := min_binding_opt;
-         S.max_binding _ := max_binding;
+         S.max_binding _ _ := max_binding;
          S.max_binding_opt _ := max_binding_opt;
-         S.choose _ := choose;
+         S.choose _ _ := choose;
          S.choose_opt _ := choose_opt;
-         S.find _ := find;
+         S.find _ _ := find;
          S.find_opt _ := find_opt;
-         S.find_first _ := find_first;
+         S.find_first _ _ := find_first;
          S.find_first_opt _ := find_first_opt;
-         S.find_last _ := find_last;
+         S.find_last _ _ := find_last;
          S.find_last_opt _ := find_last_opt;
          S.iter _ := iter;
          S.fold _ _ := fold;

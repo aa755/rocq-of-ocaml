@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Sig.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     v_value : t;
   }.

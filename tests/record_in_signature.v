@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Sig.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     v_value : t string;
   }.
@@ -27,9 +27,9 @@ Module M.
       Build t_a r.(x) r.(y) label.
   End t.
   Definition t := t.record.
-  
+
   Definition v_value : t string := {| t.x := 0; t.y := 1; t.label := "hi"; |}.
-  
+
   (* M *)
   Definition module :Sig (t := t) :=
     {|

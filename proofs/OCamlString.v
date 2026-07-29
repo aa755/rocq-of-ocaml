@@ -21,11 +21,14 @@ Definition empty : string := EmptyString.
 Definition length (value : string) : int :=
   Z.of_nat (Strings.String.length value).
 
-Definition get (value : string) (index : int) : ascii :=
-  match Strings.String.get (Z.to_nat index) value with
-  | Some character => character
-  | None => axiom
-  end.
+Definition get `{Unreachable ascii} (value : string) (index : int) : ascii :=
+  if Z.ltb index 0 then
+    unreachable
+  else
+    match Strings.String.get (Z.to_nat index) value with
+    | Some character => character
+    | None => unreachable
+    end.
 
 Fixpoint make_nat (count : nat) (character : ascii) : string :=
   match count with
@@ -33,8 +36,11 @@ Fixpoint make_nat (count : nat) (character : ascii) : string :=
   | S count' => String character (make_nat count' character)
   end.
 
-Definition make (count : int) (character : ascii) : string :=
-  make_nat (Z.to_nat count) character.
+Definition make `{Unreachable string}
+    (count : int) (character : ascii) : string :=
+  if Z.ltb count 0
+  then unreachable
+  else make_nat (Z.to_nat count) character.
 
 Fixpoint init_nat
     (remaining : nat) (index : int) (element : int -> ascii) : string :=
@@ -44,8 +50,11 @@ Fixpoint init_nat
       String (element index) (init_nat remaining' (index + 1) element)
   end.
 
-Definition init (count : int) (element : int -> ascii) : string :=
-  init_nat (Z.to_nat count) 0 element.
+Definition init `{Unreachable string}
+    (count : int) (element : int -> ascii) : string :=
+  if Z.ltb count 0
+  then unreachable
+  else init_nat (Z.to_nat count) 0 element.
 
 Definition of_bytes (value : bytes) : string := value.
 
@@ -101,23 +110,38 @@ Fixpoint contains_char (character : ascii) (value : string) : bool :=
       orb (Ascii.eqb character head) (contains_char character tail)
   end.
 
-Definition contains_from
-    (value : string) (start : int) (character : ascii) : bool :=
-  contains_char character (skip_string (Z.to_nat start) value).
+Definition valid_forward_position (value : string) (index : int) : bool :=
+  andb (Z.leb 0 index) (Z.leb index (length value)).
 
-Definition rcontains_from
+Definition valid_reverse_position (value : string) (index : int) : bool :=
+  andb (Z.leb (-1) index) (Z.ltb index (length value)).
+
+Definition valid_index (value : string) (index : int) : bool :=
+  andb (Z.leb 0 index) (Z.ltb index (length value)).
+
+Definition contains_from `{Unreachable bool}
     (value : string) (start : int) (character : ascii) : bool :=
-  if Z.ltb start 0 then
-    false
-  else
+  if valid_forward_position value start
+  then contains_char character (skip_string (Z.to_nat start) value)
+  else unreachable.
+
+Definition rcontains_from `{Unreachable bool}
+    (value : string) (start : int) (character : ascii) : bool :=
+  if valid_index value start then
     contains_char character
-      (substring 0 (S (Z.to_nat start)) value).
+      (substring 0 (S (Z.to_nat start)) value)
+  else
+    unreachable.
 
 Definition contains (value : string) (character : ascii) : bool :=
   contains_char character value.
 
-Definition sub (value : string) (start count : int) : string :=
-  substring (Z.to_nat start) (Z.to_nat count) value.
+Definition sub `{Unreachable string}
+    (value : string) (start count : int) : string :=
+  if andb (Z.leb 0 start)
+       (andb (Z.leb 0 count) (Z.leb (start + count) (length value)))
+  then substring (Z.to_nat start) (Z.to_nat count) value
+  else unreachable.
 
 Fixpoint split_on_char_acc
     (separator : ascii) (value current : string) : list string :=
@@ -290,16 +314,25 @@ Fixpoint index_from_nat
         index_from_nat tail (index + 1) character
   end.
 
-Definition index_from_opt
+Definition index_from_checked
     (value : string) (start : int) (character : ascii) : option int :=
   index_from_nat (skip_string (Z.to_nat start) value) start character.
 
-Definition index_from
+Definition index_from_opt `{Unreachable (option int)}
+    (value : string) (start : int) (character : ascii) : option int :=
+  if valid_forward_position value start
+  then index_from_checked value start character
+  else unreachable.
+
+Definition index_from `{Unreachable int}
     (value : string) (start : int) (character : ascii) : int :=
-  match index_from_opt value start character with
-  | Some index => index
-  | None => axiom
-  end.
+  if valid_forward_position value start then
+    match index_from_checked value start character with
+    | Some index => index
+    | None => unreachable
+    end
+  else
+    unreachable.
 
 Fixpoint rindex_to_nat
     (value : string) (index limit : nat) (character : ascii)
@@ -316,65 +349,48 @@ Fixpoint rindex_to_nat
            else last)
   end.
 
-Definition rindex_from_opt
+Definition rindex_from_checked
     (value : string) (start : int) (character : ascii) : option int :=
-  if Z.ltb start 0 then
-    None
-  else
-    rindex_to_nat value O (Z.to_nat start) character None.
+  rindex_to_nat value O (Z.to_nat start) character None.
 
-Definition rindex_from
+Definition rindex_from_opt `{Unreachable (option int)}
+    (value : string) (start : int) (character : ascii) : option int :=
+  if valid_reverse_position value start
+  then rindex_from_checked value start character
+  else unreachable.
+
+Definition rindex_from `{Unreachable int}
     (value : string) (start : int) (character : ascii) : int :=
-  match rindex_from_opt value start character with
-  | Some index => index
-  | None => axiom
-  end.
+  if valid_reverse_position value start then
+    match rindex_from_checked value start character with
+    | Some index => index
+    | None => unreachable
+    end
+  else
+    unreachable.
 
 Definition index_opt (value : string) (character : ascii) : option int :=
-  index_from_opt value 0 character.
+  index_from_checked value 0 character.
 
-Definition index (value : string) (character : ascii) : int :=
+Definition index `{Unreachable int}
+    (value : string) (character : ascii) : int :=
   index_from value 0 character.
 
 Definition rindex_opt (value : string) (character : ascii) : option int :=
-  rindex_from_opt value (length value - 1) character.
+  rindex_from_checked value (length value - 1) character.
 
-Definition rindex (value : string) (character : ascii) : int :=
+Definition rindex `{Unreachable int}
+    (value : string) (character : ascii) : int :=
   rindex_from value (length value - 1) character.
 
-Fixpoint to_seq_node (value : string) : OCamlSeq.node ascii :=
-  match value with
-  | EmptyString => OCamlSeq.Nil
-  | String head tail =>
-      OCamlSeq.Cons head (fun _ => to_seq_node tail)
-  end.
-
 Definition to_seq (value : t) : OCamlSeq.t ascii :=
-  fun _ => to_seq_node value.
-
-Fixpoint to_seqi_node
-    (index : int) (value : string) : OCamlSeq.node (int * ascii) :=
-  match value with
-  | EmptyString => OCamlSeq.Nil
-  | String head tail =>
-      OCamlSeq.Cons (index, head)
-        (fun _ => to_seqi_node (index + 1) tail)
-  end.
+  OCamlSeq.of_list (list_ascii_of_string value).
 
 Definition to_seqi (value : t) : OCamlSeq.t (int * ascii) :=
-  fun _ => to_seqi_node 0 value.
-
-#[bypass_check(guard)]
-Fixpoint of_seq_guarded
-    (value : OCamlSeq.t ascii) (guard : GeneralRecursionGuard)
-    {struct guard} : t :=
-  match value tt with
-  | OCamlSeq.Nil => EmptyString
-  | OCamlSeq.Cons head tail => String head (of_seq_guarded tail guard)
-  end.
+  OCamlSeq.mapi (fun index character => (index, character)) (to_seq value).
 
 Definition of_seq (value : OCamlSeq.t ascii) : t :=
-  of_seq_guarded value general_recursion_guard.
+  string_of_list_ascii (OCamlSeq.to_list value).
 
 (** UTF decoding uses OCaml's private [Uchar.utf_decode] representation and is
     outside the executable subset needed by the VM. *)
@@ -391,53 +407,73 @@ Parameter spellcheck :
   option (string -> int) -> ((string -> unit) -> unit) ->
   string -> list string.
 
-Definition get_uint8 (value : string) (index : int) : int :=
-  code (get value index).
+Definition get_uint8 `{Unreachable int} (value : string) (index : int) : int :=
+  if Z.ltb index 0 then
+    unreachable
+  else
+    match Strings.String.get (Z.to_nat index) value with
+    | Some character => code character
+    | None => unreachable
+    end.
 
 Definition signed_value (bits value : Z) : Z :=
   if Z.leb (2 ^ (bits - 1)) value then value - 2 ^ bits else value.
 
-Definition get_int8 (value : string) (index : int) : int :=
+Definition get_int8 `{Unreachable int} (value : string) (index : int) : int :=
   signed_value 8 (get_uint8 value index).
 
-Definition get_uint16_be (value : string) (index : int) : int :=
+Definition get_uint16_be `{Unreachable int}
+    (value : string) (index : int) : int :=
   256 * get_uint8 value index + get_uint8 value (index + 1).
 
-Definition get_uint16_le (value : string) (index : int) : int :=
+Definition get_uint16_le `{Unreachable int}
+    (value : string) (index : int) : int :=
   get_uint8 value index + 256 * get_uint8 value (index + 1).
 
 (** The translation target is the little-endian x86-64 production platform. *)
-Definition get_uint16_ne : string -> int -> int := get_uint16_le.
+Definition get_uint16_ne `{Unreachable int}
+    (value : string) (index : int) : int :=
+  get_uint16_le value index.
 
-Definition get_int16_be (value : string) (index : int) : int :=
+Definition get_int16_be `{Unreachable int}
+    (value : string) (index : int) : int :=
   signed_value 16 (get_uint16_be value index).
 
-Definition get_int16_le (value : string) (index : int) : int :=
+Definition get_int16_le `{Unreachable int}
+    (value : string) (index : int) : int :=
   signed_value 16 (get_uint16_le value index).
 
-Definition get_int16_ne : string -> int -> int := get_int16_le.
+Definition get_int16_ne `{Unreachable int}
+    (value : string) (index : int) : int :=
+  get_int16_le value index.
 
-Definition get_uint32_be (value : string) (index : int) : Z :=
+Definition get_uint32_be `{Unreachable int}
+    (value : string) (index : int) : Z :=
   2 ^ 24 * get_uint8 value index +
   2 ^ 16 * get_uint8 value (index + 1) +
   2 ^ 8 * get_uint8 value (index + 2) +
   get_uint8 value (index + 3).
 
-Definition get_uint32_le (value : string) (index : int) : Z :=
+Definition get_uint32_le `{Unreachable int}
+    (value : string) (index : int) : Z :=
   get_uint8 value index +
   2 ^ 8 * get_uint8 value (index + 1) +
   2 ^ 16 * get_uint8 value (index + 2) +
   2 ^ 24 * get_uint8 value (index + 3).
 
-Definition get_int32_be (value : string) (index : int) : int32 :=
+Definition get_int32_be `{Unreachable int}
+    (value : string) (index : int) : int32 :=
   signed_value 32 (get_uint32_be value index).
 
-Definition get_int32_le (value : string) (index : int) : int32 :=
+Definition get_int32_le `{Unreachable int}
+    (value : string) (index : int) : int32 :=
   signed_value 32 (get_uint32_le value index).
 
-Definition get_int32_ne : string -> int -> int32 := get_int32_le.
+Definition get_int32_ne `{Unreachable int}
+    (value : string) (index : int) : int32 :=
+  get_int32_le value index.
 
-Fixpoint read_unsigned_be_nat
+Fixpoint read_unsigned_be_nat `{Unreachable int}
     (remaining : nat) (value : string) (index : int) : Z :=
   match remaining with
   | O => 0
@@ -446,7 +482,7 @@ Fixpoint read_unsigned_be_nat
       read_unsigned_be_nat remaining' value (index + 1)
   end.
 
-Fixpoint read_unsigned_le_nat
+Fixpoint read_unsigned_le_nat `{Unreachable int}
     (remaining : nat) (value : string) (index : int) : Z :=
   match remaining with
   | O => 0
@@ -455,19 +491,25 @@ Fixpoint read_unsigned_le_nat
       256 * read_unsigned_le_nat remaining' value (index + 1)
   end.
 
-Definition get_int64_be (value : string) (index : int) : int64 :=
+Definition get_int64_be `{Unreachable int}
+    (value : string) (index : int) : int64 :=
   signed_value 64 (read_unsigned_be_nat 8 value index).
 
-Definition get_int64_le (value : string) (index : int) : int64 :=
+Definition get_int64_le `{Unreachable int}
+    (value : string) (index : int) : int64 :=
   signed_value 64 (read_unsigned_le_nat 8 value index).
 
-Definition get_int64_ne : string -> int -> int64 := get_int64_le.
+Definition get_int64_ne `{Unreachable int}
+    (value : string) (index : int) : int64 :=
+  get_int64_le value index.
 
 (** OCaml's seeded hash is tied to its runtime implementation. *)
 Parameter hash : t -> int.
 Parameter seeded_hash : int -> t -> int.
 
-Definition unsafe_get : string -> int -> ascii := get.
+Definition unsafe_get `{Unreachable ascii}
+    (value : string) (index : int) : ascii :=
+  get value index.
 
 Parameter unsafe_blit : string -> int -> bytes -> int -> int -> unit.
 

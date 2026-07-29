@@ -15,8 +15,7 @@ type 'a mapper =
 let rec get_signature_typ_params_aux (mapper : 'a mapper)
     (visited_module_types : Types.module_type list)
     (visited_paths : string list) (prefix : string list)
-    (signature : Types.signature) :
-    'a Tree.t Monad.t =
+    (signature : Types.signature) : 'a Tree.t Monad.t =
   let get_signature_item_typ_params (signature_item : Types.signature_item) :
       'a Tree.item option Monad.t =
     match signature_item with
@@ -25,11 +24,17 @@ let rec get_signature_typ_params_aux (mapper : 'a mapper)
         mapper prefix ident type_declaration
     | Sig_typext _ -> return None
     | Sig_module (ident, _, module_declaration, _, _) ->
-        get_module_typ_typ_params_aux mapper visited_module_types
-          visited_paths (prefix @ [ Ident.name ident ])
-          module_declaration.md_type
-        >>= fun typ_params ->
-        return (Some (Tree.Module (Ident.name ident, typ_params)))
+        let name = Ident.name ident in
+        let* configuration = get_configuration in
+        let* enclosing_path = get_definition_path in
+        if
+          Configuration.is_definition_excluded configuration
+            (enclosing_path @ prefix @ [ name ])
+        then return None
+        else
+          get_module_typ_typ_params_aux mapper visited_module_types
+            visited_paths (prefix @ [ name ]) module_declaration.md_type
+          >>= fun typ_params -> return (Some (Tree.Module (name, typ_params)))
     | Sig_modtype _ | Sig_class _ | Sig_class_type _ -> return None
   in
   signature |> Monad.List.filter_map get_signature_item_typ_params
@@ -37,8 +42,7 @@ let rec get_signature_typ_params_aux (mapper : 'a mapper)
 and get_module_typ_typ_params_aux (mapper : 'a mapper)
     (visited_module_types : Types.module_type list)
     (visited_paths : string list) (prefix : string list)
-    (module_typ : Types.module_type) :
-    'a Tree.t Monad.t =
+    (module_typ : Types.module_type) : 'a Tree.t Monad.t =
   if
     List.exists
       (fun visited_module_type -> visited_module_type == module_typ)
@@ -48,8 +52,8 @@ and get_module_typ_typ_params_aux (mapper : 'a mapper)
     let visited_module_types = module_typ :: visited_module_types in
     match module_typ with
     | Mty_signature signature ->
-        get_signature_typ_params_aux mapper visited_module_types
-          visited_paths prefix signature
+        get_signature_typ_params_aux mapper visited_module_types visited_paths
+          prefix signature
     | Mty_alias path -> (
         let path_name = Path.name path in
         if List.mem path_name visited_paths then return []
@@ -57,12 +61,12 @@ and get_module_typ_typ_params_aux (mapper : 'a mapper)
           let visited_paths = path_name :: visited_paths in
           get_env >>= fun env ->
           match Env.scrape_alias env module_typ with
-          | (Mty_signature _ as strengthened_module_type) ->
+          | Mty_signature _ as strengthened_module_type ->
               get_module_typ_typ_params_aux mapper visited_module_types
                 visited_paths prefix strengthened_module_type
-          | _ | exception Not_found ->
+          | _ | (exception Not_found) -> (
               let* hinted_module_type = get_module_type_hint path in
-              (match hinted_module_type with
+              match hinted_module_type with
               | Some module_type ->
                   get_module_typ_typ_params_aux mapper visited_module_types
                     visited_paths prefix module_type
@@ -77,9 +81,9 @@ and get_module_typ_typ_params_aux (mapper : 'a mapper)
           | module_typ ->
               get_module_typ_declaration_typ_params_aux mapper
                 visited_module_types visited_paths prefix module_typ
-          | exception Not_found ->
+          | exception Not_found -> (
               let* hinted_module_type = get_module_type_hint path in
-              (match hinted_module_type with
+              match hinted_module_type with
               | Some module_type ->
                   get_module_typ_typ_params_aux mapper visited_module_types
                     visited_paths prefix module_type
@@ -89,17 +93,16 @@ and get_module_typ_typ_params_aux (mapper : 'a mapper)
 
 and get_module_typ_declaration_typ_params_aux (mapper : 'a mapper)
     (visited_module_types : Types.module_type list)
-    (visited_paths : string list)
-    (prefix : string list)
+    (visited_paths : string list) (prefix : string list)
     (module_typ_declaration : Types.modtype_declaration) : 'a Tree.t Monad.t =
   match module_typ_declaration.mtd_type with
   | None -> return []
   | Some module_typ ->
-      get_module_typ_typ_params_aux mapper visited_module_types
-        visited_paths prefix module_typ
+      get_module_typ_typ_params_aux mapper visited_module_types visited_paths
+        prefix module_typ
 
-let get_signature_typ_params (mapper : 'a mapper)
-    (signature : Types.signature) : 'a Tree.t Monad.t =
+let get_signature_typ_params (mapper : 'a mapper) (signature : Types.signature)
+    : 'a Tree.t Monad.t =
   get_signature_typ_params_aux mapper [] [] [] signature
 
 let get_module_typ_typ_params (mapper : 'a mapper)
@@ -108,8 +111,8 @@ let get_module_typ_typ_params (mapper : 'a mapper)
 
 let get_module_typ_declaration_typ_params (mapper : 'a mapper)
     (module_typ_declaration : Types.modtype_declaration) : 'a Tree.t Monad.t =
-  get_module_typ_declaration_typ_params_aux mapper [] []
-    [] module_typ_declaration
+  get_module_typ_declaration_typ_params_aux mapper [] [] []
+    module_typ_declaration
 
 let mapper_get_arity (_path : string list) (ident : Ident.t)
     (type_declaration : Types.type_declaration) : int Tree.item option Monad.t =

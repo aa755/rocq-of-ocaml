@@ -7,11 +7,11 @@ Module Derive.
     Element : RocqOfOCaml.OCamlMap.OrderedType (t := Element_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition Bucket `{_fargs : FArgs} := RocqOfOCaml.OCamlSet.Make Element.
-  
+
   Module Derive_result.
-    Record signature `{_fargs : FArgs} {Bucket_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Bucket_t : Set} : Type := {
       Bucket :
         RocqOfOCaml.OCamlSet.S
           (elt := Element.(RocqOfOCaml.OCamlMap.OrderedType.t)) (t := Bucket_t);
@@ -19,11 +19,11 @@ Module Derive.
   End Derive_result.
   Definition Derive_result `{_fargs : FArgs} := @Derive_result.signature _ _.
   Arguments Derive_result {_ _ _}.
-  
+
   (* Derive *)
   Definition functor `{_fargs : FArgs} :Derive_result (Bucket_t := _) :=
     {|
-      Derive_result.Bucket := (Bucket (_fargs := _fargs))
+      Derive_result.Bucket := Bucket
     |}.
 End Derive.
 Definition Derive {Element_t : Set}
@@ -31,7 +31,7 @@ Definition Derive {Element_t : Set}
   @Derive.functor Element_t (Derive.Build_FArgs Element).
 
 Module Fixed_Width_signature.
-  Record signature : Set := {
+  Record signature : Type := {
     width : int;
   }.
 End Fixed_Width_signature.
@@ -41,37 +41,41 @@ Module Fixed.
   Class FArgs := {
     Width : Fixed_Width_signature;
   }.
-  
+
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := string.
-    
-    Definition zero `{_fargs : FArgs} : string :=
+
+    Definition zero `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string} : string :=
       RocqOfOCaml.OCamlString.make Width.(Fixed_Width_signature.width)
         "000" % char.
-    
+
     Module Impl_signature.
-      Record signature `{_fargs : FArgs} : Set := {
+      Record signature `{_fargs : FArgs} : Type := {
         t := string;
-        zero : t;
+        zero :
+          forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string},
+            t;
       }.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_}.
-    
+
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature :=
       {|
-        Impl_signature.zero := zero
+        Impl_signature.zero _ := zero
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-  
+
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-  
-  Definition zero `{_fargs : FArgs} : Impl.(Impl.Impl_signature.t) :=
-    Impl.(Impl.Impl_signature.zero).
-  
+
+  Definition zero `{_fargs : FArgs}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} :
+    Impl.(Impl.Impl_signature.t) := Impl.(Impl.Impl_signature.zero).
+
   Definition Derive_include_fargs `{_fargs : FArgs} :=
     Derive.Build_FArgs
       (let t : Set := string in
@@ -80,7 +84,7 @@ Module Fixed.
       ({|
         RocqOfOCaml.OCamlMap.OrderedType.compare := compare
       |} : RocqOfOCaml.OCamlMap.OrderedType (t := t))).
-  
+
   Definition Derive_include `{_fargs : FArgs} :
     Derive.Derive_result (_fargs := Derive_include_fargs) :=
     Derive
@@ -90,176 +94,187 @@ Module Fixed.
       ({|
         RocqOfOCaml.OCamlMap.OrderedType.compare := compare
       |} : RocqOfOCaml.OCamlMap.OrderedType (t := t))).
-  
+
   (** Inclusion of the module [Derive_include] *)
   Module Bucket.
     Definition elt `{_fargs : FArgs} :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.elt).
-    
+
     Definition t `{_fargs : FArgs} :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.t).
-    
+
     Definition empty `{_fargs : FArgs} : t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.empty).
-    
+
     Definition add `{_fargs : FArgs} : elt -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.add).
-    
+
     Definition singleton `{_fargs : FArgs} : elt -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.singleton).
-    
+
     Definition remove `{_fargs : FArgs} : elt -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.remove).
-    
+
     Definition union `{_fargs : FArgs} : t -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.union).
-    
+
     Definition inter `{_fargs : FArgs} : t -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.inter).
-    
+
     Definition disjoint `{_fargs : FArgs} : t -> t -> bool :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.disjoint).
-    
+
     Definition diff `{_fargs : FArgs} : t -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.diff).
-    
+
     Definition cardinal `{_fargs : FArgs} : t -> int :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.cardinal).
-    
+
     Definition elements `{_fargs : FArgs} : t -> list elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.elements).
-    
-    Definition min_elt `{_fargs : FArgs} : t -> elt :=
+
+    Definition min_elt `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.min_elt).
-    
+
     Definition min_elt_opt `{_fargs : FArgs} : t -> option elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.min_elt_opt).
-    
-    Definition max_elt `{_fargs : FArgs} : t -> elt :=
+
+    Definition max_elt `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.max_elt).
-    
+
     Definition max_elt_opt `{_fargs : FArgs} : t -> option elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.max_elt_opt).
-    
-    Definition choose `{_fargs : FArgs} : t -> elt :=
+
+    Definition choose `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.choose).
-    
+
     Definition choose_opt `{_fargs : FArgs} : t -> option elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.choose_opt).
-    
-    Definition find `{_fargs : FArgs} : elt -> t -> elt :=
+
+    Definition find `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
+      elt -> t -> elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.find).
-    
+
     Definition find_opt `{_fargs : FArgs} : elt -> t -> option elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_opt).
-    
-    Definition find_first `{_fargs : FArgs} : (elt -> bool) -> t -> elt :=
+
+    Definition find_first `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
+      (elt -> bool) -> t -> elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_first).
-    
+
     Definition find_first_opt `{_fargs : FArgs} :
       (elt -> bool) -> t -> option elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_first_opt).
-    
-    Definition find_last `{_fargs : FArgs} : (elt -> bool) -> t -> elt :=
+
+    Definition find_last `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
+      (elt -> bool) -> t -> elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_last).
-    
+
     Definition find_last_opt `{_fargs : FArgs} :
       (elt -> bool) -> t -> option elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_last_opt).
-    
+
     Definition iter `{_fargs : FArgs} : (elt -> unit) -> t -> unit :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.iter).
-    
+
     Definition fold `{_fargs : FArgs} {acc : Set} :
       (elt -> acc -> acc) -> t -> acc -> acc :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.fold).
-    
+
     Definition map `{_fargs : FArgs} : (elt -> elt) -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.map).
-    
+
     Definition filter `{_fargs : FArgs} : (elt -> bool) -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.filter).
-    
+
     Definition filter_map `{_fargs : FArgs} : (elt -> option elt) -> t -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.filter_map).
-    
+
     Definition partition `{_fargs : FArgs} : (elt -> bool) -> t -> t * t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.partition).
-    
+
     Definition split `{_fargs : FArgs} : elt -> t -> t * bool * t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.split).
-    
+
     Definition is_empty `{_fargs : FArgs} : t -> bool :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.is_empty).
-    
+
     Definition mem `{_fargs : FArgs} : elt -> t -> bool :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.mem).
-    
+
     Definition equal `{_fargs : FArgs} : t -> t -> bool :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.equal).
-    
+
     Definition compare `{_fargs : FArgs} : t -> t -> int :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.compare).
-    
+
     Definition subset `{_fargs : FArgs} : t -> t -> bool :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.subset).
-    
+
     Definition for_all `{_fargs : FArgs} : (elt -> bool) -> t -> bool :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.for_all).
-    
+
     Definition _exists `{_fargs : FArgs} : (elt -> bool) -> t -> bool :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S._exists).
-    
+
     Definition to_list `{_fargs : FArgs} : t -> list elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_list).
-    
+
     Definition of_list `{_fargs : FArgs} : list elt -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.of_list).
-    
+
     Definition to_seq_from `{_fargs : FArgs} :
       elt -> t -> RocqOfOCaml.OCamlSeq.t elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_seq_from).
-    
+
     Definition to_seq `{_fargs : FArgs} : t -> RocqOfOCaml.OCamlSeq.t elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_seq).
-    
+
     Definition to_rev_seq `{_fargs : FArgs} : t -> RocqOfOCaml.OCamlSeq.t elt :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_rev_seq).
-    
+
     Definition add_seq `{_fargs : FArgs} : RocqOfOCaml.OCamlSeq.t elt -> t -> t
       :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.add_seq).
-    
+
     Definition of_seq `{_fargs : FArgs} : RocqOfOCaml.OCamlSeq.t elt -> t :=
       Derive_include.(Derive.Derive_result.Bucket).(RocqOfOCaml.OCamlSet.S.of_seq).
   End Bucket.
-  
+
   Definition Bucket `{_fargs : FArgs} :=
     Derive_include.(Derive.Derive_result.Bucket).
-  
+
   Definition empty_bucket `{_fargs : FArgs}
     : Bucket.(RocqOfOCaml.OCamlSet.S.t) :=
     Bucket.(RocqOfOCaml.OCamlSet.S.empty).
-  
+
   Module Fixed_result.
-    Record signature `{_fargs : FArgs} {Bucket_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Bucket_t : Set} : Type := {
       Impl : Fixed.Impl.Impl_signature;
       t := string;
-      zero : string;
+      zero :
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string},
+          string;
       Bucket : RocqOfOCaml.OCamlSet.S (elt := string) (t := Bucket_t);
       empty_bucket : Bucket_t;
     }.
   End Fixed_result.
   Definition Fixed_result `{_fargs : FArgs} := @Fixed_result.signature _.
   Arguments Fixed_result {_ _}.
-  
+
   (* Fixed *)
   Definition functor `{_fargs : FArgs} :Fixed_result (Bucket_t := _) :=
     {|
-      Fixed_result.Impl := (Impl (_fargs := _fargs));
-      Fixed_result.zero := (zero (_fargs := _fargs));
-      Fixed_result.Bucket := (Bucket (_fargs := _fargs));
-      Fixed_result.empty_bucket := (empty_bucket (_fargs := _fargs))
+      Fixed_result.Impl := Impl;
+      Fixed_result.zero _ := zero;
+      Fixed_result.Bucket := Bucket;
+      Fixed_result.empty_bucket := empty_bucket
     |}.
 End Fixed.
 Definition Fixed (Width : Fixed_Width_signature) :=
@@ -275,182 +290,190 @@ Module B20.
       ({|
         Fixed_Width_signature.width := Width20.width
       |} : Fixed_Width_signature).
-  
+
   Definition Fixed_include : Fixed.Fixed_result (_fargs := Fixed_include_fargs)
     :=
     Fixed
       ({|
         Fixed_Width_signature.width := Width20.width
       |} : Fixed_Width_signature).
-  
+
   (** Inclusion of the module [Fixed_include] *)
   Module Impl.
     Definition t :=
       Fixed_include.(Fixed.Fixed_result.Impl).(Fixed.Impl.Impl_signature.t).
-    
-    Definition zero : t :=
+
+    Definition zero `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : t
+      :=
       Fixed_include.(Fixed.Fixed_result.Impl).(Fixed.Impl.Impl_signature.zero).
   End Impl.
-  
+
   Definition Impl := Fixed_include.(Fixed.Fixed_result.Impl).
-  
+
   Definition t := Fixed_include.(Fixed.Fixed_result.t).
-  
-  Definition zero : t := Fixed_include.(Fixed.Fixed_result.zero).
-  
+
+  Definition zero `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : t
+    := Fixed_include.(Fixed.Fixed_result.zero).
+
   Module Bucket.
     Definition elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.elt).
-    
+
     Definition t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.t).
-    
+
     Definition empty : t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.empty).
-    
+
     Definition add : elt -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.add).
-    
+
     Definition singleton : elt -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.singleton).
-    
+
     Definition remove : elt -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.remove).
-    
+
     Definition union : t -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.union).
-    
+
     Definition inter : t -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.inter).
-    
+
     Definition disjoint : t -> t -> bool :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.disjoint).
-    
+
     Definition diff : t -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.diff).
-    
+
     Definition cardinal : t -> int :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.cardinal).
-    
+
     Definition elements : t -> list elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.elements).
-    
-    Definition min_elt : t -> elt :=
+
+    Definition min_elt
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.min_elt).
-    
+
     Definition min_elt_opt : t -> option elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.min_elt_opt).
-    
-    Definition max_elt : t -> elt :=
+
+    Definition max_elt
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.max_elt).
-    
+
     Definition max_elt_opt : t -> option elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.max_elt_opt).
-    
-    Definition choose : t -> elt :=
+
+    Definition choose `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt}
+      : t -> elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.choose).
-    
+
     Definition choose_opt : t -> option elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.choose_opt).
-    
-    Definition find : elt -> t -> elt :=
+
+    Definition find `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
+      elt -> t -> elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.find).
-    
+
     Definition find_opt : elt -> t -> option elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_opt).
-    
-    Definition find_first : (elt -> bool) -> t -> elt :=
+
+    Definition find_first
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
+      (elt -> bool) -> t -> elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_first).
-    
+
     Definition find_first_opt : (elt -> bool) -> t -> option elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_first_opt).
-    
-    Definition find_last : (elt -> bool) -> t -> elt :=
+
+    Definition find_last
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
+      (elt -> bool) -> t -> elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_last).
-    
+
     Definition find_last_opt : (elt -> bool) -> t -> option elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.find_last_opt).
-    
+
     Definition iter : (elt -> unit) -> t -> unit :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.iter).
-    
+
     Definition fold {acc : Set} : (elt -> acc -> acc) -> t -> acc -> acc :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.fold).
-    
+
     Definition map : (elt -> elt) -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.map).
-    
+
     Definition filter : (elt -> bool) -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.filter).
-    
+
     Definition filter_map : (elt -> option elt) -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.filter_map).
-    
+
     Definition partition : (elt -> bool) -> t -> t * t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.partition).
-    
+
     Definition split : elt -> t -> t * bool * t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.split).
-    
+
     Definition is_empty : t -> bool :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.is_empty).
-    
+
     Definition mem : elt -> t -> bool :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.mem).
-    
+
     Definition equal : t -> t -> bool :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.equal).
-    
+
     Definition compare : t -> t -> int :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.compare).
-    
+
     Definition subset : t -> t -> bool :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.subset).
-    
+
     Definition for_all : (elt -> bool) -> t -> bool :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.for_all).
-    
+
     Definition _exists : (elt -> bool) -> t -> bool :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S._exists).
-    
+
     Definition to_list : t -> list elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_list).
-    
+
     Definition of_list : list elt -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.of_list).
-    
+
     Definition to_seq_from : elt -> t -> RocqOfOCaml.OCamlSeq.t elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_seq_from).
-    
+
     Definition to_seq : t -> RocqOfOCaml.OCamlSeq.t elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_seq).
-    
+
     Definition to_rev_seq : t -> RocqOfOCaml.OCamlSeq.t elt :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.to_rev_seq).
-    
+
     Definition add_seq : RocqOfOCaml.OCamlSeq.t elt -> t -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.add_seq).
-    
+
     Definition of_seq : RocqOfOCaml.OCamlSeq.t elt -> t :=
       Fixed_include.(Fixed.Fixed_result.Bucket).(RocqOfOCaml.OCamlSet.S.of_seq).
   End Bucket.
-  
+
   Definition Bucket := Fixed_include.(Fixed.Fixed_result.Bucket).
-  
+
   Definition empty_bucket : Bucket.t :=
     Fixed_include.(Fixed.Fixed_result.empty_bucket).
 End B20.
 
 Module Namespace.
-  Module Address.
-    Include B20.
-  End Address.
+  Module Address := B20.
 End Namespace.
 
 Module Chain := Namespace.
 
 Module PARAM.
-  Record signature : Set := {
+  Record signature : Type := {
     enabled : bool;
   }.
 End PARAM.
@@ -460,44 +483,53 @@ Module Make.
   Class FArgs := {
     Param : PARAM;
   }.
-  
+
   Module Address := Chain.Address.
-  
-  Definition zero `{_fargs : FArgs} : Address.t := Address.zero.
-  
+
+  Definition zero `{_fargs : FArgs}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable B20.t} : Address.t :=
+    Address.zero.
+
   Definition empty_bucket `{_fargs : FArgs}
     : Address.Bucket.(RocqOfOCaml.OCamlSet.S.t) :=
     Address.Bucket.(RocqOfOCaml.OCamlSet.S.empty).
-  
+
   Definition enabled `{_fargs : FArgs} : bool := Param.(PARAM.enabled).
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} {Address_Bucket_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Address_Bucket_t : Set} : Type := {
       Address_Impl_t := string;
-      Address_Impl_zero : string;
+      Address_Impl_zero :
+        forall
+          `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable B20.Impl.t},
+          string;
       Address_t := string;
-      Address_zero : Address_t;
+      Address_zero :
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable B20.t},
+          Address_t;
       Address_Bucket :
         RocqOfOCaml.OCamlSet.S (elt := string) (t := Address_Bucket_t);
       Address_empty_bucket : Address_Bucket_t;
-      zero : Address_t;
+      zero :
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable B20.t},
+          Address_t;
       empty_bucket : Address_Bucket_t;
       enabled : bool;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :Make_result (Address_Bucket_t := _) :=
     {|
-      Make_result.Address_Impl_zero := B20.Impl.zero;
-      Make_result.Address_zero := Chain.Address.zero;
+      Make_result.Address_Impl_zero _ := B20.Impl.zero;
+      Make_result.Address_zero _ := Chain.Address.zero;
       Make_result.Address_Bucket := B20.Bucket;
       Make_result.Address_empty_bucket := Chain.Address.empty_bucket;
-      Make_result.zero := (zero (_fargs := _fargs));
-      Make_result.empty_bucket := (empty_bucket (_fargs := _fargs));
-      Make_result.enabled := (enabled (_fargs := _fargs))
+      Make_result.zero _ := zero;
+      Make_result.empty_bucket := empty_bucket;
+      Make_result.enabled := enabled
     |}.
 End Make.
 Definition Make (Param : PARAM) := @Make.functor (Make.Build_FArgs Param).
@@ -506,28 +538,29 @@ Module Reexport.
   Class FArgs := {
     Param : PARAM;
   }.
-  
+
   Definition Instantiation_fargs `{_fargs : FArgs} :=
     Fixed.Build_FArgs
       ({|
         Fixed_Width_signature.width := Width20.width
       |} : Fixed_Width_signature).
-  
+
   Definition Instantiation `{_fargs : FArgs} :
     Fixed.Fixed_result (_fargs := Instantiation_fargs) :=
     Fixed
       ({|
         Fixed_Width_signature.width := Width20.width
       |} : Fixed_Width_signature).
-  
+
   Definition Host_fargs `{_fargs : FArgs} := Instantiation_fargs.
-  
+
   Definition Host `{_fargs : FArgs} := Instantiation.
-  
+
   Definition enabled `{_fargs : FArgs} : bool := Param.(PARAM.enabled).
-  
+
   Module Reexport_result.
-    Record signature `{_fargs : FArgs} {Instantiation_Bucket_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Instantiation_Bucket_t : Set} : Type :=
+      {
       Instantiation :
         Fixed.Fixed_result (_fargs := Instantiation_fargs)
           (Bucket_t := Instantiation_Bucket_t);
@@ -540,14 +573,14 @@ Module Reexport.
   End Reexport_result.
   Definition Reexport_result `{_fargs : FArgs} := @Reexport_result.signature _.
   Arguments Reexport_result {_ _}.
-  
+
   (* Reexport *)
   Definition functor `{_fargs : FArgs}
     :Reexport_result (Instantiation_Bucket_t := _) :=
     {|
-      Reexport_result.Instantiation := (Instantiation (_fargs := _fargs));
-      Reexport_result.Host := (Host (_fargs := _fargs));
-      Reexport_result.enabled := (enabled (_fargs := _fargs))
+      Reexport_result.Instantiation := Instantiation;
+      Reexport_result.Host := Host;
+      Reexport_result.enabled := enabled
     |}.
 End Reexport.
 Definition Reexport (Param : PARAM) :=

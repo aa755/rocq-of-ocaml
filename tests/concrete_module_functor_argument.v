@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module ITEM.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End ITEM.
@@ -15,21 +15,22 @@ Module Consumer.
     Item : ITEM (t := Item_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition t `{_fargs : FArgs} : Set := Item.(ITEM.t).
-  
+
   Module Consumer_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := Item.(ITEM.t);
     }.
   End Consumer_result.
   Definition Consumer_result `{_fargs : FArgs} := @Consumer_result.signature _
     _.
   Arguments Consumer_result {_ _}.
-  
+
   (* Consumer *)
   Definition functor `{_fargs : FArgs} :@Consumer_result Item_t _fargs :=
-    ((ltac:(constructor) : Consumer_result) : @Consumer_result Item_t _fargs).
+    ((@Consumer_result.Build_signature Item_t _fargs) :
+      @Consumer_result Item_t _fargs).
 End Consumer.
 Definition Consumer {Item_t : Set} (Item : ITEM (t := Item_t)) :=
   @Consumer.functor Item_t (Consumer.Build_FArgs Item).

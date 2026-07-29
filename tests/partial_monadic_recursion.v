@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module MONAD.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     _return : forall {a : Set} , a -> t a;
     bind : forall {a b : Set} , t a -> (a -> t b) -> t b;
@@ -17,7 +17,7 @@ Module Make.
     M : MONAD (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   CoFixpoint count_down `{_fargs : FArgs} (value : int)
     : RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) int :=
     (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
@@ -30,21 +30,19 @@ Module Make.
             (fun (value : int) =>
               (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
                 (fun _ => count_down value))).
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       count_down : int -> RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) int;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
-    ({|
-      Make_result.count_down (M_t := M_t) (_fargs := _fargs) :=
-        (count_down (_fargs := _fargs))
-    |} : @Make_result M_t _fargs).
+    ((@Make_result.Build_signature M_t _fargs count_down) :
+      @Make_result M_t _fargs).
 End Make.
 Definition Make {M_t : Set -> Set} (M : MONAD (t := M_t)) :=
   @Make.functor M_t (Make.Build_FArgs M).

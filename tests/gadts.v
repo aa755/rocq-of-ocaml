@@ -17,11 +17,13 @@ Inductive expr : Set :=
 | Sum : expr -> expr -> expr
 | Pair : expr -> expr -> expr.
 
-Fixpoint proj_int (e_value : expr) : int :=
+Fixpoint proj_int
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (e_value : expr)
+  : int :=
   match e_value with
   | Int n_value => n_value
   | Sum e1 e2 => Z.add (proj_int e1) (proj_int e2)
-  | _ => unreachable_gadt_branch
+  | _ => (@RocqOfOCaml.Basics.unreachable _ _)
   end.
 
 Inductive term : vtag -> Set :=
@@ -48,10 +50,11 @@ Inductive one_case : Set :=
 | SingleCase : one_case
 | Impossible : one_case.
 
-Definition x_value : int :=
+Definition x_value
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
   match SingleCase with
   | SingleCase => 0
-  | _ => unreachable_gadt_branch
+  | _ => (@RocqOfOCaml.Basics.unreachable _ _)
   end.
 
 Inductive gadt_list : Set :=
@@ -64,14 +67,21 @@ Module With_cast.
   Inductive int_or_bool : Set :=
   | Int : int_or_bool
   | Bool : int_or_bool.
-  
-  Definition to_int {a : Set} (kind : int_or_bool) (x_value : a) : int :=
+
+  Definition to_int {a : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool}
+    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int}
+    (kind : int_or_bool) (x_value : a) : int :=
     match (kind, x_value) with
     | (Int, x_value) =>
-      let x_value := cast int x_value in
+      let x_value :=
+        (let '_ := x_value in
+        (@RocqOfOCaml.Basics.unreachable int _)) in
       x_value
     | (Bool, x_value) =>
-      let x_value := cast bool x_value in
+      let x_value :=
+        (let '_ := x_value in
+        (@RocqOfOCaml.Basics.unreachable bool _)) in
       if x_value then
         1
       else

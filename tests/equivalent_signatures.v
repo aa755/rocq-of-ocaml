@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Ordered.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     compare : t -> t -> int;
   }.
@@ -12,7 +12,7 @@ Definition Ordered := @Ordered.signature.
 Arguments Ordered {_}.
 
 Module Also_ordered.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     compare : t -> t -> int;
   }.
@@ -25,7 +25,7 @@ Definition Ordered_alias := @Ordered_alias.signature.
 Arguments Ordered_alias {_}.
 
 Module Same_shape_but_different_type.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     compare : t -> int -> int;
   }.
@@ -39,35 +39,32 @@ Module Make.
     X : Ordered_alias (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition compare `{_fargs : FArgs}
     : X.(Ordered_alias.t) -> X.(Ordered_alias.t) -> int :=
     X.(Ordered_alias.compare).
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       compare : X.(Ordered_alias.t) -> X.(Ordered_alias.t) -> int;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result X_t _fargs :=
-    ({|
-      Make_result.compare (X_t := X_t) (_fargs := _fargs) :=
-        (compare (_fargs := _fargs))
-    |} : @Make_result X_t _fargs).
+    ((@Make_result.Build_signature X_t _fargs compare) : @Make_result X_t _fargs).
 End Make.
 Definition Make {X_t : Set} (X : Ordered_alias (t := X_t)) :=
   @Make.functor X_t (Make.Build_FArgs X).
 
 Module Int_ordered.
   Definition t : Set := int.
-  
+
   Definition compare (x_value : int) (y_value : int) : int :=
     Z.sub x_value y_value.
-  
+
   (* Int_ordered *)
   Definition module :Ordered (t := t) :=
     {|

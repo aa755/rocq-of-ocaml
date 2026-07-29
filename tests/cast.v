@@ -2,11 +2,20 @@
 Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
-Definition f_value (x_value : int) : int := Z.add (cast int x_value) 1.
+Definition f_value
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (x_value : int)
+  : int :=
+  Z.add
+    (let '_ := x_value in
+    (@RocqOfOCaml.Basics.unreachable int _)) 1.
 
 Inductive t : Set :=
 | Int : t.
 
-Definition g_value {a : Set} (kind : t) (x_value : a) : int :=
+Definition g_value {a : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (kind : t)
+  (x_value : a) : int :=
   let 'Int := kind in
-  Z.add (cast int x_value) 1.
+  Z.add
+    (let '_ := x_value in
+    (@RocqOfOCaml.Basics.unreachable int _)) 1.

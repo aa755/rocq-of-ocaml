@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module ARGUMENT.
-  Record signature : Set := {
+  Record signature : Type := {
     value : int;
   }.
 End ARGUMENT.
@@ -13,14 +13,14 @@ Module Operations.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-  
+
   Definition get `{_fargs : FArgs} : int := Argument.(ARGUMENT.value).
-  
+
   Definition op_letdollar `{_fargs : FArgs} {A B : Set}
     (value : A) (continuation : A -> B) : B := continuation value.
-  
+
   Module Operations_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       get : int;
       op_letdollar : forall {A B : Set} , A -> (A -> B) -> B;
     }.
@@ -28,21 +28,18 @@ Module Operations.
   Definition Operations_result `{_fargs : FArgs} := @Operations_result.signature
     _.
   Arguments Operations_result {_}.
-  
+
   (* Operations *)
   Definition functor `{_fargs : FArgs} :@Operations_result _fargs :=
-    ({|
-      Operations_result.get (_fargs := _fargs) := (get (_fargs := _fargs));
-      Operations_result.op_letdollar (_fargs := _fargs) _ _ :=
-        (op_letdollar (_fargs := _fargs))
-    |} : @Operations_result _fargs).
+    ((@Operations_result.Build_signature _fargs get (fun _ _ => op_letdollar)) :
+      @Operations_result _fargs).
 End Operations.
 Definition Operations (Argument : ARGUMENT) :=
   @Operations.functor (Operations.Build_FArgs Argument).
 
 Module Concrete.
   Definition value : int := 41.
-  
+
   (* Concrete *)
   Definition module :ARGUMENT :=
     {|

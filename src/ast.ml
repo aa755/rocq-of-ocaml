@@ -51,9 +51,11 @@ let of_typedtree
   match typedtree with
   | `Implementation structure ->
       Structure.of_structure structure >>= fun structure ->
+      get_configuration >>= fun configuration ->
       return
         (Structure
            (Structure.propagate_assumption_calls
+              ~configuration
               ~external_specs:external_assumption_specs structure))
   | `Interface signature ->
       SignatureAxioms.of_signature signature >>= fun signature ->

@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module F_X_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End F_X_signature.
@@ -15,17 +15,17 @@ Module F.
     X : F_X_signature (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Map.
     Definition key `{_fargs : FArgs} : Set := X.(F_X_signature.t).
-    
+
     Definition t `{_fargs : FArgs} (a : Set) : Set := list (key * a).
-    
+
     Definition empty `{_fargs : FArgs} {A : Set} : list A := nil.
   End Map.
-  
+
   Module F_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Map_key := X.(F_X_signature.t);
       Map_t := fun (a : Set) => list (Map_key * a);
       Map_empty : forall {A : Set} , list A;
@@ -33,13 +33,11 @@ Module F.
   End F_result.
   Definition F_result `{_fargs : FArgs} := @F_result.signature _ _.
   Arguments F_result {_ _}.
-  
+
   (* F *)
   Definition functor `{_fargs : FArgs} :@F_result X_t _fargs :=
-    ({|
-      F_result.Map_empty (X_t := X_t) (_fargs := _fargs) _ :=
-        (Map.empty (_fargs := _fargs))
-    |} : @F_result X_t _fargs).
+    ((@F_result.Build_signature X_t _fargs (fun _ => Map.empty)) :
+      @F_result X_t _fargs).
 End F.
 Definition F {X_t : Set} (X : F_X_signature (t := X_t)) :=
   @F.functor X_t (F.Build_FArgs X).
@@ -49,23 +47,23 @@ Module M.
     F.Build_FArgs
       (let t : Set := int in
       ((ltac:(constructor) : F_X_signature (t := t)) : F_X_signature (t := t))).
-  
+
   Definition F_include : F.F_result (_fargs := F_include_fargs) :=
     F
       (let t : Set := int in
       ((ltac:(constructor) : F_X_signature (t := t)) : F_X_signature (t := t))).
-  
+
   (** Inclusion of the module [F_include] *)
-  
-  
+
+
   Module Map.
     (** Inclusion from a translated functor-result record *)
     Definition key := F_include.(F.F_result.Map_key).
-    
+
     Definition t (a : Set) := F_include.(F.F_result.Map_t) a.
-    
+
     Definition empty {A : Set} : list A := F_include.(F.F_result.Map_empty).
-    
+
     Definition one : Map.t int := Datatypes.cons (1, 1) nil.
   End Map.
 End M.

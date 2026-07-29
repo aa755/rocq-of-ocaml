@@ -5,13 +5,18 @@ From Stdlib Require Import Program.Wf.
 
 Module Arithmetic.
   Parameter _rocq_measure_gcd : forall (_left : int) (_right : int), nat.
-  
-  Program Fixpoint gcd (_left : int) (_right : int)
-    {measure (_rocq_measure_gcd _left _right)} : int :=
-    if equiv_decb _right 0 then
-      _left
-    else
-      gcd _right (Z.rem _left _right).
-  
+
+  Program Definition gcd (_left : int) (_right : int) : int :=
+    let _rocq_measure (_rocq_state : int * int) : nat := let '(_left, _right) := _rocq_state in
+    _rocq_measure_gcd _left _right in
+    @Fix (int * int) (ltof (int * int) _rocq_measure) (well_founded_ltof (int *
+      int) _rocq_measure) (fun _ => int) (fun _rocq_state _rocq_recurse =>
+      let '(_left, _right) := _rocq_state in
+      let gcd (_left : int) (_right : int) : int := _rocq_recurse (_left, _right) _ in
+      if equiv_decb _right 0 then
+        _left
+      else
+        gcd _right (Z.rem _left _right)) (_left, _right).
+
   Admit Obligations.
 End Arithmetic.

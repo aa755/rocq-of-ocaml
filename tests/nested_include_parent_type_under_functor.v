@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module S.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
   }.
 End S.
@@ -15,19 +15,19 @@ Module Make.
     M : S (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   (** Inclusion of the module [M] *)
   Definition t `{_fargs : FArgs} (a : Set) := M.(S.t) a.
-  
+
   Module List.
     Definition t `{_fargs : FArgs} (a : Set) : Set := list a.
-    
+
     Definition lift `{_fargs : FArgs} {a : Set} (value : M.(S.t) a)
       : M.(S.t) a := value.
   End List.
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := fun (a : Set) => M.(S.t) a;
       List_t := fun (a : Set) => list a;
       List_lift : forall {a : Set} , M.(S.t) a -> M.(S.t) a;
@@ -35,19 +35,17 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
-    ({|
-      Make_result.List_lift (M_t := M_t) (_fargs := _fargs) _ :=
-        (List.lift (_fargs := _fargs))
-    |} : @Make_result M_t _fargs).
+    ((@Make_result.Build_signature M_t _fargs (fun _ => List.lift)) :
+      @Make_result M_t _fargs).
 End Make.
 Definition Make {M_t : Set -> Set} (M : S (t := M_t)) :=
   @Make.functor M_t (Make.Build_FArgs M).
 
 Module Outer_T_signature.
-  Record signature {_error : Set} : Set := {
+  Record signature {_error : Set} : Type := {
     _error := _error;
   }.
 End Outer_T_signature.
@@ -59,42 +57,42 @@ Module Outer.
     T : Outer_T_signature (_error := T__error);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Trans.
     Class FArgs `{_fargs : FArgs} {Inner_t : Set -> Set} := {
       Inner : S (t := Inner_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-    
+
     Definition Make_include_fargs `{_fargs : FArgs} :=
       Make.Build_FArgs
         (let t (a : Set) : Set :=
           Inner.(S.t) (sum a T.(Outer_T_signature._error)) in
         ((ltac:(constructor) : S (t := t)) : S (t := t))).
-    
+
     Definition Make_include `{_fargs : FArgs} :
       Make.Make_result (_fargs := Make_include_fargs) :=
       Make
         (let t (a : Set) : Set :=
           Inner.(S.t) (sum a T.(Outer_T_signature._error)) in
         ((ltac:(constructor) : S (t := t)) : S (t := t))).
-    
+
     (** Inclusion of the module [Make_include] *)
     Definition t `{_fargs : FArgs} (a : Set) :=
       Make_include.(Make.Make_result.t) a.
-    
+
     Module List.
       Definition t `{_fargs : FArgs} (a : Set) :=
         Make_include.(Make.Make_result.List_t) a.
-      
+
       Definition lift `{_fargs : FArgs} {a : Set} :
         Inner.(S.t) (sum a T.(Outer_T_signature._error)) ->
         Inner.(S.t) (sum a T.(Outer_T_signature._error)) :=
         Make_include.(Make.Make_result.List_lift).
     End List.
-    
+
     Module Trans_result.
-      Record signature `{_fargs : FArgs} : Set := {
+      Record signature `{_fargs : FArgs} : Type := {
         t := fun (a : Set) => Inner.(S.t) (sum a T.(Outer_T_signature._error));
         List_t := fun (a : Set) => list a;
         List_lift :
@@ -106,28 +104,27 @@ Module Outer.
     Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _ _
       _.
     Arguments Trans_result {_ _ _ _}.
-    
+
     (* Trans *)
     Definition functor `{_fargs : FArgs} :@Trans_result _ _ Inner_t _fargs :=
-      ({|
-        Trans_result.List_lift (Inner_t := Inner_t) (_fargs := _fargs) _ :=
-          (List.lift (_fargs := _fargs))
-      |} : @Trans_result _ _ Inner_t _fargs).
+      ((@Trans_result.Build_signature _ _ Inner_t _fargs (fun _ => List.lift)) :
+        @Trans_result _ _ Inner_t _fargs).
   End Trans.
   Definition Trans `{_fargs : FArgs} {Inner_t : Set -> Set}
     (Inner : S (t := Inner_t)) :=
     @Trans.functor _ _ Inner_t (Trans.Build_FArgs Inner).
-  
+
   Module Outer_result.
-    Inductive signature `{_fargs : FArgs} : Set :=
+    Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-  
+
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result T__error _fargs :=
-    ((ltac:(constructor) : Outer_result) : @Outer_result T__error _fargs).
+    ((@Outer_result.Build_signature T__error _fargs) :
+      @Outer_result T__error _fargs).
 End Outer.
 Definition Outer {T__error : Set} (T : Outer_T_signature (_error := T__error))
   := @Outer.functor T__error (Outer.Build_FArgs T).

@@ -32,6 +32,20 @@ end
 let failed_qualified () : unit =
   Qualified.failed_unit ()
 
+module Alias_bytes = struct
+  module B20 = struct
+    type t = int
+
+    let failed () : t =
+      assert false
+  end
+end
+
+module Alias_address = Alias_bytes.B20
+
+let failed_through_nested_alias () : Alias_address.t =
+  Alias_address.failed ()
+
 module Make_projected (X : sig
   val marker : unit
 end) = struct

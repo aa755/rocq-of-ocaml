@@ -5,28 +5,39 @@ From Stdlib Require Import Program.Wf.
 
 Parameter _rocq_measure_gcd : forall (_left : int) (_right : int), nat.
 
-Program Fixpoint gcd (_left : int) (_right : int)
-  {measure (_rocq_measure_gcd _left _right)} : int :=
-  if equiv_decb _right 0 then
-    _left
-  else
-    gcd _right (Z.rem _left _right).
+Program Definition gcd (_left : int) (_right : int) : int :=
+  let _rocq_measure (_rocq_state : int * int) : nat := let '(_left, _right) := _rocq_state in
+  _rocq_measure_gcd _left _right in
+  @Fix (int * int) (ltof (int * int) _rocq_measure) (well_founded_ltof (int *
+    int) _rocq_measure) (fun _ => int) (fun _rocq_state _rocq_recurse =>
+    let '(_left, _right) := _rocq_state in
+    let gcd (_left : int) (_right : int) : int := _rocq_recurse (_left, _right) _ in
+    if equiv_decb _right 0 then
+      _left
+    else
+      gcd _right (Z.rem _left _right)) (_left, _right).
 
 Admit Obligations.
 
-Parameter _rocq_measure_find_or : forall {A : Set}
-  (default : A) (predicate : A -> bool) (values : list A), nat.
+Parameter _rocq_measure_find_or : forall {A : Set} (default : A)
+  (predicate : A -> bool) (values : list A), nat.
 
-Program Fixpoint find_or {A : Set}
-  (default : A) (predicate : A -> bool) (values : list A)
-  {measure (_rocq_measure_find_or (A := A) default predicate values)} : A :=
-  match values with
-  | [] => default
-  | Datatypes.cons value values =>
-    if predicate value then
-      value
-    else
-      find_or default predicate values
-  end.
+Program Definition find_or {A : Set}
+  (default : A) (predicate : A -> bool) (values : list A) : A :=
+  let _rocq_measure (_rocq_state : A * (A -> bool) * list A) : nat := let '(default, predicate, values) := _rocq_state in
+  _rocq_measure_find_or (A := A) default predicate values in
+  @Fix (A * (A -> bool) * list A) (ltof (A * (A -> bool) * list A) _rocq_measure) (well_founded_ltof (A
+    * (A -> bool) * list A) _rocq_measure) (fun _ => A) (fun _rocq_state
+    _rocq_recurse =>
+    let '(default, predicate, values) := _rocq_state in
+    let find_or (default : A) (predicate : A -> bool) (values : list A) : A := _rocq_recurse (default, predicate, values) _ in
+    match values with
+    | [] => default
+    | Datatypes.cons value values =>
+      if predicate value then
+        value
+      else
+        find_or default predicate values
+    end) (default, predicate, values).
 
 Admit Obligations.

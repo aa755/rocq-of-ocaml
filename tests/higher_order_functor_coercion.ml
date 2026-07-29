@@ -10,7 +10,20 @@ module Produce (Input : sig
   val value : int
 end) =
 struct
-  let result = Input.value
+  module Memory : sig
+    type t
+
+    val fallback : t
+  end = struct
+    type t = int
+
+    let fallback = Input.value
+  end
+
+  let result =
+    let (_ : Memory.t) = assert false in
+    Input.value
+
   let extra = Input.value + 1
 end
 

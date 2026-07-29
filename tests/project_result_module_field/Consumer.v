@@ -15,87 +15,134 @@ Module Argument.
 End Argument.
 Definition Argument := Argument.module.
 
+Definition DirectApplied_fargs :=
+  TestProject.Provider.Fixed.Build_FArgs Argument.
+
+Definition DirectApplied :
+  Provider.Fixed.Fixed_result (_fargs := DirectApplied_fargs) :=
+  TestProject.Provider.Fixed Argument.
+
+Definition projected_missing
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  DirectApplied.(TestProject.Provider.Fixed.Fixed_result.missing).
+
+(** Inclusion of the module [TestProject.Provider.Applied] *)
+Definition t := TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.t).
+
+Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : t
+  := TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.missing).
+
+Module Map.
+  Definition t :=
+    TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+
+  Definition empty : t :=
+    TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
+End Map.
+
+Definition Map :=
+  TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.Map).
+
 Definition direct_map : Set :=
-  Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+  TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
 
 Definition unwrapped
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
-  Provider.unwrap_int None.
+  TestProject.Provider.unwrap_int None.
 
 Definition local_failure
-  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Provider.Local_failure.t} : Provider.Local_failure.t :=
-  Provider.Local_failure.unwrap None.
+  `{_rocq_assumption_0 :
+    RocqOfOCaml.Basics.Unreachable TestProject.Provider.Local_failure.t} : TestProject.Provider.Local_failure.t :=
+  TestProject.Provider.Local_failure.unwrap None.
 
-Definition Result_fargs := Provider.Outer.Build_FArgs Argument.
+Definition reexported_failure
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  TestProject.Provider.Partial_reexport.unwrap None.
+
+Definition shadowed_failure
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  TestProject.Provider.Shadowing.shadowed_unwrap None.
+
+Definition Result_fargs := TestProject.Provider.Outer.Build_FArgs Argument.
 
 Definition Result : Provider.Outer.Outer_result (_fargs := Result_fargs) :=
-  Provider.Outer Argument.
+  TestProject.Provider.Outer Argument.
 
 Module Alias.
   Definition t := int.
 
   Definition identity {A : Set} :=
-    Result.(Provider.Outer.Outer_result.Namespace_identity) (A := A).
+    Result.(TestProject.Provider.Outer.Outer_result.Namespace_identity) (A := A).
 
   Module Repr.
     Definition t :=
-      Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.t).
+      Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.t).
+
+    Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t}
+      :=
+      Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.missing).
 
     Module Map.
       Definition t :=
-        Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+        Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
 
       Definition empty :=
-        Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
+        Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
     End Map.
 
     Definition Map :=
-      Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).
+      Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).
   End Repr.
 
-  Definition Repr := Result.(Provider.Outer.Outer_result.Namespace_Repr).
+  Definition Repr :=
+    Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).
 End Alias.
 
-Definition AliasedResult_fargs := Provider.Aliased.Build_FArgs Argument.
+Definition AliasedResult_fargs :=
+  TestProject.Provider.Aliased.Build_FArgs Argument.
 
 Definition AliasedResult :
   Provider.Aliased.Aliased_result (_fargs := AliasedResult_fargs) :=
-  Provider.Aliased Argument.
+  TestProject.Provider.Aliased Argument.
 
 Module AliasedField.
   Definition t :=
-    AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.t).
+    AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.t).
+
+  Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+    :=
+    AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.missing).
 
   Module Map.
     Definition t :=
-      AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+      AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
 
     Definition empty :=
-      AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
+      AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
   End Map.
 
   Definition Map :=
-    AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).
+    AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).
 End AliasedField.
 
 Definition aliased_map : Set :=
   AliasedField.Map.(Provider.Fixed.Map.Map_signature.t).
 
 Definition AnonymousInt_fargs :=
-  Provider.Anonymous.Build_FArgs
+  TestProject.Provider.Anonymous.Build_FArgs
     (let t : Set := int in
     ((ltac:(constructor) : Provider.Anonymous_T_signature (t := t)) :
       Provider.Anonymous_T_signature (t := t))).
 
 Definition AnonymousInt :
   Provider.Anonymous.Anonymous_result (_fargs := AnonymousInt_fargs) :=
-  Provider.Anonymous
+  TestProject.Provider.Anonymous
     (let t : Set := int in
     ((ltac:(constructor) : Provider.Anonymous_T_signature (t := t)) :
       Provider.Anonymous_T_signature (t := t))).
 
 Definition anonymous_identity : int :=
-  AnonymousInt.(Provider.Anonymous.Anonymous_result.identity) 42.
+  AnonymousInt.(TestProject.Provider.Anonymous.Anonymous_result.identity) 42.
 
 Module Produce.
   Class FArgs := {
@@ -109,7 +156,7 @@ Module Produce.
     Z.add Input.(Provider.INPUT.value) 1.
 
   Module Produce_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       result_value : int;
       extra : int;
     }.
@@ -119,11 +166,8 @@ Module Produce.
 
   (* Produce *)
   Definition functor `{_fargs : FArgs} :@Produce_result _fargs :=
-    ({|
-      Produce_result.result_value (_fargs := _fargs) :=
-        (result_value (_fargs := _fargs));
-      Produce_result.extra (_fargs := _fargs) := (extra (_fargs := _fargs))
-    |} : @Produce_result _fargs).
+    ((@Produce_result.Build_signature _fargs result_value extra) :
+      @Produce_result _fargs).
 End Produce.
 Definition Produce (Input : Provider.INPUT) :=
   @Produce.functor (Produce.Build_FArgs Input).
@@ -140,7 +184,7 @@ End Concrete.
 Definition Concrete := Concrete.module.
 
 Definition Coerced_fargs :=
-  Provider.Consume.Build_FArgs
+  TestProject.Provider.Consume.Build_FArgs
     (fun (Input : Provider.INPUT) =>
       let module_coercion := Produce Input in
       {|
@@ -150,7 +194,7 @@ Definition Coerced_fargs :=
 
 Definition Coerced : Provider.Consume.Consume_result (_fargs := Coerced_fargs)
   :=
-  Provider.Consume
+  TestProject.Provider.Consume
     (fun (Input : Provider.INPUT) =>
       let module_coercion := Produce Input in
       {|

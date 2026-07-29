@@ -5,9 +5,9 @@ Require Import RocqOfOCaml.Settings.
 (** [Stdlib.Map] is mapped to the executable Gallina compatibility layer. *)
 Module Int_order.
   Definition t : Set := int.
-  
+
   Definition compare (_left : int) (_right : int) : int := Z.sub _left _right.
-  
+
   (* Int_order *)
   Definition module :RocqOfOCaml.OCamlMap.OrderedType (t := int) :=
     {|
@@ -19,8 +19,8 @@ Definition Int_order := Int_order.module.
 Definition Int_map := RocqOfOCaml.OCamlMap.Make Int_order.
 
 Definition example : Int_map.(RocqOfOCaml.OCamlMap.S.t) string :=
-  (Int_map.(RocqOfOCaml.OCamlMap.S.add) 1 "one")
-    ((Int_map.(RocqOfOCaml.OCamlMap.S.add) 2 "two")
+  Int_map.(RocqOfOCaml.OCamlMap.S.add) 1 "one"
+    (Int_map.(RocqOfOCaml.OCamlMap.S.add) 2 "two"
       Int_map.(RocqOfOCaml.OCamlMap.S.empty)).
 
 Definition lookup_one : option string :=
@@ -31,176 +31,185 @@ Module Extended.
     Ord : RocqOfOCaml.OCamlMap.OrderedType (t := Ord_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition RocqOfOCaml_OCamlMap_Make_include `{_fargs : FArgs} :=
     RocqOfOCaml.OCamlMap.Make Ord.
-  
+
   (** Inclusion of the module [RocqOfOCaml_OCamlMap_Make_include] *)
   Definition key `{_fargs : FArgs} :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.key).
-  
+
   Definition t `{_fargs : FArgs} (a : Set) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.t) a.
-  
+
   Definition empty `{_fargs : FArgs} {a : Set} : t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.empty).
-  
+
   Definition add `{_fargs : FArgs} {a : Set} : key -> a -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.add).
-  
+
   Definition add_to_list `{_fargs : FArgs} {a : Set} :
     key -> a -> t (list a) -> t (list a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.add_to_list).
-  
+
   Definition update `{_fargs : FArgs} {a : Set} :
     key -> (option a -> option a) -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.update).
-  
+
   Definition singleton `{_fargs : FArgs} {a : Set} : key -> a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.singleton).
-  
+
   Definition remove `{_fargs : FArgs} {a : Set} : key -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.remove).
-  
+
   Definition merge `{_fargs : FArgs} {a b c : Set} :
     (key -> option a -> option b -> option c) -> t a -> t b -> t c :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.merge).
-  
+
   Definition union `{_fargs : FArgs} {a : Set} :
     (key -> a -> a -> option a) -> t a -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.union).
-  
+
   Definition cardinal `{_fargs : FArgs} {a : Set} : t a -> int :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.cardinal).
-  
+
   Definition bindings `{_fargs : FArgs} {a : Set} : t a -> list (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.bindings).
-  
-  Definition min_binding `{_fargs : FArgs} {a : Set} : t a -> key * a :=
+
+  Definition min_binding `{_fargs : FArgs} {a : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
+    t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.min_binding).
-  
+
   Definition min_binding_opt `{_fargs : FArgs} {a : Set} :
     t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.min_binding_opt).
-  
-  Definition max_binding `{_fargs : FArgs} {a : Set} : t a -> key * a :=
+
+  Definition max_binding `{_fargs : FArgs} {a : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
+    t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.max_binding).
-  
+
   Definition max_binding_opt `{_fargs : FArgs} {a : Set} :
     t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.max_binding_opt).
-  
-  Definition choose `{_fargs : FArgs} {a : Set} : t a -> key * a :=
+
+  Definition choose `{_fargs : FArgs} {a : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
+    t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.choose).
-  
+
   Definition choose_opt `{_fargs : FArgs} {a : Set} : t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.choose_opt).
-  
-  Definition find `{_fargs : FArgs} {a : Set} : key -> t a -> a :=
-    RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find).
-  
+
+  Definition find `{_fargs : FArgs} {a : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable a} : key -> t a -> a
+    := RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find).
+
   Definition find_opt `{_fargs : FArgs} {a : Set} : key -> t a -> option a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_opt).
-  
-  Definition find_first `{_fargs : FArgs} {a : Set} :
+
+  Definition find_first `{_fargs : FArgs} {a : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
     (key -> bool) -> t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_first).
-  
+
   Definition find_first_opt `{_fargs : FArgs} {a : Set} :
     (key -> bool) -> t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_first_opt).
-  
-  Definition find_last `{_fargs : FArgs} {a : Set} :
+
+  Definition find_last `{_fargs : FArgs} {a : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
     (key -> bool) -> t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_last).
-  
+
   Definition find_last_opt `{_fargs : FArgs} {a : Set} :
     (key -> bool) -> t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_last_opt).
-  
+
   Definition iter `{_fargs : FArgs} {a : Set} :
     (key -> a -> unit) -> t a -> unit :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.iter).
-  
+
   Definition fold `{_fargs : FArgs} {a acc : Set} :
     (key -> a -> acc -> acc) -> t a -> acc -> acc :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.fold).
-  
+
   Definition map `{_fargs : FArgs} {a b : Set} : (a -> b) -> t a -> t b :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.map).
-  
+
   Definition mapi `{_fargs : FArgs} {a b : Set} : (key -> a -> b) -> t a -> t b
     := RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.mapi).
-  
+
   Definition filter `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.filter).
-  
+
   Definition filter_map `{_fargs : FArgs} {a b : Set} :
     (key -> a -> option b) -> t a -> t b :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.filter_map).
-  
+
   Definition partition `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> t a * t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.partition).
-  
+
   Definition split `{_fargs : FArgs} {a : Set} :
     key -> t a -> t a * option a * t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.split).
-  
+
   Definition is_empty `{_fargs : FArgs} {a : Set} : t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.is_empty).
-  
+
   Definition mem `{_fargs : FArgs} {a : Set} : key -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.mem).
-  
+
   Definition equal `{_fargs : FArgs} {a : Set} :
     (a -> a -> bool) -> t a -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.equal).
-  
+
   Definition compare `{_fargs : FArgs} {a : Set} :
     (a -> a -> int) -> t a -> t a -> int :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.compare).
-  
+
   Definition for_all `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.for_all).
-  
+
   Definition _exists `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S._exists).
-  
+
   Definition to_list `{_fargs : FArgs} {a : Set} : t a -> list (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_list).
-  
+
   Definition of_list `{_fargs : FArgs} {a : Set} : list (key * a) -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.of_list).
-  
+
   Definition to_seq `{_fargs : FArgs} {a : Set} :
     t a -> RocqOfOCaml.OCamlSeq.t (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_seq).
-  
+
   Definition to_rev_seq `{_fargs : FArgs} {a : Set} :
     t a -> RocqOfOCaml.OCamlSeq.t (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_rev_seq).
-  
+
   Definition to_seq_from `{_fargs : FArgs} {a : Set} :
     key -> t a -> RocqOfOCaml.OCamlSeq.t (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_seq_from).
-  
+
   Definition add_seq `{_fargs : FArgs} {a : Set} :
     RocqOfOCaml.OCamlSeq.t (key * a) -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.add_seq).
-  
+
   Definition of_seq `{_fargs : FArgs} {a : Set} :
     RocqOfOCaml.OCamlSeq.t (key * a) -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.of_seq).
-  
+
   Definition lookup `{_fargs : FArgs} {A : Set} (key : key) (map : t A)
     : option A := find_opt key map.
-  
+
   Module Extended_result.
-    Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
+    Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
       key := Ord.(RocqOfOCaml.OCamlMap.OrderedType.t);
       t := t;
       empty : forall {a : Set} , t a;
@@ -233,27 +242,44 @@ Module Extended.
         forall {a : Set} ,
           t a -> list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       min_binding :
-        forall {a : Set} , t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set}
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
+          t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       min_binding_opt :
         forall {a : Set} ,
           t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       max_binding :
-        forall {a : Set} , t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set}
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
+          t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       max_binding_opt :
         forall {a : Set} ,
           t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       choose :
-        forall {a : Set} , t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+        forall {a : Set}
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
+          t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       choose_opt :
         forall {a : Set} ,
           t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       find :
-        forall {a : Set} , Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> a;
+        forall {a : Set}
+          `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable a},
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> a;
       find_opt :
         forall {a : Set} ,
           Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> option a;
       find_first :
-        forall {a : Set} ,
+        forall {a : Set}
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
           (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
           Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       find_first_opt :
@@ -261,7 +287,10 @@ Module Extended.
           (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
           option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       find_last :
-        forall {a : Set} ,
+        forall {a : Set}
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
           (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
           Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
       find_last_opt :
@@ -314,29 +343,24 @@ Module Extended.
           list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a) -> t a;
       to_seq :
         forall {a : Set} ,
-          t a -> unit ->
-          RocqOfOCaml.OCamlSeq.node
-            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+          t a ->
+          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       to_rev_seq :
         forall {a : Set} ,
-          t a -> unit ->
-          RocqOfOCaml.OCamlSeq.node
-            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+          t a ->
+          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       to_seq_from :
         forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> unit ->
-          RocqOfOCaml.OCamlSeq.node
-            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a ->
+          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
       add_seq :
         forall {a : Set} ,
-          (unit ->
-          RocqOfOCaml.OCamlSeq.node
-            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)) -> t a -> t a;
+          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)
+          -> t a -> t a;
       of_seq :
         forall {a : Set} ,
-          (unit ->
-          RocqOfOCaml.OCamlSeq.node
-            (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)) -> t a;
+          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)
+          -> t a;
       lookup :
         forall {A : Set} ,
           Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t A -> option A;
@@ -345,54 +369,54 @@ Module Extended.
   Definition Extended_result `{_fargs : FArgs} := @Extended_result.signature _
     _.
   Arguments Extended_result {_ _ _}.
-  
+
   (* Extended *)
   Definition functor `{_fargs : FArgs} :Extended_result (t := _) :=
     {|
-      Extended_result.empty _ := (empty (_fargs := _fargs));
-      Extended_result.add _ := (add (_fargs := _fargs));
-      Extended_result.add_to_list _ := (add_to_list (_fargs := _fargs));
-      Extended_result.update _ := (update (_fargs := _fargs));
-      Extended_result.singleton _ := (singleton (_fargs := _fargs));
-      Extended_result.remove _ := (remove (_fargs := _fargs));
-      Extended_result.merge _ _ _ := (merge (_fargs := _fargs));
-      Extended_result.union _ := (union (_fargs := _fargs));
-      Extended_result.cardinal _ := (cardinal (_fargs := _fargs));
-      Extended_result.bindings _ := (bindings (_fargs := _fargs));
-      Extended_result.min_binding _ := (min_binding (_fargs := _fargs));
-      Extended_result.min_binding_opt _ := (min_binding_opt (_fargs := _fargs));
-      Extended_result.max_binding _ := (max_binding (_fargs := _fargs));
-      Extended_result.max_binding_opt _ := (max_binding_opt (_fargs := _fargs));
-      Extended_result.choose _ := (choose (_fargs := _fargs));
-      Extended_result.choose_opt _ := (choose_opt (_fargs := _fargs));
-      Extended_result.find _ := (find (_fargs := _fargs));
-      Extended_result.find_opt _ := (find_opt (_fargs := _fargs));
-      Extended_result.find_first _ := (find_first (_fargs := _fargs));
-      Extended_result.find_first_opt _ := (find_first_opt (_fargs := _fargs));
-      Extended_result.find_last _ := (find_last (_fargs := _fargs));
-      Extended_result.find_last_opt _ := (find_last_opt (_fargs := _fargs));
-      Extended_result.iter _ := (iter (_fargs := _fargs));
-      Extended_result.fold _ _ := (fold (_fargs := _fargs));
-      Extended_result.map _ _ := (map (_fargs := _fargs));
-      Extended_result.mapi _ _ := (mapi (_fargs := _fargs));
-      Extended_result.filter _ := (filter (_fargs := _fargs));
-      Extended_result.filter_map _ _ := (filter_map (_fargs := _fargs));
-      Extended_result.partition _ := (partition (_fargs := _fargs));
-      Extended_result.split _ := (split (_fargs := _fargs));
-      Extended_result.is_empty _ := (is_empty (_fargs := _fargs));
-      Extended_result.mem _ := (mem (_fargs := _fargs));
-      Extended_result.equal _ := (equal (_fargs := _fargs));
-      Extended_result.compare _ := (compare (_fargs := _fargs));
-      Extended_result.for_all _ := (for_all (_fargs := _fargs));
-      Extended_result._exists _ := (_exists (_fargs := _fargs));
-      Extended_result.to_list _ := (to_list (_fargs := _fargs));
-      Extended_result.of_list _ := (of_list (_fargs := _fargs));
-      Extended_result.to_seq _ := (to_seq (_fargs := _fargs));
-      Extended_result.to_rev_seq _ := (to_rev_seq (_fargs := _fargs));
-      Extended_result.to_seq_from _ := (to_seq_from (_fargs := _fargs));
-      Extended_result.add_seq _ := (add_seq (_fargs := _fargs));
-      Extended_result.of_seq _ := (of_seq (_fargs := _fargs));
-      Extended_result.lookup _ := (lookup (_fargs := _fargs))
+      Extended_result.empty _ := empty;
+      Extended_result.add _ := add;
+      Extended_result.add_to_list _ := add_to_list;
+      Extended_result.update _ := update;
+      Extended_result.singleton _ := singleton;
+      Extended_result.remove _ := remove;
+      Extended_result.merge _ _ _ := merge;
+      Extended_result.union _ := union;
+      Extended_result.cardinal _ := cardinal;
+      Extended_result.bindings _ := bindings;
+      Extended_result.min_binding _ _ := min_binding;
+      Extended_result.min_binding_opt _ := min_binding_opt;
+      Extended_result.max_binding _ _ := max_binding;
+      Extended_result.max_binding_opt _ := max_binding_opt;
+      Extended_result.choose _ _ := choose;
+      Extended_result.choose_opt _ := choose_opt;
+      Extended_result.find _ _ := find;
+      Extended_result.find_opt _ := find_opt;
+      Extended_result.find_first _ _ := find_first;
+      Extended_result.find_first_opt _ := find_first_opt;
+      Extended_result.find_last _ _ := find_last;
+      Extended_result.find_last_opt _ := find_last_opt;
+      Extended_result.iter _ := iter;
+      Extended_result.fold _ _ := fold;
+      Extended_result.map _ _ := map;
+      Extended_result.mapi _ _ := mapi;
+      Extended_result.filter _ := filter;
+      Extended_result.filter_map _ _ := filter_map;
+      Extended_result.partition _ := partition;
+      Extended_result.split _ := split;
+      Extended_result.is_empty _ := is_empty;
+      Extended_result.mem _ := mem;
+      Extended_result.equal _ := equal;
+      Extended_result.compare _ := compare;
+      Extended_result.for_all _ := for_all;
+      Extended_result._exists _ := _exists;
+      Extended_result.to_list _ := to_list;
+      Extended_result.of_list _ := of_list;
+      Extended_result.to_seq _ := to_seq;
+      Extended_result.to_rev_seq _ := to_rev_seq;
+      Extended_result.to_seq_from _ := to_seq_from;
+      Extended_result.add_seq _ := add_seq;
+      Extended_result.of_seq _ := of_seq;
+      Extended_result.lookup _ := lookup
     |}.
 End Extended.
 Definition Extended {Ord_t : Set}

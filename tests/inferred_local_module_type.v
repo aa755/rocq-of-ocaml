@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Input.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     value : t;
   }.
@@ -16,54 +16,54 @@ Module Outer.
     X : Input (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Local.
-    Record signature `{_fargs : FArgs} {t : Set -> Set} : Set := {
+    Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
       t := t;
       inject : forall {a : Set} , X.(Input.t) -> a -> t a;
     }.
   End Local.
   Definition Local `{_fargs : FArgs} := @Local.signature _ _.
   Arguments Local {_ _ _}.
-  
+
   Module Make.
     Class FArgs `{_fargs : FArgs} {M_t : Set -> Set} := {
       M : Local (t := M_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-    
+
     (** Inclusion of the module [M] *)
     Definition t `{_fargs : FArgs} (a : Set) := M.(Local.t) a.
-    
+
     Definition inject `{_fargs : FArgs} {a : Set} : X.(Input.t) -> a -> t a :=
       M.(Local.inject).
-    
+
     (* Make *)
     Definition functor `{_fargs : FArgs}
       :Local (t := fun (a : Set) => M.(Local.t) a) :=
       {|
-        Local.inject _ := (inject (_fargs := _fargs))
+        Local.inject _ := inject
       |}.
   End Make.
   Definition Make `{_fargs : FArgs} {M_t : Set -> Set} (M : Local (t := M_t)) :=
     @Make.functor _ _ M_t (Make.Build_FArgs M).
-  
+
   Module Outer_result.
-    Inductive signature `{_fargs : FArgs} : Set :=
+    Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-  
+
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result X_t _fargs :=
-    ((ltac:(constructor) : Outer_result) : @Outer_result X_t _fargs).
+    ((@Outer_result.Build_signature X_t _fargs) : @Outer_result X_t _fargs).
 End Outer.
 Definition Outer {X_t : Set} (X : Input (t := X_t)) :=
   @Outer.functor X_t (Outer.Build_FArgs X).
 
 Module Inline_T_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     other : t;
   }.
@@ -76,24 +76,22 @@ Module Inline.
     T : Inline_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition result_value `{_fargs : FArgs} : T.(Inline_T_signature.t) :=
     T.(Inline_T_signature.other).
-  
+
   Module Inline_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       result_value : T.(Inline_T_signature.t);
     }.
   End Inline_result.
   Definition Inline_result `{_fargs : FArgs} := @Inline_result.signature _ _.
   Arguments Inline_result {_ _}.
-  
+
   (* Inline *)
   Definition functor `{_fargs : FArgs} :@Inline_result T_t _fargs :=
-    ({|
-      Inline_result.result_value (T_t := T_t) (_fargs := _fargs) :=
-        (result_value (_fargs := _fargs))
-    |} : @Inline_result T_t _fargs).
+    ((@Inline_result.Build_signature T_t _fargs result_value) :
+      @Inline_result T_t _fargs).
 End Inline.
 Definition Inline {T_t : Set} (T : Inline_T_signature (t := T_t)) :=
   @Inline.functor T_t (Inline.Build_FArgs T).

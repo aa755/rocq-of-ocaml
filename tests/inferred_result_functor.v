@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Input.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     value : t;
   }.
@@ -12,7 +12,7 @@ Definition Input := @Input.signature.
 Arguments Input {_}.
 
 Module Output.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     pair_value : t;
   }.
@@ -25,45 +25,43 @@ Module Outer.
     X : Input (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition outer_value `{_fargs : FArgs} : X.(Input.t) := X.(Input.value).
-  
+
   Module F.
     Class FArgs `{_fargs : FArgs} {Y_t : Set} := {
       Y : Input (t := Y_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-    
+
     Definition t `{_fargs : FArgs} : Set := X.(Input.t) * Y.(Input.t).
-    
+
     Definition pair_value `{_fargs : FArgs} : X.(Input.t) * Y.(Input.t) :=
       (X.(Input.value), Y.(Input.value)).
-    
+
     (* F *)
     Definition functor `{_fargs : FArgs}
       :Output (t := X.(Input.t) * Y.(Input.t)) :=
       {|
-        Output.pair_value := (pair_value (_fargs := _fargs))
+        Output.pair_value := pair_value
       |}.
   End F.
   Definition F `{_fargs : FArgs} {Y_t : Set} (Y : Input (t := Y_t)) :=
     @F.functor _ _ Y_t (F.Build_FArgs Y).
-  
+
   Module Outer_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       outer_value : X.(Input.t);
-    
+
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-  
+
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result X_t _fargs :=
-    ({|
-      Outer_result.outer_value (X_t := X_t) (_fargs := _fargs) :=
-        (outer_value (_fargs := _fargs))
-    |} : @Outer_result X_t _fargs).
+    ((@Outer_result.Build_signature X_t _fargs outer_value) :
+      @Outer_result X_t _fargs).
 End Outer.
 Definition Outer {X_t : Set} (X : Input (t := X_t)) :=
   @Outer.functor X_t (Outer.Build_FArgs X).

@@ -14,7 +14,7 @@ Definition OrderedType := @OrderedType.signature.
 Arguments OrderedType {_}.
 
 Module S.
-  Record signature {elt : Set} {t : Set} : Set := {
+  Record signature {elt : Set} {t : Set} : Type := {
     elt := elt;
     t := t;
     empty : t;
@@ -27,17 +27,17 @@ Module S.
     diff : t -> t -> t;
     cardinal : t -> int;
     elements : t -> list elt;
-    min_elt : t -> elt;
+    min_elt : forall `{Unreachable elt}, t -> elt;
     min_elt_opt : t -> option elt;
-    max_elt : t -> elt;
+    max_elt : forall `{Unreachable elt}, t -> elt;
     max_elt_opt : t -> option elt;
-    choose : t -> elt;
+    choose : forall `{Unreachable elt}, t -> elt;
     choose_opt : t -> option elt;
-    find : elt -> t -> elt;
+    find : forall `{Unreachable elt}, elt -> t -> elt;
     find_opt : elt -> t -> option elt;
-    find_first : (elt -> bool) -> t -> elt;
+    find_first : forall `{Unreachable elt}, (elt -> bool) -> t -> elt;
     find_first_opt : (elt -> bool) -> t -> option elt;
-    find_last : (elt -> bool) -> t -> elt;
+    find_last : forall `{Unreachable elt}, (elt -> bool) -> t -> elt;
     find_last_opt : (elt -> bool) -> t -> option elt;
     iter : (elt -> unit) -> t -> unit;
     fold : forall {acc : Set}, (elt -> acc -> acc) -> t -> acc -> acc;
@@ -110,10 +110,10 @@ Module Make.
     Definition mem (value : elt) (set : t) : bool :=
       match find_opt value set with Some _ => true | None => false end.
 
-    Definition find (value : elt) (set : t) : elt :=
+    Definition find `{Unreachable elt} (value : elt) (set : t) : elt :=
       match find_opt value set with
       | Some existing => existing
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
     Definition singleton (value : elt) : t := [value].
@@ -162,19 +162,19 @@ Module Make.
 
     Definition choose_opt (set : t) : option elt := min_elt_opt set.
 
-    Definition min_elt (set : t) : elt :=
+    Definition min_elt `{Unreachable elt} (set : t) : elt :=
       match min_elt_opt set with
       | Some value => value
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
-    Definition max_elt (set : t) : elt :=
+    Definition max_elt `{Unreachable elt} (set : t) : elt :=
       match max_elt_opt set with
       | Some value => value
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
-    Definition choose (set : t) : elt := min_elt set.
+    Definition choose `{Unreachable elt} (set : t) : elt := min_elt set.
 
     Fixpoint find_first_opt
         (predicate : elt -> bool) (set : t) : option elt :=
@@ -198,16 +198,18 @@ Module Make.
         (predicate : elt -> bool) (set : t) : option elt :=
       find_last_acc predicate set None.
 
-    Definition find_first (predicate : elt -> bool) (set : t) : elt :=
+    Definition find_first `{Unreachable elt}
+        (predicate : elt -> bool) (set : t) : elt :=
       match find_first_opt predicate set with
       | Some value => value
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
-    Definition find_last (predicate : elt -> bool) (set : t) : elt :=
+    Definition find_last `{Unreachable elt}
+        (predicate : elt -> bool) (set : t) : elt :=
       match find_last_opt predicate set with
       | Some value => value
-      | None => Basics.axiom
+      | None => unreachable
       end.
 
     Fixpoint iter (f : elt -> unit) (set : t) : unit :=
@@ -344,17 +346,17 @@ Module Make.
          S.diff := diff;
          S.cardinal := cardinal;
          S.elements := elements;
-         S.min_elt := min_elt;
+         S.min_elt _ := min_elt;
          S.min_elt_opt := min_elt_opt;
-         S.max_elt := max_elt;
+         S.max_elt _ := max_elt;
          S.max_elt_opt := max_elt_opt;
-         S.choose := choose;
+         S.choose _ := choose;
          S.choose_opt := choose_opt;
-         S.find := find;
+         S.find _ := find;
          S.find_opt := find_opt;
-         S.find_first := find_first;
+         S.find_first _ := find_first;
          S.find_first_opt := find_first_opt;
-         S.find_last := find_last;
+         S.find_last _ := find_last;
          S.find_last_opt := find_last_opt;
          S.iter := iter;
          S.fold _ := fold;

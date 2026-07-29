@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module First_T_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End First_T_signature.
@@ -15,23 +15,21 @@ Module First.
     T : First_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition id `{_fargs : FArgs} (x_value : T.(First_T_signature.t))
     : T.(First_T_signature.t) := x_value.
-  
+
   Module First_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       id : T.(First_T_signature.t) -> T.(First_T_signature.t);
     }.
   End First_result.
   Definition First_result `{_fargs : FArgs} := @First_result.signature _ _.
   Arguments First_result {_ _}.
-  
+
   (* First *)
   Definition functor `{_fargs : FArgs} :@First_result T_t _fargs :=
-    ({|
-      First_result.id (T_t := T_t) (_fargs := _fargs) := (id (_fargs := _fargs))
-    |} : @First_result T_t _fargs).
+    ((@First_result.Build_signature T_t _fargs id) : @First_result T_t _fargs).
 End First.
 Definition First {T_t : Set} (T : First_T_signature (t := T_t)) :=
   @First.functor T_t (First.Build_FArgs T).
@@ -41,24 +39,21 @@ Module Second.
     T : First_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition id `{_fargs : FArgs} (x_value : T.(First_T_signature.t))
     : T.(First_T_signature.t) := x_value.
-  
+
   Module Second_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       id : T.(First_T_signature.t) -> T.(First_T_signature.t);
     }.
   End Second_result.
   Definition Second_result `{_fargs : FArgs} := @Second_result.signature _ _.
   Arguments Second_result {_ _}.
-  
+
   (* Second *)
   Definition functor `{_fargs : FArgs} :@Second_result T_t _fargs :=
-    ({|
-      Second_result.id (T_t := T_t) (_fargs := _fargs) :=
-        (id (_fargs := _fargs))
-    |} : @Second_result T_t _fargs).
+    ((@Second_result.Build_signature T_t _fargs id) : @Second_result T_t _fargs).
 End Second.
 Definition Second {T_t : Set} (T : First_T_signature (t := T_t)) :=
   @Second.functor T_t (Second.Build_FArgs T).
@@ -92,32 +87,33 @@ Module Interface.
     H : First_T_signature (t := H_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module S.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       get : H.(First_T_signature.t);
     }.
   End S.
   Definition S `{_fargs : FArgs} := @S.signature _ _.
   Arguments S {_ _}.
-  
+
   Module Interface_result.
-    Inductive signature `{_fargs : FArgs} : Set :=
+    Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Interface_result.
   Definition Interface_result `{_fargs : FArgs} := @Interface_result.signature _
     _.
   Arguments Interface_result {_ _}.
-  
+
   (* Interface *)
   Definition functor `{_fargs : FArgs} :@Interface_result H_t _fargs :=
-    ((ltac:(constructor) : Interface_result) : @Interface_result H_t _fargs).
+    ((@Interface_result.Build_signature H_t _fargs) :
+      @Interface_result H_t _fargs).
 End Interface.
 Definition Interface {H_t : Set} (H : First_T_signature (t := H_t)) :=
   @Interface.functor H_t (Interface.Build_FArgs H).
 
 Module RESULT.
-  Record signature : Set := {
+  Record signature : Type := {
     token : unit;
   }.
 End RESULT.
@@ -130,24 +126,22 @@ Module Consumer.
     X : Interface.S (_fargs := Interface.Build_FArgs T);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition Applied `{_fargs : FArgs} := F X.
-  
+
   Module Consumer_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Applied : RESULT;
     }.
   End Consumer_result.
   Definition Consumer_result `{_fargs : FArgs} := @Consumer_result.signature _
     _.
   Arguments Consumer_result {_ _}.
-  
+
   (* Consumer *)
   Definition functor `{_fargs : FArgs} :@Consumer_result T_t _fargs :=
-    ({|
-      Consumer_result.Applied (T_t := T_t) (_fargs := _fargs) :=
-        (Applied (_fargs := _fargs))
-    |} : @Consumer_result T_t _fargs).
+    ((@Consumer_result.Build_signature T_t _fargs Applied) :
+      @Consumer_result T_t _fargs).
 End Consumer.
 Definition Consumer {T_t : Set}
   (T : First_T_signature (t := T_t))

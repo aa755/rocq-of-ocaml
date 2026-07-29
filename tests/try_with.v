@@ -2,13 +2,17 @@
 Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
-Definition recover {A : Set} (f_value : unit -> A) : sum A string :=
+Definition recover {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
+  (f_value : unit -> A) : sum A string :=
   try_with (fun _ => ((inl (f_value tt)) : sum A string))
     (fun _exception_value =>
       match _exception_value with
       | Build_extensible tag _ payload =>
         if String.eqb tag "Parse_error" then
-          let message := cast string payload in
+          let message :=
+            (let '_ := payload in
+            (@RocqOfOCaml.Basics.unreachable string _)) in
           ((inr message) : sum A string)
         else
           ((inr "unknown") : sum A string)
@@ -21,14 +25,17 @@ Definition recover_any (value : int) : int :=
       0).
 
 Definition recover_only {A : Set}
-  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (sum A string)}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
+  `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (sum A string)}
   (f_value : unit -> A) : sum A string :=
   try_with (fun _ => ((inl (f_value tt)) : sum A string))
     (fun _exception_value =>
       match _exception_value with
       | Build_extensible tag _ payload =>
         if String.eqb tag "Parse_error" then
-          let message := cast string payload in
+          let message :=
+            (let '_ := payload in
+            (@RocqOfOCaml.Basics.unreachable string _)) in
           ((inr message) : sum A string)
         else
           (@RocqOfOCaml.Basics.unreachable (sum A string) _)

@@ -10,14 +10,14 @@ End Nested.
 
 Module Packed.
   Definition keep_packed : int := 6.
-  
+
   Module Packed_signature.
-    Record signature : Set := {
+    Record signature : Type := {
       keep_packed : int;
     }.
   End Packed_signature.
   Definition Packed_signature := Packed_signature.signature.
-  
+
   (* Packed *)
   Definition module :Packed_signature :=
     {|

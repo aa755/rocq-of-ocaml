@@ -34,25 +34,35 @@ Module Bar.
 End Bar.
 Definition Bar := Bar.record.
 
-Definition match_ex (x_value : ex) : int :=
+Definition match_ex
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Re}
+  `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int}
+  `{_rocq_assumption_2 : RocqOfOCaml.Basics.Unreachable (string * bool)}
+  (x_value : ex) : int :=
   match x_value with
   | Build_extensible tag _ payload =>
     if String.eqb tag "Empty" then
       0
     else
       if String.eqb tag "Int" then
-        let n_value := cast int payload in
+        let n_value :=
+          (let '_ := payload in
+          (@RocqOfOCaml.Basics.unreachable int _)) in
         n_value
       else
         if String.eqb tag "String" then
-          let '(m_value, b_value) := cast (string * bool) payload in
+          let '(m_value, b_value) :=
+            (let '_ := payload in
+            (@RocqOfOCaml.Basics.unreachable (string * bool) _)) in
           if b_value then
             RocqOfOCaml.OCamlString.length m_value
           else
             0
         else
           if String.eqb tag "Re" then
-            let '{| Re.v := v_value; Re.n := n_value |} := cast Re payload in
+            let '{| Re.v := v_value; Re.n := n_value |} :=
+              (let '_ := payload in
+              (@RocqOfOCaml.Basics.unreachable Re _)) in
             Z.add n_value (RocqOfOCaml.OCamlString.length v_value)
           else
             (-1)

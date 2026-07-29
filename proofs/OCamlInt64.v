@@ -76,10 +76,10 @@ Definition of_string_opt (value : string) : option t :=
   | None => None
   end.
 
-Definition of_string (value : string) : t :=
+Definition of_string `{Unreachable t} (value : string) : t :=
   match of_string_opt value with
   | Some parsed => parsed
-  | None => axiom
+  | None => unreachable
   end.
 
 Definition to_string (value : t) : string := OCamlZ.to_string value.

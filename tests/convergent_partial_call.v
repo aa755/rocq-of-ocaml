@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module RUNTIME.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     _return : forall {a : Set} , a -> t a;
     op_letdollar : forall {a b : Set} , t a -> (a -> t b) -> t b;
@@ -18,29 +18,26 @@ Module Use.
     M : RUNTIME (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Program Definition collect `{_fargs : FArgs} (values : list int)
     : M.(RUNTIME.t) (list int) :=
     M.(RUNTIME.Seq_mapM)
       (fun (value : int) => (M.(RUNTIME._return) (a := int)) (Z.add value 1))
       values.
-  
+
   Admit Obligations.
-  
+
   Module Use_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       collect : list int -> M.(RUNTIME.t) (list int);
     }.
   End Use_result.
   Definition Use_result `{_fargs : FArgs} := @Use_result.signature _ _.
   Arguments Use_result {_ _}.
-  
+
   (* Use *)
   Definition functor `{_fargs : FArgs} :@Use_result M_t _fargs :=
-    ({|
-      Use_result.collect (M_t := M_t) (_fargs := _fargs) :=
-        (collect (_fargs := _fargs))
-    |} : @Use_result M_t _fargs).
+    ((@Use_result.Build_signature M_t _fargs collect) : @Use_result M_t _fargs).
 End Use.
 Definition Use {M_t : Set -> Set} (M : RUNTIME (t := M_t)) :=
   @Use.functor M_t (Use.Build_FArgs M).

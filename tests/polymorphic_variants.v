@@ -18,13 +18,17 @@ Definition match_variant
       0
     else
       if String.eqb _variant_tag "B" then
-        let n_value := cast int _variant_payload in
+        let n_value :=
+          (let '_ := _variant_payload in
+          (@RocqOfOCaml.Basics.unreachable int _)) in
         n_value
       else
         (@RocqOfOCaml.Basics.unreachable int _)
   end.
 
-Definition match_open (x_value : Variant.t) : int :=
+Definition match_open
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+  (x_value : Variant.t) : int :=
   let _variant_value := x_value in
   match _variant_value with
   | Variant.Build _variant_tag _ _variant_payload =>
@@ -32,18 +36,24 @@ Definition match_open (x_value : Variant.t) : int :=
       0
     else
       if String.eqb _variant_tag "B" then
-        let n_value := cast int _variant_payload in
+        let n_value :=
+          (let '_ := _variant_payload in
+          (@RocqOfOCaml.Basics.unreachable int _)) in
         n_value
       else
         (-1)
   end.
 
-Definition match_payload_constant (x_value : Variant.t) : int :=
+Definition match_payload_constant
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
+  (x_value : Variant.t) : int :=
   let _variant_value := x_value in
   match _variant_value with
   | Variant.Build _variant_tag _ _variant_payload =>
     if String.eqb _variant_tag "String" then
-      match cast string _variant_payload with
+      match
+        (let '_ := _variant_payload in
+        (@RocqOfOCaml.Basics.unreachable string _)) with
       | "" => 0
       | _ => 1
       end
@@ -53,7 +63,9 @@ Definition match_payload_constant (x_value : Variant.t) : int :=
 
 Definition active : Set := Variant.t.
 
-Definition narrow (x_value : Variant.t) : option active :=
+Definition narrow
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+  (x_value : Variant.t) : option active :=
   let _variant_value := x_value in
   match _variant_value with
   | Variant.Build _variant_tag _ _variant_payload =>

@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Included.
-  Record signature {item : Set} : Set := {
+  Record signature {item : Set} : Type := {
     item := item;
     item_value : item;
   }.
@@ -33,14 +33,14 @@ Definition point := point.record.
 
 Module M.
   Parameter t : Set.
-  
+
   Parameter v_value : t.
 End M.
 
 Module Alias := M.
 
 Module NestedSig.
-  Record signature : Set := {
+  Record signature : Type := {
     nested_sig_value : int;
   }.
 End NestedSig.
@@ -48,12 +48,12 @@ Definition NestedSig := NestedSig.signature.
 
 Module FromTypeof.
   Parameter t : Set.
-  
+
   Parameter v_value : t.
 End FromTypeof.
 
 Module Arg.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     v_value : t;
   }.
@@ -62,7 +62,7 @@ Definition Arg := @Arg.signature.
 Arguments Arg {_}.
 
 Module Result.
-  Record signature {result : Set} : Set := {
+  Record signature {result : Set} : Type := {
     result := result;
     result_value : int -> result;
   }.

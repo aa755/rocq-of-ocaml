@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module F_X_signature.
-  Record signature : Set := {
+  Record signature : Type := {
     value : int;
   }.
 End F_X_signature.
@@ -13,21 +13,21 @@ Module F.
   Class FArgs := {
     X : F_X_signature;
   }.
-  
+
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := int.
-    
+
     Definition value `{_fargs : FArgs} : int := X.(F_X_signature.value).
-    
+
     Module Impl_signature.
-      Record signature `{_fargs : FArgs} : Set := {
+      Record signature `{_fargs : FArgs} : Type := {
         t := int;
         value : t;
       }.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_}.
-    
+
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature :=
       {|
@@ -35,14 +35,14 @@ Module F.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-  
+
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-  
+
   Definition value `{_fargs : FArgs} : t := Impl.(Impl.Impl_signature.value).
-  
+
   Module F_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Impl : F.Impl.Impl_signature;
       t := int;
       value : int;
@@ -50,13 +50,10 @@ Module F.
   End F_result.
   Definition F_result `{_fargs : FArgs} := @F_result.signature _.
   Arguments F_result {_}.
-  
+
   (* F *)
   Definition functor `{_fargs : FArgs} :@F_result _fargs :=
-    ({|
-      F_result.Impl (_fargs := _fargs) := (Impl (_fargs := _fargs));
-      F_result.value (_fargs := _fargs) := (value (_fargs := _fargs))
-    |} : @F_result _fargs).
+    ((@F_result.Build_signature _fargs Impl value) : @F_result _fargs).
 End F.
 Definition F (X : F_X_signature) := @F.functor (F.Build_FArgs X).
 
@@ -67,25 +64,25 @@ Module Applied.
       ({|
         F_X_signature.value := value
       |} : F_X_signature)).
-  
+
   Definition F_include : F.F_result (_fargs := F_include_fargs) :=
     F
       (let value := 7 in
       ({|
         F_X_signature.value := value
       |} : F_X_signature)).
-  
+
   (** Inclusion of the module [F_include] *)
   Module Impl.
     Definition t := F_include.(F.F_result.Impl).(F.Impl.Impl_signature.t).
-    
+
     Definition value : t :=
       F_include.(F.F_result.Impl).(F.Impl.Impl_signature.value).
   End Impl.
-  
+
   Definition Impl := F_include.(F.F_result.Impl).
-  
+
   Definition t := F_include.(F.F_result.t).
-  
+
   Definition value : t := F_include.(F.F_result.value).
 End Applied.

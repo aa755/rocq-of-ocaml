@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Input.
-  Record signature : Set := {
+  Record signature : Type := {
     token : int;
   }.
 End Input.
@@ -13,28 +13,25 @@ Module Make.
   Class FArgs := {
     X : Input;
   }.
-  
+
   Definition identity `{_fargs : FArgs} {A : Set} (x_value : A) : A := x_value.
-  
+
   Definition pair_value `{_fargs : FArgs} {A B : Set}
     (x_value : A) (y_value : B) : int * A * B :=
     (X.(Input.token), x_value, y_value).
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       identity : forall {A : Set} , A -> A;
       pair_value : forall {A B : Set} , A -> B -> int * A * B;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
-    ({|
-      Make_result.identity (_fargs := _fargs) _ := (identity (_fargs := _fargs));
-      Make_result.pair_value (_fargs := _fargs) _ _ :=
-        (pair_value (_fargs := _fargs))
-    |} : @Make_result _fargs).
+    ((@Make_result.Build_signature _fargs (fun _ => identity)
+      (fun _ _ => pair_value)) : @Make_result _fargs).
 End Make.
 Definition Make (X : Input) := @Make.functor (Make.Build_FArgs X).

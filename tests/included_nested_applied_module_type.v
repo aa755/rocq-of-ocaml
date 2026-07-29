@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module BOX.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     empty : t;
   }.
@@ -12,7 +12,7 @@ Definition BOX := @BOX.signature.
 Arguments BOX {_}.
 
 Module ARGUMENT.
-  Record signature : Set := {
+  Record signature : Type := {
     token : unit;
   }.
 End ARGUMENT.
@@ -20,7 +20,7 @@ Definition ARGUMENT := ARGUMENT.signature.
 
 Module DefaultArgument.
   Definition token : unit := tt.
-  
+
   (* DefaultArgument *)
   Definition module :ARGUMENT :=
     {|
@@ -33,15 +33,15 @@ Module Box.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-  
+
   Definition t `{_fargs : FArgs} : Set := list int.
-  
+
   Definition empty `{_fargs : FArgs} {A : Set} : list A := nil.
-  
+
   (* Box *)
   Definition functor `{_fargs : FArgs} :BOX (t := t) :=
     {|
-      BOX.empty := (empty (_fargs := _fargs))
+      BOX.empty := empty
     |}.
 End Box.
 Definition Box (Argument : ARGUMENT) := @Box.functor (Box.Build_FArgs Argument).
@@ -52,8 +52,8 @@ End State.
 
 Module Reexport.
   Definition Applied := State.Applied.
-  
+
   Definition contents : Set := Applied.(BOX.t).
-  
+
   Definition empty : Applied.(BOX.t) := Applied.(BOX.empty).
 End Reexport.

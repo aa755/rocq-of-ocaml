@@ -7,9 +7,8 @@ Local Open Scope Z_scope.
 (** Executable model of OCaml 5.4's [Stdlib.Option] module.
 
     The ordinary operations reduce directly on Gallina's [option].  OCaml's
-    [Option.get None] raises [Invalid_argument]; generated pure Gallina has no
-    exception effect, so that exceptional branch uses the translator's
-    existing partial-operation axiom. *)
+    [Option.get None] raises [Invalid_argument], so [get] requires an explicit
+    [Unreachable] witness for executions where that branch cannot occur. *)
 
 Definition t (a : Set) : Set := option a.
 
@@ -23,10 +22,10 @@ Definition value {a : Set} (o : option a) (default : a) : a :=
   | None => default
   end.
 
-Definition get {a : Set} (o : option a) : a :=
+Definition get {a : Set} `{Unreachable a} (o : option a) : a :=
   match o with
   | Some value => value
-  | None => Basics.axiom
+  | None => unreachable
   end.
 
 Definition bind {a b : Set}

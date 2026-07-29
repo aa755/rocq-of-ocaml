@@ -7,13 +7,11 @@ end
 
 module Make (M : MONAD) = struct
   module Seq = struct
-    let rec sequence values =
-      match values () with
-      | Seq.Nil -> M.return Seq.empty
-      | Seq.Cons (value, rest) ->
-          M.bind value (fun value ->
-              M.bind (sequence rest) (fun rest ->
-                  M.return (Seq.cons value rest)))
+    let rec sequence value =
+      if value = 0 then M.return []
+      else
+        M.bind (sequence value) (fun rest ->
+            M.return (value :: rest))
   end
 end
 

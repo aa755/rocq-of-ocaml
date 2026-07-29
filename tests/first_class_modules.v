@@ -4,7 +4,7 @@ Require Import RocqOfOCaml.Settings.
 
 Module S.
   Module SET.
-    Record signature {elt t : Set} : Set := {
+    Record signature {elt : Set} {t : Set} : Type := {
       elt := elt;
       t := t;
       empty : t;
@@ -68,7 +68,7 @@ Inductive comparable_struct : Set :=
 Definition comparable_ty : Set := comparable_struct.
 
 Module Boxed_set.
-  Record signature {elt OPS_t : Set} : Set := {
+  Record signature {elt : Set} {OPS_t : Set} : Type := {
     elt := elt;
     elt_ty : comparable_ty;
     OPS : S.SET (elt := elt) (t := OPS_t);
@@ -83,7 +83,7 @@ Definition set (elt : Set) : Set :=
   {OPS_t : Set @ Boxed_set (elt := elt) (OPS_t := OPS_t)}.
 
 Module IncludedFoo.
-  Record signature {bar : Set} : Set := {
+  Record signature {bar : Set} : Type := {
     bar := bar;
     foo : bar;
   }.
@@ -92,7 +92,7 @@ Definition IncludedFoo := @IncludedFoo.signature.
 Arguments IncludedFoo {_}.
 
 Module Triple.
-  Record signature {a b c bar : Set} : Set := {
+  Record signature {a : Set} {b : Set} {c : Set} {bar : Set} : Type := {
     a := a;
     b := b;
     c := c;
@@ -126,7 +126,8 @@ Definition tripe
     |}).
 
 Module UsingTriple.
-  Record signature {elt' T_a T_b T_c T_bar OPS'_elt OPS'_t : Set} : Set := {
+  Record signature {elt' : Set} {T_a : Set} {T_b : Set} {T_c : Set}
+    {T_bar : Set} {OPS'_elt : Set} {OPS'_t : Set} : Type := {
     elt' := elt';
     T : Triple (a := T_a) (b := T_b) (c := T_c) (bar := T_bar);
     OPS' : S.SET (elt := OPS'_elt) (t := OPS'_t);
@@ -209,7 +210,7 @@ Definition set_nested {elt : Set} (Box : set elt) : set elt :=
     |}).
 
 Module MAP.
-  Record signature {key : Set} {t : Set -> Set} : Set := {
+  Record signature {key : Set} {t : Set -> Set} : Type := {
     key := key;
     t := t;
     empty : forall {a : Set} , t a;

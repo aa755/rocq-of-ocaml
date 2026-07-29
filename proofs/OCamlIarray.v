@@ -17,14 +17,21 @@ Fixpoint init_nat {a : Set}
       element index :: init_nat remaining' (index + 1) element
   end.
 
-Definition init {a : Set} (count : int) (element : int -> a) : t a :=
-  init_nat (Z.to_nat count) 0 element.
+Definition init {a : Set} `{Unreachable (t a)}
+    (count : int) (element : int -> a) : t a :=
+  if Z.ltb count 0
+  then unreachable
+  else init_nat (Z.to_nat count) 0 element.
 
-Definition get {a : Set} (values : t a) (index : int) : a :=
-  match List.nth_error values (Z.to_nat index) with
-  | Some value => value
-  | None => axiom
-  end.
+Definition get {a : Set} `{Unreachable a}
+    (values : t a) (index : int) : a :=
+  if Z.ltb index 0 then
+    unreachable
+  else
+    match List.nth_error values (Z.to_nat index) with
+    | Some value => value
+    | None => unreachable
+    end.
 
 Definition map {a b : Set} (function_value : a -> b) (values : t a) : t b :=
   List.map function_value values.
@@ -66,25 +73,8 @@ Definition find_mapi {a b : Set}
     (function_value : int -> a -> option b) (values : t a) : option b :=
   find_mapi_from function_value 0 values.
 
-Fixpoint to_seq_node {a : Set} (values : t a) : OCamlSeq.node a :=
-  match values with
-  | [] => OCamlSeq.Nil
-  | value :: values' =>
-      OCamlSeq.Cons value (fun _ => to_seq_node values')
-  end.
-
 Definition to_seq {a : Set} (values : t a) : OCamlSeq.t a :=
-  fun _ => to_seq_node values.
-
-#[bypass_check(guard)]
-Fixpoint of_seq_guarded {a : Set}
-    (values : OCamlSeq.t a) (guard : GeneralRecursionGuard)
-    {struct guard} : t a :=
-  match values tt with
-  | OCamlSeq.Nil => []
-  | OCamlSeq.Cons value values' =>
-      value :: of_seq_guarded values' guard
-  end.
+  OCamlSeq.of_list values.
 
 Definition of_seq {a : Set} (values : OCamlSeq.t a) : t a :=
-  of_seq_guarded values general_recursion_guard.
+  OCamlSeq.to_list values.

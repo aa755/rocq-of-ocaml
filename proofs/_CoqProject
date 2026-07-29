@@ -26,7 +26,6 @@ OCamlList.v
 OCamlMap.v
 OCamlOption.v
 OCamlResult.v
-OCamlSeqGenerated.v
 OCamlSeq.v
 OCamlSet.v
 OCamlUchar.v

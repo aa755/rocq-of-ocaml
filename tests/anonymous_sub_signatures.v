@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module T_bytes.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     to_bytes : t -> bytes;
     of_bytes_exn : bytes -> t;
@@ -13,7 +13,7 @@ Definition T_bytes := @T_bytes.signature.
 Arguments T_bytes {_}.
 
 Module T_encoding.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     encoding : list t;
   }.
@@ -22,7 +22,7 @@ Definition T_encoding := @T_encoding.signature.
 Arguments T_encoding {_}.
 
 Module T_encoding_bytes.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     to_bytes : t -> bytes;
     of_bytes_exn : bytes -> t;
@@ -33,15 +33,15 @@ Definition T_encoding_bytes := @T_encoding_bytes.signature.
 Arguments T_encoding_bytes {_}.
 
 Module WithBar.
-  Record signature : Set := {
+  Record signature : Type := {
     bar : string;
   }.
 End WithBar.
 Definition WithBar := WithBar.signature.
 
 Module Validator.
-  Record signature
-    {Ciphertext_t Commitment_t Commitment_NestedLevel_t CV_t : Set} : Set := {
+  Record signature {Ciphertext_t : Set} {Commitment_t : Set}
+    {Commitment_NestedLevel_t : Set} {CV_t : Set} : Type := {
     Ciphertext_t := Ciphertext_t;
     Ciphertext_encoding : list Ciphertext_t;
     Ciphertext_get_memo_size : Ciphertext_t -> int;
@@ -70,17 +70,17 @@ Module F.
         (CV_t := V_CV_t);
   }.
   Arguments Build_FArgs {_ _ _ _}.
-  
+
   Definition foo `{_fargs : FArgs} : Set :=
     V.(Validator.Commitment_t) * V.(Validator.Commitment_NestedLevel_t).
-  
+
   Definition bar `{_fargs : FArgs} : string :=
     V.(Validator.Commitment_Foo).(WithBar.bar).
-  
+
   (* F *)
   Definition functor `{_fargs : FArgs} :WithBar :=
     {|
-      WithBar.bar := (bar (_fargs := _fargs))
+      WithBar.bar := bar
     |}.
 End F.
 Definition F

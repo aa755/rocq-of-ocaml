@@ -41,7 +41,9 @@ Module Delay.
 End Delay.
 
 Module Resumption.
-  CoInductive t (M : Set -> Set) (A : Set) : Set :=
+  (** [Bind] hides the result type of an arbitrary [M] action.  Under
+      predicative [Set], that existential package belongs in [Type]. *)
+  CoInductive t (M : Set -> Set) (A : Set) : Type :=
   | Done : A -> t M A
   | Tau : (unit -> t M A) -> t M A
   | Bind : forall X : Set, M X -> (X -> t M A) -> t M A
@@ -85,7 +87,7 @@ Module Resumption.
                   (fun mapped_rest => Done (cons mapped mapped_rest)))
         end).
 
-  Inductive converges {M : Set -> Set} {A : Set} : t M A -> Set :=
+  Inductive converges {M : Set -> Set} {A : Set} : t M A -> Type :=
   | ConvergesDone : forall value, converges (Done value)
   | ConvergesTau : forall next,
       converges (next tt) ->

@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module TYPE.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End TYPE.
@@ -15,13 +15,13 @@ Module Identity.
     T : TYPE (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition t `{_fargs : FArgs} : Set := T.(TYPE.t).
-  
+
   Definition identity `{_fargs : FArgs} (value : t) : t := value.
-  
+
   Module Identity_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := T.(TYPE.t);
       identity : T.(TYPE.t) -> T.(TYPE.t);
     }.
@@ -29,20 +29,18 @@ Module Identity.
   Definition Identity_result `{_fargs : FArgs} := @Identity_result.signature _
     _.
   Arguments Identity_result {_ _}.
-  
+
   (* Identity *)
   Definition functor `{_fargs : FArgs} :@Identity_result T_t _fargs :=
-    ({|
-      Identity_result.identity (T_t := T_t) (_fargs := _fargs) :=
-        (identity (_fargs := _fargs))
-    |} : @Identity_result T_t _fargs).
+    ((@Identity_result.Build_signature T_t _fargs identity) :
+      @Identity_result T_t _fargs).
 End Identity.
 Definition Identity {T_t : Set} (T : TYPE (t := T_t)) :=
   @Identity.functor T_t (Identity.Build_FArgs T).
 
 Module Int_type.
   Definition t : Set := int.
-  
+
   (* Int_type *)
   Definition module :TYPE (t := t) := (ltac:(constructor) : TYPE (t := t)).
 End Int_type.
@@ -50,7 +48,7 @@ Definition Int_type := Int_type.module.
 
 Module Nested.
   Definition M_fargs := Identity.Build_FArgs Int_type.
-  
+
   Definition M : Identity.Identity_result (_fargs := M_fargs) :=
     Identity Int_type.
 End Nested.

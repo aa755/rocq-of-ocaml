@@ -13,15 +13,17 @@ Definition _error {e a : Set} (error : e) : t a e := inr error.
 Definition value {a e : Set} (result : t a e) (default : a) : a :=
   match result with inl value => value | inr _ => default end.
 
-Definition get_ok {a e : Set} (result : t a e) : a :=
-  match result with inl value => value | inr _ => axiom end.
+Definition get_ok {a e : Set} `{Unreachable a} (result : t a e) : a :=
+  match result with inl value => value | inr _ => unreachable end.
 
-Definition get_ok' {a : Set} (result : t a string) : a := get_ok result.
+Definition get_ok' {a : Set} `{Unreachable a}
+    (result : t a string) : a := get_ok result.
 
-Definition get_error {a e : Set} (result : t a e) : e :=
-  match result with inl _ => axiom | inr error => error end.
+Definition get_error {a e : Set} `{Unreachable e} (result : t a e) : e :=
+  match result with inl _ => unreachable | inr error => error end.
 
-Definition error_to_failure {a : Set} (result : t a string) : a :=
+Definition error_to_failure {a : Set} `{Unreachable a}
+    (result : t a string) : a :=
   get_ok result.
 
 Definition bind {a e b : Set}

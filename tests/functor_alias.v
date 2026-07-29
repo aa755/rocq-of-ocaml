@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Input.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     default : t;
   }.
@@ -16,16 +16,16 @@ Module Make.
     Value : Input (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition t `{_fargs : FArgs} : Set := option Value.(Input.t).
-  
+
   Definition default `{_fargs : FArgs} : option Value.(Input.t) :=
     Some Value.(Input.default).
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :Input (t := option Value.(Input.t)) :=
     {|
-      Input.default := (default (_fargs := _fargs))
+      Input.default := default
     |}.
 End Make.
 Definition Make {Value_t : Set} (Value : Input (t := Value_t)) :=
@@ -37,9 +37,9 @@ Arguments Make_alias : default implicits.
 
 Module Value.
   Definition t : Set := int.
-  
+
   Definition default : int := 3.
-  
+
   (* Value *)
   Definition module :Input (t := int) :=
     {|

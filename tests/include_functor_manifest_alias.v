@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Empty.
-  Record signature : Set := {
+  Record signature : Type := {
     token : unit;
   }.
 End Empty.
@@ -13,21 +13,21 @@ Module Make.
   Class FArgs := {
     Argument : Empty;
   }.
-  
+
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := int.
-    
+
     Definition make `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-    
+
     Module Impl_signature.
-      Record signature `{_fargs : FArgs} {t : Set} : Set := {
+      Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
         make : int -> t;
       }.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_ _}.
-    
+
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature (t := _) :=
       {|
@@ -35,18 +35,18 @@ Module Make.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-  
+
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-  
+
   Definition make `{_fargs : FArgs} : int -> t :=
     Impl.(Impl.Impl_signature.make).
-  
+
   Definition identity `{_fargs : FArgs} (value : Impl.(Impl.Impl_signature.t))
     : Impl.(Impl.Impl_signature.t) := value.
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} {Impl_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Impl_t : Set} : Type := {
       Impl : Make.Impl.Impl_signature (t := Impl_t);
       t := Impl_t;
       make : int -> Impl_t;
@@ -55,20 +55,20 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :Make_result (Impl_t := _) :=
     {|
-      Make_result.Impl := (Impl (_fargs := _fargs));
-      Make_result.make := (make (_fargs := _fargs));
-      Make_result.identity := (identity (_fargs := _fargs))
+      Make_result.Impl := Impl;
+      Make_result.make := make;
+      Make_result.identity := identity
     |}.
 End Make.
 Definition Make (Argument : Empty) := @Make.functor (Make.Build_FArgs Argument).
 
 Module Empty_value.
   Definition token : unit := tt.
-  
+
   (* Empty_value *)
   Definition module :Empty :=
     {|
@@ -85,19 +85,19 @@ Module Extended.
   (** Inclusion of the module [Base] *)
   Module Impl.
     Definition t := Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.t).
-    
+
     Definition make : int -> t :=
       Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.make).
   End Impl.
-  
+
   Definition Impl := Base.(Make.Make_result.Impl).
-  
+
   Definition t := Base.(Make.Make_result.t).
-  
+
   Definition make : int -> t := Base.(Make.Make_result.make).
-  
+
   Definition identity : t -> t := Base.(Make.Make_result.identity).
-  
+
   Definition round_trip (value : int) : Base.(Make.Make_result.t) :=
     identity (make value).
 End Extended.

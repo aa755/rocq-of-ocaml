@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module COMPARABLE.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     compare : t -> t -> int;
   }.
@@ -12,7 +12,7 @@ Definition COMPARABLE := @COMPARABLE.signature.
 Arguments COMPARABLE {_}.
 
 Module S.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     op_eq : t -> t -> bool;
     op_ltgt : t -> t -> bool;

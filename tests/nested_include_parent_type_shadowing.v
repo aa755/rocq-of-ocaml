@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module S.
-  Record signature {t : Set -> Set -> Set} : Set := {
+  Record signature {t : Set -> Set -> Set} : Type := {
     t := t;
     _return : forall {_error a : Set} , a -> t a _error;
   }.
@@ -16,16 +16,16 @@ Module Make.
     M : S (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   (** Inclusion of the module [M] *)
   Definition t `{_fargs : FArgs} (a _error : Set) := M.(S.t) a _error.
-  
+
   Definition _return `{_fargs : FArgs} {a _error : Set} : a -> t a _error :=
     M.(S._return).
-  
+
   Module Option.
     Definition t `{_fargs : FArgs} (a : Set) : Set := option a.
-    
+
     Definition iterM `{_fargs : FArgs} {a _error : Set}
       (value : option a) (f_value : a -> M.(S.t) unit _error)
       : M.(S.t) unit _error :=
@@ -34,9 +34,9 @@ Module Make.
       | None => (M.(S._return) (_error := _error) (a := unit)) tt
       end.
   End Option.
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := fun (a _error : Set) => M.(S.t) a _error;
       _return : forall {_error a : Set} , a -> M.(S.t) a _error;
       Option_t := fun (a : Set) => option a;
@@ -47,15 +47,11 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
-    ({|
-      Make_result._return (M_t := M_t) (_fargs := _fargs) _ _ :=
-        (_return (_fargs := _fargs));
-      Make_result.Option_iterM (M_t := M_t) (_fargs := _fargs) _ _ :=
-        (Option.iterM (_fargs := _fargs))
-    |} : @Make_result M_t _fargs).
+    ((@Make_result.Build_signature M_t _fargs (fun _ _ => _return)
+      (fun _ _ => Option.iterM)) : @Make_result M_t _fargs).
 End Make.
 Definition Make {M_t : Set -> Set -> Set} (M : S (t := M_t)) :=
   @Make.functor M_t (Make.Build_FArgs M).
@@ -67,16 +63,21 @@ Definition _error {e a : Set} : e -> sum a e := RocqOfOCaml.OCamlResult._error.
 Definition value {a e : Set} : sum a e -> a -> a :=
   RocqOfOCaml.OCamlResult.value.
 
-Definition get_ok {a e : Set} : sum a e -> a := RocqOfOCaml.OCamlResult.get_ok.
+Definition get_ok {a e : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable a} : sum a e -> a :=
+  RocqOfOCaml.OCamlResult.get_ok.
 
-Definition get_ok' {a : Set} : sum a string -> a :=
-  RocqOfOCaml.OCamlResult.get_ok'.
+Definition get_ok' {a : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable a} : sum a string -> a
+  := RocqOfOCaml.OCamlResult.get_ok'.
 
-Definition get_error {a e : Set} : sum a e -> e :=
+Definition get_error {a e : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable e} : sum a e -> e :=
   RocqOfOCaml.OCamlResult.get_error.
 
-Definition error_to_failure {a : Set} : sum a string -> a :=
-  RocqOfOCaml.OCamlResult.error_to_failure.
+Definition error_to_failure {a : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable a} : sum a string -> a
+  := RocqOfOCaml.OCamlResult.error_to_failure.
 
 Definition bind {a e b : Set} : sum a e -> (a -> sum b e) -> sum b e :=
   RocqOfOCaml.OCamlResult.bind.
@@ -154,7 +155,7 @@ Definition _return {a _error : Set} : a -> t a _error :=
 
 Module Option.
   Definition t (a : Set) := Make_include.(Make.Make_result.Option_t) a.
-  
+
   Definition iterM {a _error : Set} :
     Make_include.(Make.Make_result.Option_t) a ->
     (a -> Make_include.(Make.Make_result.t) unit _error) ->

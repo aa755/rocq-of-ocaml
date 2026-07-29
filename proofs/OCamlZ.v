@@ -18,8 +18,8 @@ Definition signed_max (width : Z) : Z := Z.pred (Z.pow 2 (Z.pred width)).
 Definition fits_signed (width value : Z) : bool :=
   andb (Z.leb (signed_min width) value) (Z.leb value (signed_max width)).
 
-Definition checked_signed (width value : Z) : Z :=
-  if fits_signed width value then value else axiom.
+Definition checked_signed `{Unreachable Z} (width value : Z) : Z :=
+  if fits_signed width value then value else unreachable.
 
 Definition signed_repr (width value : Z) : Z :=
   let modulus := Z.pow 2 width in
@@ -37,23 +37,26 @@ Definition of_int32_unsigned (value : int32) : Z :=
 Definition of_int64_unsigned (value : int64) : Z :=
   if Z.ltb value 0 then Z.add value (Z.pow 2 64) else value.
 
-Definition to_int (value : Z) : int := checked_signed 63 value.
+Definition to_int `{Unreachable int} (value : Z) : int :=
+  checked_signed 63 value.
 
-Definition to_int32 (value : Z) : int32 := checked_signed 32 value.
+Definition to_int32 `{Unreachable int32} (value : Z) : int32 :=
+  checked_signed 32 value.
 
-Definition to_int64 (value : Z) : int64 := checked_signed 64 value.
+Definition to_int64 `{Unreachable int64} (value : Z) : int64 :=
+  checked_signed 64 value.
 
-Definition to_int32_unsigned (value : Z) : int32 :=
+Definition to_int32_unsigned `{Unreachable int32} (value : Z) : int32 :=
   if andb (Z.leb 0 value) (Z.ltb value (Z.pow 2 32)) then
     signed_repr 32 value
   else
-    axiom.
+    unreachable.
 
-Definition to_int64_unsigned (value : Z) : int64 :=
+Definition to_int64_unsigned `{Unreachable int64} (value : Z) : int64 :=
   if andb (Z.leb 0 value) (Z.ltb value (Z.pow 2 64)) then
     signed_repr 64 value
   else
-    axiom.
+    unreachable.
 
 Definition fits_int (value : Z) : bool := fits_signed 63 value.
 
@@ -67,13 +70,13 @@ Definition compare (left right : Z) : int :=
 Definition numbits (value : Z) : int :=
   if Z.eqb value 0 then 0 else Z.succ (Z.log2 (Z.abs value)).
 
-Definition extract (value offset length : Z) : Z :=
+Definition extract `{Unreachable Z} (value offset length : Z) : Z :=
   if orb (Z.ltb offset 0) (Z.leb length 0) then
-    axiom
+    unreachable
   else
     Z.land (Z.shiftr value offset) (Z.pred (Z.shiftl 1 length)).
 
-Definition signed_extract (value offset length : Z) : Z :=
+Definition signed_extract `{Unreachable Z} (value offset length : Z) : Z :=
   let extracted := extract value offset length in
   if Z.testbit extracted (Z.pred length) then
     Z.sub extracted (Z.shiftl 1 length)
@@ -112,14 +115,14 @@ Fixpoint powm_positive (base : Z) (exponent : positive) (modulus : Z) : Z :=
       Z.modulo (Z.mul base (Z.mul half half)) modulus
   end.
 
-Definition powm (base exponent modulus : Z) : Z :=
+Definition powm `{Unreachable Z} (base exponent modulus : Z) : Z :=
   match exponent with
   | Z0 => Z.modulo 1 modulus
   | Zpos exponent => powm_positive base exponent modulus
   | Zneg _ =>
       (* Negative exponents require a modular inverse.  Monad VM's EVM
          arithmetic only calls [powm] with unsigned exponents. *)
-      axiom
+      unreachable
   end.
 
 (** Zarith delegates this operation to OCaml's representation-sensitive
@@ -135,10 +138,10 @@ Definition of_string_opt (value : string) : option Z :=
   | None => None
   end.
 
-Definition of_string (value : string) : Z :=
+Definition of_string `{Unreachable Z} (value : string) : Z :=
   match of_string_opt value with
   | Some parsed => parsed
-  | None => axiom
+  | None => unreachable
   end.
 
 (** Zarith supports a printf-like formatting language.  Numeric formatting is
@@ -149,10 +152,11 @@ Example numbits_zero : numbits 0 = 0 := eq_refl.
 
 Example numbits_256 : numbits 256 = 9 := eq_refl.
 
-Example extract_1234 : extract 4660 4 8 = 35 := eq_refl.
+Example extract_1234 `{Unreachable Z} : extract 4660 4 8 = 35 := eq_refl.
 
-Example signed_extract_ff : signed_extract 255 0 8 = -1 := eq_refl.
+Example signed_extract_ff `{Unreachable Z} :
+  signed_extract 255 0 8 = -1 := eq_refl.
 
 Example bits_round_trip : of_bits (to_bits 4660) = 4660 := eq_refl.
 
-Example powm_example : powm 2 10 1000 = 24 := eq_refl.
+Example powm_example `{Unreachable Z} : powm 2 10 1000 = 24 := eq_refl.

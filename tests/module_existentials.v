@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module S.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     v_value : t;
   }.
@@ -13,9 +13,9 @@ Arguments S {_}.
 
 Module M_infer.
   Definition t : Set := int.
-  
+
   Definition v_value : int := 12.
-  
+
   (* M_infer *)
   Definition module :S (t := int) :=
     {|
@@ -26,9 +26,9 @@ Definition M_infer := M_infer.module.
 
 Module M_definition.
   Definition t : Set := int.
-  
+
   Definition v_value : int := 12.
-  
+
   (* M_definition *)
   Definition module :S (t := int) :=
     {|
@@ -39,9 +39,9 @@ Definition M_definition := M_definition.module.
 
 Module M_abstract.
   Definition t : Set := int.
-  
+
   Definition v_value : int := 12.
-  
+
   (* M_abstract *)
   Definition module :S (t := t) :=
     {|
@@ -56,16 +56,16 @@ Module F_definition.
     M2 : S (t := M2_t);
   }.
   Arguments Build_FArgs {_ _}.
-  
+
   Definition t `{_fargs : FArgs} : Set := M1.(S.t) * M2.(S.t) * string.
-  
+
   Definition v_value `{_fargs : FArgs} : M1.(S.t) * M2.(S.t) * string :=
     (M1.(S.v_value), M2.(S.v_value), "foo").
-  
+
   (* F_definition *)
   Definition functor `{_fargs : FArgs} :S (t := M1.(S.t) * M2.(S.t) * string) :=
     {|
-      S.v_value := (v_value (_fargs := _fargs))
+      S.v_value := v_value
     |}.
 End F_definition.
 Definition F_definition {M1_t M2_t : Set}
@@ -78,16 +78,16 @@ Module F_abstract.
     M2 : S (t := M2_t);
   }.
   Arguments Build_FArgs {_ _}.
-  
+
   Definition t `{_fargs : FArgs} : Set := M1.(S.t) * M2.(S.t) * string.
-  
+
   Definition v_value `{_fargs : FArgs} : M1.(S.t) * M2.(S.t) * string :=
     (M1.(S.v_value), M2.(S.v_value), "foo").
-  
+
   (* F_abstract *)
   Definition functor `{_fargs : FArgs} :S (t := t) :=
     {|
-      S.v_value := (v_value (_fargs := _fargs))
+      S.v_value := v_value
     |}.
 End F_abstract.
 Definition F_abstract {M1_t M2_t : Set}
@@ -95,7 +95,7 @@ Definition F_abstract {M1_t M2_t : Set}
   @F_abstract.functor M1_t M2_t (F_abstract.Build_FArgs M1 M2).
 
 Module S_with_functor.
-  Record signature : Set := {
+  Record signature : Type := {
     F : forall {M_t : Set}, forall (M : S (t := M_t)), S (t := M.(S.t) * int);
   }.
 End S_with_functor.
@@ -107,20 +107,20 @@ Module M_with_functor.
       M : S (t := M_t);
     }.
     Arguments Build_FArgs {_}.
-    
+
     Definition t `{_fargs : FArgs} : Set := M.(S.t) * int.
-    
+
     Definition v_value `{_fargs : FArgs} : M.(S.t) * int := (M.(S.v_value), 12).
-    
+
     (* F *)
     Definition functor `{_fargs : FArgs} :S (t := M.(S.t) * int) :=
       {|
-        S.v_value := (v_value (_fargs := _fargs))
+        S.v_value := v_value
       |}.
   End F.
   Definition F {M_t : Set} (M : S (t := M_t)) :=
     @F.functor M_t (F.Build_FArgs M).
-  
+
   (* M_with_functor *)
   Definition module :S_with_functor :=
     {|
@@ -130,7 +130,7 @@ End M_with_functor.
 Definition M_with_functor := M_with_functor.module.
 
 Module S_without_abstract.
-  Record signature : Set := {
+  Record signature : Type := {
     s_value : string;
   }.
 End S_without_abstract.
@@ -138,7 +138,7 @@ Definition S_without_abstract := S_without_abstract.signature.
 
 Module M_without_abstract.
   Definition s_value : string := "foo".
-  
+
   (* M_without_abstract *)
   Definition module :S_without_abstract :=
     {|

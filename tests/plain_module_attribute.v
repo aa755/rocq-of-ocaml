@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module T.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     to_string : t -> string;
   }.
@@ -13,7 +13,7 @@ Arguments T {_}.
 
 Module M.
   Definition t : Set := int.
-  
+
   Definition to_string : int -> string :=
     RocqOfOCaml.Basics.Stdlib.string_of_int.
 End M.

@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module State_T_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End State_T_signature.
@@ -15,22 +15,22 @@ Module State.
     T : State_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition m `{_fargs : FArgs} (a : Set) : Set :=
     T.(State_T_signature.t) -> a * T.(State_T_signature.t).
-  
+
   Definition _return `{_fargs : FArgs} {a : Set}
     (value : a) (state : T.(State_T_signature.t))
     : a * T.(State_T_signature.t) := (value, state).
-  
+
   Definition map `{_fargs : FArgs} {a b : Set}
     (f_value : a -> b) (computation : m a) (state : T.(State_T_signature.t))
     : b * T.(State_T_signature.t) :=
     let '(value, state) := computation state in
     ((f_value value), state).
-  
+
   Module State_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       m :=
         fun (a : Set) => T.(State_T_signature.t) -> a * T.(State_T_signature.t);
       _return :
@@ -45,15 +45,11 @@ Module State.
   End State_result.
   Definition State_result `{_fargs : FArgs} := @State_result.signature _ _.
   Arguments State_result {_ _}.
-  
+
   (* State *)
   Definition functor `{_fargs : FArgs} :@State_result T_t _fargs :=
-    ({|
-      State_result._return (T_t := T_t) (_fargs := _fargs) _ :=
-        (_return (_fargs := _fargs));
-      State_result.map (T_t := T_t) (_fargs := _fargs) _ _ :=
-        (map (_fargs := _fargs))
-    |} : @State_result T_t _fargs).
+    ((@State_result.Build_signature T_t _fargs (fun _ => _return)
+      (fun _ _ => map)) : @State_result T_t _fargs).
 End State.
 Definition State {T_t : Set} (T : State_T_signature (t := T_t)) :=
   @State.functor T_t (State.Build_FArgs T).

@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module MONAD.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     _return : forall {a : Set} , a -> t a;
     bind : forall {a b : Set} , t a -> (a -> t b) -> t b;
@@ -17,28 +17,28 @@ Module Make.
     M : MONAD (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition t `{_fargs : FArgs} (a : Set) : Set := M.(MONAD.t) a.
-  
+
   Definition _return `{_fargs : FArgs} {A : Set} : A -> M.(MONAD.t) A :=
     M.(MONAD._return).
-  
+
   Definition bind `{_fargs : FArgs} {A B : Set}
     : M.(MONAD.t) A -> (A -> M.(MONAD.t) B) -> M.(MONAD.t) B := M.(MONAD.bind).
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs}
     :MONAD (t := fun (a : Set) => M.(MONAD.t) a) :=
     {|
-      MONAD._return _ := (_return (_fargs := _fargs));
-      MONAD.bind _ _ := (bind (_fargs := _fargs))
+      MONAD._return _ := _return;
+      MONAD.bind _ _ := bind
     |}.
 End Make.
 Definition Make {M_t : Set -> Set} (M : MONAD (t := M_t)) :=
   @Make.functor M_t (Make.Build_FArgs M).
 
 Module Result_T_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End Result_T_signature.
@@ -50,15 +50,15 @@ Module Result.
     T : Result_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Trans.
     Class FArgs `{_fargs : FArgs} {Inner_t : Set -> Set} := {
       Inner_parameter : MONAD (t := Inner_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-    
+
     Definition Inner `{_fargs : FArgs} := Make Inner_parameter.
-    
+
     Definition Make_include `{_fargs : FArgs} :=
       Make
         (let t (a : Set) : Set :=
@@ -80,22 +80,22 @@ Module Result.
           MONAD._return _ := _return;
           MONAD.bind _ _ := bind
         |} : MONAD (t := t))).
-    
+
     (** Inclusion of the module [Make_include] *)
     Definition t `{_fargs : FArgs} (a : Set) := Make_include.(MONAD.t) a.
-    
+
     Definition _return `{_fargs : FArgs} {A : Set} :
       A -> Inner_parameter.(MONAD.t) (sum A T.(Result_T_signature.t)) :=
       Make_include.(MONAD._return).
-    
+
     Definition bind `{_fargs : FArgs} {A B : Set} :
       Inner_parameter.(MONAD.t) (sum A T.(Result_T_signature.t)) ->
       (A -> Inner_parameter.(MONAD.t) (sum B T.(Result_T_signature.t))) ->
       Inner_parameter.(MONAD.t) (sum B T.(Result_T_signature.t)) :=
       Make_include.(MONAD.bind).
-    
+
     Module Trans_result.
-      Record signature `{_fargs : FArgs} : Set := {
+      Record signature `{_fargs : FArgs} : Type := {
         Inner : MONAD (t := fun (a : Set) => Inner_parameter.(MONAD.t) a);
         t :=
           fun (a : Set) =>
@@ -113,32 +113,26 @@ Module Result.
     Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _ _
       _.
     Arguments Trans_result {_ _ _ _}.
-    
+
     (* Trans *)
     Definition functor `{_fargs : FArgs} :@Trans_result _ _ Inner_t _fargs :=
-      ({|
-        Trans_result.Inner (Inner_t := Inner_t) (_fargs := _fargs) :=
-          (Inner (_fargs := _fargs));
-        Trans_result._return (Inner_t := Inner_t) (_fargs := _fargs) _ :=
-          (_return (_fargs := _fargs));
-        Trans_result.bind (Inner_t := Inner_t) (_fargs := _fargs) _ _ :=
-          (bind (_fargs := _fargs))
-      |} : @Trans_result _ _ Inner_t _fargs).
+      ((@Trans_result.Build_signature _ _ Inner_t _fargs Inner
+        (fun _ => _return) (fun _ _ => bind)) : @Trans_result _ _ Inner_t _fargs).
   End Trans.
   Definition Trans `{_fargs : FArgs} {Inner_t : Set -> Set}
     (Inner_parameter : MONAD (t := Inner_t)) :=
     @Trans.functor _ _ Inner_t (Trans.Build_FArgs Inner_parameter).
-  
+
   Module Result_result.
-    Inductive signature `{_fargs : FArgs} : Set :=
+    Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Result_result.
   Definition Result_result `{_fargs : FArgs} := @Result_result.signature _ _.
   Arguments Result_result {_ _}.
-  
+
   (* Result *)
   Definition functor `{_fargs : FArgs} :@Result_result T_t _fargs :=
-    ((ltac:(constructor) : Result_result) : @Result_result T_t _fargs).
+    ((@Result_result.Build_signature T_t _fargs) : @Result_result T_t _fargs).
 End Result.
 Definition Result {T_t : Set} (T : Result_T_signature (t := T_t)) :=
   @Result.functor T_t (Result.Build_FArgs T).

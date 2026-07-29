@@ -1,0 +1,6 @@
+{
+  "renaming_type_constructor": [
+    ["*.Seq.t", "RocqOfOCaml.OCamlSeq.t"],
+    ["*.Seq.node", "RocqOfOCaml.OCamlSeq.node"]
+  ]
+}

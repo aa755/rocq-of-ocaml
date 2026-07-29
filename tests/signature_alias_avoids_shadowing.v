@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module BASE.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     _return : forall {a : Set} , a -> t a;
   }.
@@ -16,17 +16,17 @@ Module Extend.
     M : BASE (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   (** Inclusion of the module [M] *)
   Definition t `{_fargs : FArgs} (a : Set) := M.(BASE.t) a.
-  
+
   Definition _return `{_fargs : FArgs} {a : Set} : a -> t a := M.(BASE._return).
-  
+
   Definition map `{_fargs : FArgs} {A B : Set} (f_value : A -> B) (x_value : A)
     : M.(BASE.t) B := (M.(BASE._return) (a := B)) (f_value x_value).
-  
+
   Module Extend_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := fun (a : Set) => M.(BASE.t) a;
       _return : forall {a : Set} , a -> M.(BASE.t) a;
       map : forall {A B : Set} , (A -> B) -> A -> M.(BASE.t) B;
@@ -34,15 +34,11 @@ Module Extend.
   End Extend_result.
   Definition Extend_result `{_fargs : FArgs} := @Extend_result.signature _ _.
   Arguments Extend_result {_ _}.
-  
+
   (* Extend *)
   Definition functor `{_fargs : FArgs} :@Extend_result M_t _fargs :=
-    ({|
-      Extend_result._return (M_t := M_t) (_fargs := _fargs) _ :=
-        (_return (_fargs := _fargs));
-      Extend_result.map (M_t := M_t) (_fargs := _fargs) _ _ :=
-        (map (_fargs := _fargs))
-    |} : @Extend_result M_t _fargs).
+    ((@Extend_result.Build_signature M_t _fargs (fun _ => _return)
+      (fun _ _ => map)) : @Extend_result M_t _fargs).
 End Extend.
 Definition Extend {M_t : Set -> Set} (M : BASE (t := M_t)) :=
   @Extend.functor M_t (Extend.Build_FArgs M).
@@ -57,7 +53,7 @@ Arguments Extend_stable : default implicits.
 
 Module Nested.
   Module BASE.
-    Record signature {t : Set -> Set} : Set := {
+    Record signature {t : Set -> Set} : Type := {
       t := t;
       _return : forall {a : Set} , a -> t a;
       get : t int;
@@ -65,38 +61,38 @@ Module Nested.
   End BASE.
   Definition BASE := @BASE.signature.
   Arguments BASE {_}.
-  
+
   Module Make.
     Class FArgs {M_t : Set -> Set} := {
       M : BASE (t := M_t);
     }.
     Arguments Build_FArgs {_}.
-    
+
     Definition Extend_stable_include_fargs `{_fargs : FArgs} :=
       Extend_stable.Build_FArgs
         ({|
           BASE_STABLE._return _ := M.(BASE._return)
         |} : BASE_STABLE (t := M.(BASE.t))).
-    
+
     Definition Extend_stable_include `{_fargs : FArgs} :
       Extend_stable.Extend_result (_fargs := Extend_stable_include_fargs) :=
       Extend_stable
         ({|
           BASE_STABLE._return _ := M.(BASE._return)
         |} : BASE_STABLE (t := M.(BASE.t))).
-    
+
     (** Inclusion of the module [Extend_stable_include] *)
     Definition t `{_fargs : FArgs} (a : Set) :=
       Extend_stable_include.(Extend_stable.Extend_result.t) a.
-    
+
     Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
       Extend_stable_include.(Extend_stable.Extend_result._return).
-    
+
     Definition map `{_fargs : FArgs} {A B : Set} : (A -> B) -> A -> t B :=
       Extend_stable_include.(Extend_stable.Extend_result.map).
-    
+
     Module Make_result.
-      Record signature `{_fargs : FArgs} : Set := {
+      Record signature `{_fargs : FArgs} : Type := {
         t := fun (a : Set) => M.(BASE.t) a;
         _return : forall {a : Set} , a -> M.(BASE.t) a;
         map : forall {A B : Set} , (A -> B) -> A -> M.(BASE.t) B;
@@ -104,15 +100,11 @@ Module Nested.
     End Make_result.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
     Arguments Make_result {_ _}.
-    
+
     (* Make *)
     Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
-      ({|
-        Make_result._return (M_t := M_t) (_fargs := _fargs) _ :=
-          (_return (_fargs := _fargs));
-        Make_result.map (M_t := M_t) (_fargs := _fargs) _ _ :=
-          (map (_fargs := _fargs))
-      |} : @Make_result M_t _fargs).
+      ((@Make_result.Build_signature M_t _fargs (fun _ => _return)
+        (fun _ _ => map)) : @Make_result M_t _fargs).
   End Make.
   Definition Make {M_t : Set -> Set} (M : BASE (t := M_t)) :=
     @Make.functor M_t (Make.Build_FArgs M).

@@ -51,7 +51,18 @@ module RenamingRule = struct
             (target ^ "."
             ^ String.sub path prefix_length (String.length path - prefix_length))
         else None
-    | None -> if source = path then Some target else None
+    | None -> (
+        match String.starts_with ~prefix:"*." source with
+        | true ->
+            let source_suffix =
+              String.sub source 2 (String.length source - 2)
+            in
+            if
+              path = source_suffix
+              || String.ends_with ~suffix:("." ^ source_suffix) path
+            then Some target
+            else None
+        | false -> if source = path then Some target else None)
 
   let find (rules : t list) (source : string) : string option =
     rules
@@ -77,6 +88,7 @@ end
 
 type t = {
   alias_barrier_modules : string list;
+  assumption_metadata_exclusions : DefinitionExclusion.t list;
   constant_warning : bool;
   constructor_map : ConstructorMapping.t list;
   error_category_blacklist : string list;
@@ -114,6 +126,7 @@ type t = {
 let default (file_name : string) : t =
   {
     alias_barrier_modules = [];
+    assumption_metadata_exclusions = [];
     constant_warning = true;
     constructor_map = [];
     error_category_blacklist = [];
@@ -168,7 +181,8 @@ let is_category_in_error_blacklist (configuration : t) (error_id : string) :
   List.mem error_id configuration.error_category_blacklist
 
 let filename_matches (actual : string) (configured : string) : bool =
-  actual = configured
+  configured = "*"
+  || actual = configured
   ||
   let actual_length = String.length actual in
   let configured_length = String.length configured in
@@ -209,6 +223,28 @@ let is_definition_excluded (configuration : t) (definition_path : string list)
   in
   configuration.excluded_definitions
   |> List.exists (fun { DefinitionExclusion.source; definition = configured } ->
+         filename_matches configuration.file_name source
+         && definition_matches configured)
+
+(** Whether a requirement exported under [qualified_name] is intentionally
+    discharged by a later, project-owned transformation of the generated
+    declaration.  This does not alter generated Rocq code; callers should only
+    use it when the transformed declaration no longer has that requirement. *)
+let is_assumption_metadata_excluded (configuration : t)
+    (qualified_name : string) : bool =
+  let definition_matches configured =
+    if String.starts_with ~prefix:"*" configured then
+      let suffix =
+        String.sub configured 1 (String.length configured - 1)
+      in
+      String.ends_with ~suffix qualified_name
+    else
+      configured = qualified_name
+      || String.ends_with ~suffix:("." ^ configured) qualified_name
+  in
+  configuration.assumption_metadata_exclusions
+  |> List.exists
+       (fun { DefinitionExclusion.source; definition = configured } ->
          filename_matches configuration.file_name source
          && definition_matches configured)
 
@@ -384,6 +420,11 @@ let is_in_renaming_type_constructor (configuration : t) (source : string) :
     string option =
   RenamingRule.find configuration.renaming_type_constructor source
 
+let is_renaming_type_constructor_target (configuration : t) (target : string) :
+    bool =
+  configuration.renaming_type_constructor
+  |> List.exists (fun rule -> String.equal rule.RenamingRule.target target)
+
 let should_require (configuration : t) (base : string) : string option =
   configuration.require
   |> List.find_opt (fun { Import.source; _ } -> source = base)
@@ -490,6 +531,21 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
           | "alias_barrier_modules" ->
               let entry = get_string_list "alias_barrier_modules" entry in
               { configuration with alias_barrier_modules = entry }
+          | "assumption_metadata_exclusions" ->
+              let entry =
+                entry
+                |> get_string_couple_list "assumption_metadata_exclusions"
+                |> List.map (fun (source, definition) ->
+                       if definition = "" then
+                         failwith
+                           "Expected a qualified definition name in \
+                            assumption_metadata_exclusions";
+                       { DefinitionExclusion.source; definition })
+              in
+              {
+                configuration with
+                assumption_metadata_exclusions = entry;
+              }
           | "constructor_map" ->
               let entry =
                 entry

@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module TYPE.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End TYPE.
@@ -11,7 +11,7 @@ Definition TYPE := @TYPE.signature.
 Arguments TYPE {_}.
 
 Module INPUT.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     value : t;
   }.
@@ -24,25 +24,25 @@ Module Family.
     T : TYPE (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module SIG.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       apply : T.(TYPE.t) -> T.(TYPE.t);
     }.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _.
   Arguments SIG {_ _}.
-  
+
   Module Family_result.
-    Inductive signature `{_fargs : FArgs} : Set :=
+    Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Family_result.
   Definition Family_result `{_fargs : FArgs} := @Family_result.signature _ _.
   Arguments Family_result {_ _}.
-  
+
   (* Family *)
   Definition functor `{_fargs : FArgs} :@Family_result T_t _fargs :=
-    ((ltac:(constructor) : Family_result) : @Family_result T_t _fargs).
+    ((@Family_result.Build_signature T_t _fargs) : @Family_result T_t _fargs).
 End Family.
 Definition Family {T_t : Set} (T : TYPE (t := T_t)) :=
   @Family.functor T_t (Family.Build_FArgs T).
@@ -56,23 +56,21 @@ Module Consume.
     Input : INPUT (t := T.(TYPE.t));
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition result_value `{_fargs : FArgs} : T.(TYPE.t) := Input.(INPUT.value).
-  
+
   Module Consume_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       result_value : T.(TYPE.t);
     }.
   End Consume_result.
   Definition Consume_result `{_fargs : FArgs} := @Consume_result.signature _ _.
   Arguments Consume_result {_ _}.
-  
+
   (* Consume *)
   Definition functor `{_fargs : FArgs} :@Consume_result T_t _fargs :=
-    ({|
-      Consume_result.result_value (T_t := T_t) (_fargs := _fargs) :=
-        (result_value (_fargs := _fargs))
-    |} : @Consume_result T_t _fargs).
+    ((@Consume_result.Build_signature T_t _fargs result_value) :
+      @Consume_result T_t _fargs).
 End Consume.
 Definition Consume {T_t : Set}
   (T : TYPE (t := T_t))
@@ -90,35 +88,33 @@ Module Produce.
   Class FArgs := {
     Input : INPUT (t := int);
   }.
-  
+
   Definition apply `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-  
+
   Definition extra `{_fargs : FArgs} : int := Input.(INPUT.value).
-  
+
   Module Produce_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       apply : forall {A : Set} , A -> A;
       extra : int;
     }.
   End Produce_result.
   Definition Produce_result `{_fargs : FArgs} := @Produce_result.signature _.
   Arguments Produce_result {_}.
-  
+
   (* Produce *)
   Definition functor `{_fargs : FArgs} :@Produce_result _fargs :=
-    ({|
-      Produce_result.apply (_fargs := _fargs) _ := (apply (_fargs := _fargs));
-      Produce_result.extra (_fargs := _fargs) := (extra (_fargs := _fargs))
-    |} : @Produce_result _fargs).
+    ((@Produce_result.Build_signature _fargs (fun _ => apply) extra) :
+      @Produce_result _fargs).
 End Produce.
 Definition Produce (Input : INPUT (t := int)) :=
   @Produce.functor (Produce.Build_FArgs Input).
 
 Module Input.
   Definition t : Set := int.
-  
+
   Definition value : int := 42.
-  
+
   (* Input *)
   Definition module :INPUT (t := int) :=
     {|

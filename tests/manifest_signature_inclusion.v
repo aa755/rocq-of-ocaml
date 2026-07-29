@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Unary.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     _return : forall {a : Set} , a -> t a;
   }.
@@ -12,7 +12,7 @@ Definition Unary := @Unary.signature.
 Arguments Unary {_}.
 
 Module Binary.
-  Record signature {t : Set -> Set -> Set} : Set := {
+  Record signature {t : Set -> Set -> Set} : Type := {
     t := t;
     _return : forall {a key : Set} , a -> t a key;
   }.
@@ -22,9 +22,9 @@ Arguments Binary {_}.
 
 Module Impl.
   Definition t (a : Set) : Set := a.
-  
+
   Definition _return {A : Set} (value : A) : A := value.
-  
+
   (* Impl *)
   Definition module :Unary (t := fun (a : Set) => a) :=
     {|

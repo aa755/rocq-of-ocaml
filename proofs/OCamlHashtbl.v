@@ -27,7 +27,7 @@ Definition HashedType := @HashedType.signature.
 Arguments HashedType {_}.
 
 Module S.
-  Record signature {key : Set} {t : Set -> Set} : Set := {
+  Record signature {key : Set} {t : Set -> Set} : Type := {
     key := key;
     t := t;
     create : forall {a : Set}, int -> t a;

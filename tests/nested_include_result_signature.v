@@ -6,15 +6,15 @@ Module Sequence.
   Inductive node (a : Set) : Set :=
   | Nil : node a
   | Cons : a -> node a.
-  
+
   Arguments Nil {_}.
   Arguments Cons {_}.
-  
+
   Definition t (a : Set) : Set := unit -> node a.
 End Sequence.
 
 Module ELEMENT.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End ELEMENT.
@@ -26,15 +26,13 @@ Module Make.
     Element : ELEMENT (t := Element_t);
   }.
   Arguments Build_FArgs {_}.
-  
-  Module Nested.
-    Include Sequence.
-  End Nested.
-  
+
+  Module Nested := Sequence.
+
   Definition witness `{_fargs : FArgs} : int := 0.
-  
+
   Module Make_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Nested_node := fun (a : Set) => Sequence.node a;
       Nested_t := fun (a : Set) => unit -> Sequence.node a;
       witness : int;
@@ -42,13 +40,11 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result Element_t _fargs :=
-    ({|
-      Make_result.witness (Element_t := Element_t) (_fargs := _fargs) :=
-        (witness (_fargs := _fargs))
-    |} : @Make_result Element_t _fargs).
+    ((@Make_result.Build_signature Element_t _fargs witness) :
+      @Make_result Element_t _fargs).
 End Make.
 Definition Make {Element_t : Set} (Element : ELEMENT (t := Element_t)) :=
   @Make.functor Element_t (Make.Build_FArgs Element).
@@ -62,28 +58,28 @@ Module Wrap.
     Element : ELEMENT (t := Element_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition Make_stable_include_fargs `{_fargs : FArgs} :=
     Make_stable.Build_FArgs Element.
-  
+
   Definition Make_stable_include `{_fargs : FArgs} :
     Make_stable.Make_result (_fargs := Make_stable_include_fargs) :=
     Make_stable Element.
-  
+
   (** Inclusion of the module [Make_stable_include] *)
   Module Nested.
     Definition node `{_fargs : FArgs} (a : Set) :=
       Make_stable_include.(Make_stable.Make_result.Nested_node) a.
-    
+
     Definition t `{_fargs : FArgs} (a : Set) :=
       Make_stable_include.(Make_stable.Make_result.Nested_t) a.
   End Nested.
-  
+
   Definition witness `{_fargs : FArgs} : int :=
     Make_stable_include.(Make_stable.Make_result.witness).
-  
+
   Module Wrap_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Nested_node := fun (a : Set) => Sequence.node a;
       Nested_t := fun (a : Set) => unit -> Nested_node a;
       witness : int;
@@ -91,19 +87,17 @@ Module Wrap.
   End Wrap_result.
   Definition Wrap_result `{_fargs : FArgs} := @Wrap_result.signature _ _.
   Arguments Wrap_result {_ _}.
-  
+
   (* Wrap *)
   Definition functor `{_fargs : FArgs} :@Wrap_result Element_t _fargs :=
-    ({|
-      Wrap_result.witness (Element_t := Element_t) (_fargs := _fargs) :=
-        (witness (_fargs := _fargs))
-    |} : @Wrap_result Element_t _fargs).
+    ((@Wrap_result.Build_signature Element_t _fargs witness) :
+      @Wrap_result Element_t _fargs).
 End Wrap.
 Definition Wrap {Element_t : Set} (Element : ELEMENT (t := Element_t)) :=
   @Wrap.functor Element_t (Wrap.Build_FArgs Element).
 
 Module VALUE.
-  Record signature : Set := {
+  Record signature : Type := {
     value : int;
   }.
 End VALUE.
@@ -113,13 +107,13 @@ Module Box.
   Class FArgs := {
     Value : VALUE;
   }.
-  
+
   Definition value `{_fargs : FArgs} : int := Value.(VALUE.value).
-  
+
   (* Box *)
   Definition functor `{_fargs : FArgs} :VALUE :=
     {|
-      VALUE.value := (value (_fargs := _fargs))
+      VALUE.value := value
     |}.
 End Box.
 Definition Box (Value : VALUE) := @Box.functor (Box.Build_FArgs Value).
@@ -128,30 +122,27 @@ Module Pair.
   Class FArgs := {
     Value : VALUE;
   }.
-  
+
   Module Left.
     Definition Repr `{_fargs : FArgs} := Box Value.
   End Left.
-  
+
   Module Right.
     Definition Repr `{_fargs : FArgs} := Box Value.
   End Right.
-  
+
   Module Pair_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Left_Repr : VALUE;
       Right_Repr : VALUE;
     }.
   End Pair_result.
   Definition Pair_result `{_fargs : FArgs} := @Pair_result.signature _.
   Arguments Pair_result {_}.
-  
+
   (* Pair *)
   Definition functor `{_fargs : FArgs} :@Pair_result _fargs :=
-    ({|
-      Pair_result.Left_Repr (_fargs := _fargs) := (Left.Repr (_fargs := _fargs));
-      Pair_result.Right_Repr (_fargs := _fargs) :=
-        (Right.Repr (_fargs := _fargs))
-    |} : @Pair_result _fargs).
+    ((@Pair_result.Build_signature _fargs Left.Repr Right.Repr) :
+      @Pair_result _fargs).
 End Pair.
 Definition Pair (Value : VALUE) := @Pair.functor (Pair.Build_FArgs Value).

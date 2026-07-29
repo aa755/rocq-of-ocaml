@@ -5,31 +5,31 @@ Require Import RocqOfOCaml.Settings.
 (** Names declared after an include shadow names from the included namespace. *)
 Module Namespace.
   Definition retained_type : Set := int.
-  
+
   Definition retained_value : int := 17.
-  
+
   Module Retained_module.
     Definition value : int := retained_value.
   End Retained_module.
-  
+
   Module Kept.
-    Record signature {t : Set} : Set := {
+    Record signature {t : Set} : Type := {
       t := t;
     }.
   End Kept.
   Definition Kept := @Kept.signature.
   Arguments Kept {_}.
-  
+
   Module Replaced.
-    Record signature : Set := {
+    Record signature : Type := {
       old_value : int;
     }.
   End Replaced.
   Definition Replaced := Replaced.signature.
-  
+
   Module Replaced_module.
     Definition old_value : int := 1.
-    
+
     (* Replaced_module *)
     Definition module :Replaced :=
       {|
@@ -50,7 +50,7 @@ Definition Kept := @Kept.signature.
 Arguments Kept {_}.
 
 Module Replaced.
-  Record signature : Set := {
+  Record signature : Type := {
     new_value : bool;
   }.
 End Replaced.
@@ -58,7 +58,7 @@ Definition Replaced := Replaced.signature.
 
 Module Replaced_module.
   Definition new_value : bool := true.
-  
+
   (* Replaced_module *)
   Definition module :Replaced :=
     {|
@@ -76,13 +76,13 @@ Module Use_kept.
     Value : Kept (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition t `{_fargs : FArgs} : Set := Value.(Kept.t).
-  
+
   Definition witness `{_fargs : FArgs} : option t := None.
-  
+
   Module Use_kept_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := Value.(Kept.t);
       witness : option Value.(Kept.t);
     }.
@@ -90,13 +90,11 @@ Module Use_kept.
   Definition Use_kept_result `{_fargs : FArgs} := @Use_kept_result.signature _
     _.
   Arguments Use_kept_result {_ _}.
-  
+
   (* Use_kept *)
   Definition functor `{_fargs : FArgs} :@Use_kept_result Value_t _fargs :=
-    ({|
-      Use_kept_result.witness (Value_t := Value_t) (_fargs := _fargs) :=
-        (witness (_fargs := _fargs))
-    |} : @Use_kept_result Value_t _fargs).
+    ((@Use_kept_result.Build_signature Value_t _fargs witness) :
+      @Use_kept_result Value_t _fargs).
 End Use_kept.
 Definition Use_kept {Value_t : Set} (Value : Kept (t := Value_t)) :=
   @Use_kept.functor Value_t (Use_kept.Build_FArgs Value).

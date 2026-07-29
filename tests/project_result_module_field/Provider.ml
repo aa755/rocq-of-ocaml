@@ -5,6 +5,8 @@ end
 module Fixed (Argument : ARGUMENT) = struct
   type t = int
 
+  let missing : int = assert false
+
   module Map : sig
     type t
 
@@ -22,11 +24,32 @@ end
 
 let unwrap_int = function Some value -> value | None -> assert false
 
-(** A nested failure whose result type must be qualified in exported metadata. *)
+(** A nested failure whose result type must be qualified in exported metadata.
+*)
 module Local_failure = struct
   type t = Token of int
 
   let unwrap = function Some value -> value | None -> assert false
+end
+
+module Partial_base = struct
+  let unwrap = function Some value -> value | None -> assert false
+end
+
+module Partial_reexport = struct
+  include Partial_base
+end
+
+let shadowed_unwrap = function Some value -> value | None -> assert false
+
+module Shadowing = struct
+  let shadowed_unwrap = shadowed_unwrap
+end
+
+let find = function Some value -> value | None -> assert false
+
+module Recursive = struct
+  let rec find = function [] -> 0 | _ :: values -> find values
 end
 
 module Applied = Fixed (DefaultArgument)
@@ -47,7 +70,6 @@ module Outer (Argument : ARGUMENT) = struct
 
   module Namespace = struct
     include Included
-
     module Repr = Fixed (Argument)
   end
 end
@@ -67,9 +89,7 @@ module type OUTPUT = sig
   val result : int
 end
 
-module Consume
-    (Producer : functor (Input : INPUT) -> OUTPUT)
-    (Input : INPUT) =
+module Consume (Producer : functor (Input : INPUT) -> OUTPUT) (Input : INPUT) =
 struct
   module Result = Producer (Input)
 end

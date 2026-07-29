@@ -17,7 +17,7 @@ Definition recover {A : Set} (function_parameter : sum int A) : int :=
   end.
 
 Module RETURN.
-  Record signature {t : Set -> Set} : Set := {
+  Record signature {t : Set -> Set} : Type := {
     t := t;
     _return : forall {a : Set} , a -> t a;
   }.
@@ -30,25 +30,22 @@ Module Use.
     M : RETURN (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition wrap `{_fargs : FArgs} (value : int)
     : M.(RETURN.t) (sum int string) :=
     (M.(RETURN._return) (a := sum int string)) ((inl value) : sum int string).
-  
+
   Module Use_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       wrap : int -> M.(RETURN.t) (sum int string);
     }.
   End Use_result.
   Definition Use_result `{_fargs : FArgs} := @Use_result.signature _ _.
   Arguments Use_result {_ _}.
-  
+
   (* Use *)
   Definition functor `{_fargs : FArgs} :@Use_result M_t _fargs :=
-    ({|
-      Use_result.wrap (M_t := M_t) (_fargs := _fargs) :=
-        (wrap (_fargs := _fargs))
-    |} : @Use_result M_t _fargs).
+    ((@Use_result.Build_signature M_t _fargs wrap) : @Use_result M_t _fargs).
 End Use.
 Definition Use {M_t : Set -> Set} (M : RETURN (t := M_t)) :=
   @Use.functor M_t (Use.Build_FArgs M).

@@ -98,7 +98,11 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
       assumption_prefixes
       |> List.concat_map (fun prefix ->
              Ast.qualified_assumption_call_specs prefix ast)
-      |> List.sort_uniq compare;
+      |> List.sort_uniq compare
+      |> List.filter (fun (qualified_name, _) ->
+             not
+               (Configuration.is_assumption_metadata_excluded
+                  context.configuration qualified_name));
     error_message;
     generated_file = Some (generated_file_name, generated_file_content);
     has_errors;

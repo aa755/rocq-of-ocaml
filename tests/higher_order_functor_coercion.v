@@ -3,14 +3,14 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module INPUT.
-  Record signature : Set := {
+  Record signature : Type := {
     value : int;
   }.
 End INPUT.
 Definition INPUT := INPUT.signature.
 
 Module OUTPUT.
-  Record signature : Set := {
+  Record signature : Type := {
     result_value : int;
   }.
 End OUTPUT.
@@ -20,27 +20,61 @@ Module Produce.
   Class FArgs := {
     Input : INPUT;
   }.
-  
-  Definition result_value `{_fargs : FArgs} : int := Input.(INPUT.value).
-  
+
+  Module Memory.
+    Definition t `{_fargs : FArgs} : Set := int.
+
+    Definition fallback `{_fargs : FArgs} : int := Input.(INPUT.value).
+
+    Module Memory_signature.
+      Record signature `{_fargs : FArgs} {t : Set} : Type := {
+        t := t;
+        fallback : t;
+      }.
+    End Memory_signature.
+    Definition Memory_signature `{_fargs : FArgs} := @Memory_signature.signature
+      _.
+    Arguments Memory_signature {_ _}.
+
+    (* Memory *)
+    Definition module `{_fargs : FArgs} :Memory_signature (t := _) :=
+      {|
+        Memory_signature.fallback := fallback
+      |}.
+  End Memory.
+  Definition Memory `{_fargs : FArgs} := Memory.module.
+
+  Definition result_value `{_fargs : FArgs}
+    `{_rocq_assumption_0 :
+      RocqOfOCaml.Basics.Unreachable Memory.(Memory.Memory_signature.t)} : int :=
+    let '_ :=
+      let '_ := false in
+      (@RocqOfOCaml.Basics.unreachable Memory.(Memory.Memory_signature.t) _) in
+    Input.(INPUT.value).
+
   Definition extra `{_fargs : FArgs} : int := Z.add Input.(INPUT.value) 1.
-  
+
   Module Produce_result.
-    Record signature `{_fargs : FArgs} : Set := {
-      result_value : int;
+    Record signature `{_fargs : FArgs} {Memory_t : Set} : Type := {
+      Memory : Produce.Memory.Memory_signature (t := Memory_t);
+      result_value :
+        forall
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable Memory.(Memory.Memory_signature.t)},
+          int;
       extra : int;
     }.
   End Produce_result.
   Definition Produce_result `{_fargs : FArgs} := @Produce_result.signature _.
-  Arguments Produce_result {_}.
-  
+  Arguments Produce_result {_ _}.
+
   (* Produce *)
-  Definition functor `{_fargs : FArgs} :@Produce_result _fargs :=
-    ({|
-      Produce_result.result_value (_fargs := _fargs) :=
-        (result_value (_fargs := _fargs));
-      Produce_result.extra (_fargs := _fargs) := (extra (_fargs := _fargs))
-    |} : @Produce_result _fargs).
+  Definition functor `{_fargs : FArgs} :Produce_result (Memory_t := _) :=
+    {|
+      Produce_result.Memory := Memory;
+      Produce_result.result_value _ := result_value;
+      Produce_result.extra := extra
+    |}.
 End Produce.
 Definition Produce (Input : INPUT) :=
   @Produce.functor (Produce.Build_FArgs Input).
@@ -50,29 +84,27 @@ Module Consume.
     Producer : forall (Input : INPUT), OUTPUT;
     Input : INPUT;
   }.
-  
+
   Definition Result `{_fargs : FArgs} := Producer Input.
-  
+
   Module Consume_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Result : OUTPUT;
     }.
   End Consume_result.
   Definition Consume_result `{_fargs : FArgs} := @Consume_result.signature _.
   Arguments Consume_result {_}.
-  
+
   (* Consume *)
   Definition functor `{_fargs : FArgs} :@Consume_result _fargs :=
-    ({|
-      Consume_result.Result (_fargs := _fargs) := (Result (_fargs := _fargs))
-    |} : @Consume_result _fargs).
+    ((@Consume_result.Build_signature _fargs Result) : @Consume_result _fargs).
 End Consume.
 Definition Consume (Producer : forall (Input : INPUT), OUTPUT) (Input : INPUT)
   := @Consume.functor (Consume.Build_FArgs Producer Input).
 
 Module Concrete.
   Definition value : int := 41.
-  
+
   (* Concrete *)
   Definition module :INPUT :=
     {|
@@ -81,18 +113,32 @@ Module Concrete.
 End Concrete.
 Definition Concrete := Concrete.module.
 
-Definition Applied_fargs :=
+Definition Applied_fargs
+  `{_rocq_module_assumption_0 :
+    RocqOfOCaml.Basics.Unreachable
+      (forall (Input : INPUT),
+      (Produce.Memory (_fargs := Produce.Build_FArgs Input)).(Produce.Memory.Memory_signature.t))}
+  :=
   Consume.Build_FArgs
     (fun (Input : INPUT) =>
+      let _rocq_local__rocq_module_assumption_0 :=
+        specialize_unreachable _rocq_module_assumption_0 Input in
       let module_coercion := Produce Input in
       {|
         OUTPUT.result_value :=
           module_coercion.(Produce.Produce_result.result_value)
       |}) Concrete.
 
-Definition Applied : Consume.Consume_result (_fargs := Applied_fargs) :=
+Definition Applied
+  `{_rocq_module_assumption_0 :
+    RocqOfOCaml.Basics.Unreachable
+      (forall (Input : INPUT),
+      (Produce.Memory (_fargs := Produce.Build_FArgs Input)).(Produce.Memory.Memory_signature.t))}
+  : Consume.Consume_result (_fargs := Applied_fargs) :=
   Consume
     (fun (Input : INPUT) =>
+      let _rocq_local__rocq_module_assumption_0 :=
+        specialize_unreachable _rocq_module_assumption_0 Input in
       let module_coercion := Produce Input in
       {|
         OUTPUT.result_value :=

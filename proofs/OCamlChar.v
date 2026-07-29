@@ -14,11 +14,11 @@ Definition code (character : t) : int :=
 Definition unsafe_chr (value : int) : t :=
   ascii_of_N (Z.to_N (value mod 256)).
 
-Definition chr (value : int) : t :=
+Definition chr `{Unreachable t} (value : int) : t :=
   if andb (Z.leb 0 value) (Z.ltb value 256) then
     unsafe_chr value
   else
-    axiom.
+    unreachable.
 
 Definition equal : t -> t -> bool := Ascii.eqb.
 

@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Sig1.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     f_value : t -> t -> t * t;
   }.
@@ -12,7 +12,7 @@ Definition Sig1 := @Sig1.signature.
 Arguments Sig1 {_}.
 
 Module Sig2.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     f_value : t -> list t;
   }.
@@ -22,10 +22,10 @@ Arguments Sig2 {_}.
 
 Module M1.
   Definition t : Set := int.
-  
+
   Definition f_value {A : Set} (n_value : t) (m_value : A) : t * A :=
     (n_value, m_value).
-  
+
   (* M1 *)
   Definition module :Sig1 (t := t) :=
     {|
@@ -36,9 +36,9 @@ Definition M1 := M1.module.
 
 Module M2.
   Definition t : Set := int.
-  
+
   Definition f_value {A : Set} (n_value : t) : list A := nil.
-  
+
   (* M2 *)
   Definition module :Sig2 (t := t) :=
     {|

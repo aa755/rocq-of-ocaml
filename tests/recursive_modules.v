@@ -3,14 +3,14 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module A.
-  Record signature : Set := {
+  Record signature : Type := {
     even : int -> bool;
   }.
 End A.
 Definition A := A.signature.
 
 Module B.
-  Record signature : Set := {
+  Record signature : Type := {
     odd : int -> bool;
   }.
 End B.
@@ -20,24 +20,32 @@ Module Instantiate.
   Class FArgs := {
     MakeA : forall (Other : B), A;
     MakeB : forall (Other : A), B;
+    _rocq_recursive_module_seed : RocqOfOCaml.Basics.Unreachable (A * B);
   }.
-  
+  Arguments Build_FArgs _ _ {_}.
+
+  #[local] Instance _rocq_recursive_module_seed_instance `{_fargs : FArgs} :
+    RocqOfOCaml.Basics.Unreachable (A * B) := _rocq_recursive_module_seed.
+
+
+
   Definition _recursive_modules_First_Second `{_fargs : FArgs} : A * B :=
-    recursive_module_fix
+    recursive_module_unroll recursive_module_default_fuel
+      (use_unreachable _rocq_recursive_module_seed)
       (fun (_recursive_modules : A * B) =>
         let First := fst _recursive_modules in
         let Second := snd _recursive_modules in
         ((MakeA Second), (MakeB First))).
-  
+
   Definition First `{_fargs : FArgs} : A := fst _recursive_modules_First_Second.
-  
+
   Definition Second `{_fargs : FArgs} : B :=
     snd _recursive_modules_First_Second.
-  
+
   Definition two_is_even `{_fargs : FArgs} : bool := First.(A.even) 2.
-  
+
   Module Instantiate_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       First : A;
       Second : B;
       two_is_even : bool;
@@ -46,33 +54,29 @@ Module Instantiate.
   Definition Instantiate_result `{_fargs : FArgs} :=
     @Instantiate_result.signature _.
   Arguments Instantiate_result {_}.
-  
+
   (* Instantiate *)
   Definition functor `{_fargs : FArgs} :@Instantiate_result _fargs :=
-    ({|
-      Instantiate_result.First (_fargs := _fargs) := (First (_fargs := _fargs));
-      Instantiate_result.Second (_fargs := _fargs) :=
-        (Second (_fargs := _fargs));
-      Instantiate_result.two_is_even (_fargs := _fargs) :=
-        (two_is_even (_fargs := _fargs))
-    |} : @Instantiate_result _fargs).
+    ((@Instantiate_result.Build_signature _fargs First Second two_is_even) :
+      @Instantiate_result _fargs).
 End Instantiate.
 Definition Instantiate
-  (MakeA : forall (Other : B), A) (MakeB : forall (Other : A), B) :=
+  (MakeA : forall (Other : B), A) (MakeB : forall (Other : A), B)
+  `{_rocq_recursive_module_seed : RocqOfOCaml.Basics.Unreachable (A * B)} :=
   @Instantiate.functor (Instantiate.Build_FArgs MakeA MakeB).
 
 Module MakeA.
   Class FArgs := {
     Other : B;
   }.
-  
+
   Fixpoint even `{_fargs : FArgs} (n_value : int) : bool :=
     orb (equiv_decb n_value 0) (Other.(B.odd) (Z.sub n_value 1)).
-  
+
   (* MakeA *)
   Definition functor `{_fargs : FArgs} :A :=
     {|
-      A.even := (even (_fargs := _fargs))
+      A.even := even
     |}.
 End MakeA.
 Definition MakeA (Other : B) := @MakeA.functor (MakeA.Build_FArgs Other).
@@ -81,28 +85,33 @@ Module MakeB.
   Class FArgs := {
     Other : A;
   }.
-  
+
   Fixpoint odd `{_fargs : FArgs} (n_value : int) : bool :=
     andb (nequiv_decb n_value 0) (Other.(A.even) (Z.sub n_value 1)).
-  
+
   (* MakeB *)
   Definition functor `{_fargs : FArgs} :B :=
     {|
-      B.odd := (odd (_fargs := _fargs))
+      B.odd := odd
     |}.
 End MakeB.
 Definition MakeB (Other : A) := @MakeB.functor (MakeB.Build_FArgs Other).
 
-Definition Instance_fargs := Instantiate.Build_FArgs MakeA MakeB.
+Definition Instance_fargs
+  `{_rocq_module_assumption_0 : RocqOfOCaml.Basics.Unreachable (A * B)} :=
+  Instantiate.Build_FArgs MakeA MakeB.
 
-Definition Instance : Instantiate.Instantiate_result (_fargs := Instance_fargs)
-  := Instantiate MakeA MakeB.
+Definition Instance
+  `{_rocq_module_assumption_0 : RocqOfOCaml.Basics.Unreachable (A * B)} :
+  Instantiate.Instantiate_result (_fargs := Instance_fargs) :=
+  Instantiate MakeA MakeB.
 
-Definition four_is_even : bool :=
+Definition four_is_even
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (A * B)} : bool :=
   Instance.(Instantiate.Instantiate_result.First).(A.even) 4.
 
 Module TYPE.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End TYPE.
@@ -114,25 +123,25 @@ Module Box.
     T : TYPE (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module S.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       run : T.(TYPE.t) -> T.(TYPE.t);
     }.
   End S.
   Definition S `{_fargs : FArgs} := @S.signature _ _.
   Arguments S {_ _}.
-  
+
   Module Box_result.
-    Inductive signature `{_fargs : FArgs} : Set :=
+    Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Box_result.
   Definition Box_result `{_fargs : FArgs} := @Box_result.signature _ _.
   Arguments Box_result {_ _}.
-  
+
   (* Box *)
   Definition functor `{_fargs : FArgs} :@Box_result T_t _fargs :=
-    ((ltac:(constructor) : Box_result) : @Box_result T_t _fargs).
+    ((@Box_result.Build_signature T_t _fargs) : @Box_result T_t _fargs).
 End Box.
 Definition Box {T_t : Set} (T : TYPE (t := T_t)) :=
   @Box.functor T_t (Box.Build_FArgs T).
@@ -142,37 +151,47 @@ Module RecursiveResult.
     T : TYPE (t := T_t);
     MakeWorker :
       forall (X : TYPE (t := T.(TYPE.t))), Box.S (_fargs := Box.Build_FArgs T);
+    _rocq_recursive_module_seed :
+      RocqOfOCaml.Basics.Unreachable (Box.S (_fargs := Box.Build_FArgs T));
   }.
-  Arguments Build_FArgs {_}.
-  
+  Arguments Build_FArgs {_} _ _ {_}.
+
+  #[local] Instance _rocq_recursive_module_seed_instance `{_fargs : FArgs} :
+    RocqOfOCaml.Basics.Unreachable (Box.S (_fargs := Box.Build_FArgs T)) :=
+    _rocq_recursive_module_seed.
+
+
+
   Definition _recursive_modules_Worker `{_fargs : FArgs} :
     Box.S (_fargs := Box.Build_FArgs T) :=
-    recursive_module_fix
+    recursive_module_unroll recursive_module_default_fuel
+      (use_unreachable _rocq_recursive_module_seed)
       (fun (_recursive_modules : Box.S (_fargs := Box.Build_FArgs T)) =>
         let Worker := _recursive_modules in
         MakeWorker T).
-  
+
   Definition Worker `{_fargs : FArgs} : Box.S (_fargs := Box.Build_FArgs T) :=
     _recursive_modules_Worker.
-  
+
   Module RecursiveResult_signature.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Worker_run : T.(TYPE.t) -> T.(TYPE.t);
     }.
   End RecursiveResult_signature.
   Definition RecursiveResult_signature `{_fargs : FArgs} :=
     @RecursiveResult_signature.signature _ _.
   Arguments RecursiveResult_signature {_ _}.
-  
+
   (* RecursiveResult *)
   Definition functor `{_fargs : FArgs} :RecursiveResult_signature :=
     {|
-      RecursiveResult_signature.Worker_run :=
-        (Worker (_fargs := _fargs)).(Box.S.run)
+      RecursiveResult_signature.Worker_run := Worker.(Box.S.run)
     |}.
 End RecursiveResult.
 Definition RecursiveResult {T_t : Set}
   (T : TYPE (t := T_t))
   (MakeWorker :
-    forall (X : TYPE (t := T.(TYPE.t))), Box.S (_fargs := Box.Build_FArgs T)) :=
+    forall (X : TYPE (t := T.(TYPE.t))), Box.S (_fargs := Box.Build_FArgs T))
+  `{_rocq_recursive_module_seed :
+    RocqOfOCaml.Basics.Unreachable (Box.S (_fargs := Box.Build_FArgs T))} :=
   @RecursiveResult.functor T_t (RecursiveResult.Build_FArgs T MakeWorker).

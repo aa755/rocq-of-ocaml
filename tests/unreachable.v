@@ -68,8 +68,29 @@ Definition failed_qualified
   let '_ := function_parameter in
   Qualified.failed_unit tt.
 
+Module Alias_bytes.
+  Module B20.
+    Definition t : Set := int.
+
+    Definition failed
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t}
+      (function_parameter : unit) : t :=
+      let '_ := function_parameter in
+      let '_ := false in
+      (@RocqOfOCaml.Basics.unreachable t _).
+  End B20.
+End Alias_bytes.
+
+Module Alias_address := Alias_bytes.B20.
+
+Definition failed_through_nested_alias
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Alias_address.t}
+  (function_parameter : unit) : Alias_address.t :=
+  let '_ := function_parameter in
+  Alias_address.failed tt.
+
 Module Make_projected_X_signature.
-  Record signature : Set := {
+  Record signature : Type := {
     marker : unit;
   }.
 End Make_projected_X_signature.
@@ -79,15 +100,15 @@ Module Make_projected.
   Class FArgs := {
     X : Make_projected_X_signature;
   }.
-  
+
   Definition failed_unit `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
     (function_parameter : unit) : unit :=
     let '_ := function_parameter in
     if false then tt else (@RocqOfOCaml.Basics.unreachable unit _).
-  
+
   Module Make_projected_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       failed_unit :
         forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit},
           unit -> unit;
@@ -96,13 +117,11 @@ Module Make_projected.
   Definition Make_projected_result `{_fargs : FArgs} :=
     @Make_projected_result.signature _.
   Arguments Make_projected_result {_}.
-  
+
   (* Make_projected *)
   Definition functor `{_fargs : FArgs} :@Make_projected_result _fargs :=
-    ({|
-      Make_projected_result.failed_unit (_fargs := _fargs) _ :=
-        (failed_unit (_fargs := _fargs))
-    |} : @Make_projected_result _fargs).
+    ((@Make_projected_result.Build_signature _fargs (fun _ => failed_unit)) :
+      @Make_projected_result _fargs).
 End Make_projected.
 Definition Make_projected (X : Make_projected_X_signature) :=
   @Make_projected.functor (Make_projected.Build_FArgs X).
@@ -129,7 +148,7 @@ Definition failed_projected
   Projected.(Make_projected.Make_projected_result.failed_unit) tt.
 
 Module Abstract_failure_Value_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End Abstract_failure_Value_signature.
@@ -142,10 +161,10 @@ Module Abstract_failure.
     Value : Abstract_failure_Value_signature (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition t `{_fargs : FArgs} : Set :=
     Value.(Abstract_failure_Value_signature.t).
-  
+
   Definition failed `{_fargs : FArgs}
     `{_rocq_assumption_0 :
       RocqOfOCaml.Basics.Unreachable Value.(Abstract_failure_Value_signature.t)}
@@ -154,7 +173,7 @@ Module Abstract_failure.
     let '_ := false in
     (@RocqOfOCaml.Basics.unreachable Value.(Abstract_failure_Value_signature.t)
       _).
-  
+
   Definition observes_failure `{_fargs : FArgs}
     `{_rocq_assumption_0 :
       RocqOfOCaml.Basics.Unreachable Value.(Abstract_failure_Value_signature.t)}
@@ -162,9 +181,9 @@ Module Abstract_failure.
     let '_ := function_parameter in
     let '_ := failed tt in
     true.
-  
+
   Module Abstract_failure_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := Value.(Abstract_failure_Value_signature.t);
       failed :
         forall
@@ -183,16 +202,12 @@ Module Abstract_failure.
   Definition Abstract_failure_result `{_fargs : FArgs} :=
     @Abstract_failure_result.signature _ _.
   Arguments Abstract_failure_result {_ _}.
-  
+
   (* Abstract_failure *)
   Definition functor `{_fargs : FArgs} :@Abstract_failure_result Value_t _fargs
     :=
-    ({|
-      Abstract_failure_result.failed (Value_t := Value_t) (_fargs := _fargs) _
-      := (failed (_fargs := _fargs));
-      Abstract_failure_result.observes_failure (Value_t := Value_t) (_fargs :=
-        _fargs) _ := (observes_failure (_fargs := _fargs))
-    |} : @Abstract_failure_result Value_t _fargs).
+    ((@Abstract_failure_result.Build_signature Value_t _fargs (fun _ => failed)
+      (fun _ => observes_failure)) : @Abstract_failure_result Value_t _fargs).
 End Abstract_failure.
 Definition Abstract_failure {Value_t : Set}
   (Value : Abstract_failure_Value_signature (t := Value_t)) :=
@@ -214,26 +229,18 @@ Definition Observed_failure :
 Module Included_failure.
   (** Inclusion of the module [Observed_failure] *)
   Definition t := Observed_failure.(Abstract_failure.Abstract_failure_result.t).
-  
-  Definition failed
-    `{_rocq_assumption_0 :
-      RocqOfOCaml.Basics.Unreachable
-        Observed_failure.(Abstract_failure.Abstract_failure_result.t)} :
+
+  Definition failed `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} :
     unit -> t :=
     Observed_failure.(Abstract_failure.Abstract_failure_result.failed).
-  
+
   Definition observes_failure
-    `{_rocq_assumption_0 :
-      RocqOfOCaml.Basics.Unreachable
-        Observed_failure.(Abstract_failure.Abstract_failure_result.t)} :
-    t -> bool :=
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : t -> bool :=
     Observed_failure.(Abstract_failure.Abstract_failure_result.observes_failure).
 End Included_failure.
 
 Definition failed_included
-  `{_rocq_assumption_0 :
-    RocqOfOCaml.Basics.Unreachable
-      Observed_failure.(Abstract_failure.Abstract_failure_result.t)}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Included_failure.t}
   (function_parameter : unit) : Included_failure.t :=
   let '_ := function_parameter in
   Included_failure.failed tt.
@@ -242,7 +249,7 @@ Module Shadowed_pattern.
   Definition hd {A : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
     : A := RocqOfOCaml.OCamlList.hd values.
-  
+
   Definition first_or_zero (function_parameter : list int) : int :=
     match function_parameter with
     | Datatypes.cons hd _ => hd
@@ -251,7 +258,7 @@ Module Shadowed_pattern.
 End Shadowed_pattern.
 
 Module Scoped_value_X_signature.
-  Record signature : Set := {
+  Record signature : Type := {
     value : Variant.t;
   }.
 End Scoped_value_X_signature.
@@ -261,27 +268,29 @@ Module Scoped_value.
   Class FArgs := {
     X : Scoped_value_X_signature;
   }.
-  
+
   Definition number `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
     let _variant_value := X.(Scoped_value_X_signature.value) in
     match _variant_value with
     | Variant.Build _variant_tag _ _variant_payload =>
       if String.eqb _variant_tag "Number" then
-        let value := cast int _variant_payload in
+        let value :=
+          (let '_ := _variant_payload in
+          (@RocqOfOCaml.Basics.unreachable int _)) in
         value
       else
         (@RocqOfOCaml.Basics.unreachable int _)
     end.
-  
+
   Module Nested.
     Definition copied_number `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
       number.
   End Nested.
-  
+
   Module Scoped_value_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       number :
         forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}, int;
       Nested_copied_number :
@@ -291,21 +300,17 @@ Module Scoped_value.
   Definition Scoped_value_result `{_fargs : FArgs} :=
     @Scoped_value_result.signature _.
   Arguments Scoped_value_result {_}.
-  
+
   (* Scoped_value *)
   Definition functor `{_fargs : FArgs} :@Scoped_value_result _fargs :=
-    ({|
-      Scoped_value_result.number (_fargs := _fargs) _ :=
-        (number (_fargs := _fargs));
-      Scoped_value_result.Nested_copied_number (_fargs := _fargs) _ :=
-        (Nested.copied_number (_fargs := _fargs))
-    |} : @Scoped_value_result _fargs).
+    ((@Scoped_value_result.Build_signature _fargs (fun _ => number)
+      (fun _ => Nested.copied_number)) : @Scoped_value_result _fargs).
 End Scoped_value.
 Definition Scoped_value (X : Scoped_value_X_signature) :=
   @Scoped_value.functor (Scoped_value.Build_FArgs X).
 
 Module Outer_X_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
     value : t;
   }.
@@ -318,22 +323,22 @@ Module Outer.
     X : Outer_X_signature (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Inner_Y_signature.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       valid : bool;
     }.
   End Inner_Y_signature.
   Definition Inner_Y_signature `{_fargs : FArgs} := @Inner_Y_signature.signature
     _ _.
   Arguments Inner_Y_signature {_ _}.
-  
+
   Module Inner.
     Class FArgs `{_fargs : FArgs} := {
       Y : Inner_Y_signature;
     }.
     Arguments Build_FArgs {_ _}.
-    
+
     Definition checked `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
       (function_parameter : unit) : X.(Outer_X_signature.t) :=
@@ -342,9 +347,9 @@ Module Outer.
         if Y.(Inner_Y_signature.valid) then tt else
           (@RocqOfOCaml.Basics.unreachable unit _) in
       X.(Outer_X_signature.value).
-    
+
     Module Inner_result.
-      Record signature `{_fargs : FArgs} : Set := {
+      Record signature `{_fargs : FArgs} : Type := {
         checked :
           forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit},
             unit -> X.(Outer_X_signature.t);
@@ -352,33 +357,31 @@ Module Outer.
     End Inner_result.
     Definition Inner_result `{_fargs : FArgs} := @Inner_result.signature _ _ _.
     Arguments Inner_result {_ _ _}.
-    
+
     (* Inner *)
     Definition functor `{_fargs : FArgs} :@Inner_result _ _ _fargs :=
-      ({|
-        Inner_result.checked (_fargs := _fargs) _ :=
-          (checked (_fargs := _fargs))
-      |} : @Inner_result _ _ _fargs).
+      ((@Inner_result.Build_signature _ _ _fargs (fun _ => checked)) :
+        @Inner_result _ _ _fargs).
   End Inner.
   Definition Inner `{_fargs : FArgs} (Y : Inner_Y_signature) :=
     @Inner.functor _ _ (Inner.Build_FArgs Y).
-  
+
   Module Outer_result.
-    Inductive signature `{_fargs : FArgs} : Set :=
+    Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-  
+
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result X_t _fargs :=
-    ((ltac:(constructor) : Outer_result) : @Outer_result X_t _fargs).
+    ((@Outer_result.Build_signature X_t _fargs) : @Outer_result X_t _fargs).
 End Outer.
 Definition Outer {X_t : Set} (X : Outer_X_signature (t := X_t)) :=
   @Outer.functor X_t (Outer.Build_FArgs X).
 
 Module Provider_X_signature.
-  Inductive signature : Set :=
+  Inductive signature : Type :=
   | Build_signature : signature.
 End Provider_X_signature.
 Definition Provider_X_signature := Provider_X_signature.signature.
@@ -387,15 +390,15 @@ Module Provider.
   Class FArgs := {
     X : Provider_X_signature;
   }.
-  
+
   Module List.
     Definition hd `{_fargs : FArgs} {A : Set}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
       : A := RocqOfOCaml.OCamlList.hd values.
   End List.
-  
+
   Module Provider_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       List_hd :
         forall {A : Set}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}, list A -> A;
@@ -403,13 +406,11 @@ Module Provider.
   End Provider_result.
   Definition Provider_result `{_fargs : FArgs} := @Provider_result.signature _.
   Arguments Provider_result {_}.
-  
+
   (* Provider *)
   Definition functor `{_fargs : FArgs} :@Provider_result _fargs :=
-    ({|
-      Provider_result.List_hd (_fargs := _fargs) _ _ :=
-        (List.hd (_fargs := _fargs))
-    |} : @Provider_result _fargs).
+    ((@Provider_result.Build_signature _fargs (fun _ _ => List.hd)) :
+      @Provider_result _fargs).
 End Provider.
 Definition Provider (X : Provider_X_signature) :=
   @Provider.functor (Provider.Build_FArgs X).
@@ -418,24 +419,24 @@ Module Consumer.
   Class FArgs := {
     X : Provider_X_signature;
   }.
-  
+
   Definition Instantiation_fargs `{_fargs : FArgs} := Provider.Build_FArgs X.
-  
+
   Definition Instantiation `{_fargs : FArgs} :
     Provider.Provider_result (_fargs := Instantiation_fargs) := Provider X.
-  
+
   Module List.
     Definition hd `{_fargs : FArgs} {A : Set}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} :=
       Instantiation.(Provider.Provider_result.List_hd) (A := A).
   End List.
-  
+
   Definition head `{_fargs : FArgs} {A : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
     : A := List.hd values.
-  
+
   Module Consumer_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Instantiation : Provider.Provider_result (_fargs := Instantiation_fargs);
       List_hd :
         forall {A : Set}
@@ -447,16 +448,11 @@ Module Consumer.
   End Consumer_result.
   Definition Consumer_result `{_fargs : FArgs} := @Consumer_result.signature _.
   Arguments Consumer_result {_}.
-  
+
   (* Consumer *)
   Definition functor `{_fargs : FArgs} :@Consumer_result _fargs :=
-    ({|
-      Consumer_result.Instantiation (_fargs := _fargs) :=
-        (Instantiation (_fargs := _fargs));
-      Consumer_result.List_hd (_fargs := _fargs) _ _ :=
-        (List.hd (_fargs := _fargs));
-      Consumer_result.head (_fargs := _fargs) _ _ := (head (_fargs := _fargs))
-    |} : @Consumer_result _fargs).
+    ((@Consumer_result.Build_signature _fargs Instantiation (fun _ _ => List.hd)
+      (fun _ _ => head)) : @Consumer_result _fargs).
 End Consumer.
 Definition Consumer (X : Provider_X_signature) :=
   @Consumer.functor (Consumer.Build_FArgs X).
@@ -465,7 +461,7 @@ Module Operator_result.
   Class FArgs := {
     X : Provider_X_signature;
   }.
-  
+
   Module Nested.
     Definition checked `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (value : int)
@@ -475,14 +471,14 @@ Module Operator_result.
       else
         let '_ := false in
         (@RocqOfOCaml.Basics.unreachable int _).
-    
+
     Definition op_plus `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (_left : int)
       (_right : int) : int := checked (Z.add _left _right).
   End Nested.
-  
+
   Module Operator_result_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Nested_checked :
         forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int},
           int -> int;
@@ -494,21 +490,17 @@ Module Operator_result.
   Definition Operator_result_result `{_fargs : FArgs} :=
     @Operator_result_result.signature _.
   Arguments Operator_result_result {_}.
-  
+
   (* Operator_result *)
   Definition functor `{_fargs : FArgs} :@Operator_result_result _fargs :=
-    ({|
-      Operator_result_result.Nested_checked (_fargs := _fargs) _ :=
-        (Nested.checked (_fargs := _fargs));
-      Operator_result_result.op_Nested_plus (_fargs := _fargs) _ :=
-        (Nested.op_plus (_fargs := _fargs))
-    |} : @Operator_result_result _fargs).
+    ((@Operator_result_result.Build_signature _fargs (fun _ => Nested.checked)
+      (fun _ => Nested.op_plus)) : @Operator_result_result _fargs).
 End Operator_result.
 Definition Operator_result (X : Provider_X_signature) :=
   @Operator_result.functor (Operator_result.Build_FArgs X).
 
 Module Hidden_result_X_signature.
-  Record signature {_left _right : Set} : Set := {
+  Record signature {_left : Set} {_right : Set} : Type := {
     _left := _left;
     _right := _right;
     left_value : _left;
@@ -522,11 +514,11 @@ Module Hidden_result.
     X : Hidden_result_X_signature (_left := X__left) (_right := X__right);
   }.
   Arguments Build_FArgs {_ _}.
-  
+
   Module Right.
     Definition t `{_fargs : FArgs} : Set :=
       X.(Hidden_result_X_signature._right).
-    
+
     Definition failed `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t}
       (function_parameter : unit) : t :=
@@ -534,10 +526,10 @@ Module Hidden_result.
       let '_ := false in
       (@RocqOfOCaml.Basics.unreachable t _).
   End Right.
-  
+
   Module Left.
     Definition t `{_fargs : FArgs} : Set := X.(Hidden_result_X_signature._left).
-    
+
     Definition after_hidden_failure `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Right.t}
       (function_parameter : unit) : t :=
@@ -545,33 +537,33 @@ Module Hidden_result.
       let '_ := Right.failed tt in
       X.(Hidden_result_X_signature.left_value).
   End Left.
-  
+
   Module Hidden_result_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Right_t := X.(Hidden_result_X_signature._right);
       Right_failed :
-        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Right_t},
+        forall
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable X.(Hidden_result_X_signature._right)},
           unit -> Right_t;
       Left_t := X.(Hidden_result_X_signature._left);
       Left_after_hidden_failure :
-        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Right_t},
+        forall
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable X.(Hidden_result_X_signature._right)},
           unit -> Left_t;
     }.
   End Hidden_result_result.
   Definition Hidden_result_result `{_fargs : FArgs} :=
     @Hidden_result_result.signature _ _ _.
   Arguments Hidden_result_result {_ _ _}.
-  
+
   (* Hidden_result *)
   Definition functor `{_fargs : FArgs}
     :@Hidden_result_result X__left X__right _fargs :=
-    ({|
-      Hidden_result_result.Right_failed (X__left := X__left) (X__right :=
-        X__right) (_fargs := _fargs) _ := (Right.failed (_fargs := _fargs));
-      Hidden_result_result.Left_after_hidden_failure (X__left := X__left)
-        (X__right := X__right) (_fargs := _fargs) _ :=
-        (Left.after_hidden_failure (_fargs := _fargs))
-    |} : @Hidden_result_result X__left X__right _fargs).
+    ((@Hidden_result_result.Build_signature X__left X__right _fargs
+      (fun _ => Right.failed) (fun _ => Left.after_hidden_failure)) :
+      @Hidden_result_result X__left X__right _fargs).
 End Hidden_result.
 Definition Hidden_result {X__left X__right : Set}
   (X : Hidden_result_X_signature (_left := X__left) (_right := X__right)) :=
@@ -598,7 +590,7 @@ Definition Hidden_applied :
 
 Module Hidden_left.
   Definition t := bool.
-  
+
   Definition after_hidden_failure
     `{_rocq_assumption_0 :
       RocqOfOCaml.Basics.Unreachable

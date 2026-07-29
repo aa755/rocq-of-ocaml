@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module ARGUMENT.
-  Record signature : Set := {
+  Record signature : Type := {
     token : unit;
   }.
 End ARGUMENT.
@@ -16,13 +16,18 @@ Module Fixed.
 
   Definition t `{_fargs : FArgs} : Set := int.
 
+  Definition missing `{_fargs : FArgs}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+    let '_ := false in
+    (@RocqOfOCaml.Basics.unreachable int _).
+
   Module Map.
     Definition t `{_fargs : FArgs} : Set := list int.
 
     Definition empty `{_fargs : FArgs} : t := nil.
 
     Module Map_signature.
-      Record signature `{_fargs : FArgs} {t : Set} : Set := {
+      Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
         empty : t;
       }.
@@ -39,8 +44,10 @@ Module Fixed.
   Definition Map `{_fargs : FArgs} := Map.module.
 
   Module Fixed_result.
-    Record signature `{_fargs : FArgs} {Map_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Map_t : Set} : Type := {
       t := int;
+      missing :
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}, int;
       Map : Fixed.Map.Map_signature (t := Map_t);
     }.
   End Fixed_result.
@@ -50,7 +57,8 @@ Module Fixed.
   (* Fixed *)
   Definition functor `{_fargs : FArgs} :Fixed_result (Map_t := _) :=
     {|
-      Fixed_result.Map := (Map (_fargs := _fargs))
+      Fixed_result.missing _ := missing;
+      Fixed_result.Map := Map
     |}.
 End Fixed.
 Definition Fixed (Argument : ARGUMENT) :=
@@ -93,6 +101,54 @@ Module Local_failure.
     end.
 End Local_failure.
 
+Module Partial_base.
+  Definition unwrap {A : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}
+    (function_parameter : option A) : A :=
+    match function_parameter with
+    | Some value => value
+    | None =>
+      let '_ := false in
+      (@RocqOfOCaml.Basics.unreachable A _)
+    end.
+End Partial_base.
+
+Module Partial_reexport := Partial_base.
+
+Definition shadowed_unwrap {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}
+  (function_parameter : option A) : A :=
+  match function_parameter with
+  | Some value => value
+  | None =>
+    let '_ := false in
+    (@RocqOfOCaml.Basics.unreachable A _)
+  end.
+
+Module Shadowing.
+  Definition shadowed_unwrap {A : Set}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} : option A -> A :=
+    shadowed_unwrap.
+End Shadowing.
+
+Definition find {A : Set}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}
+  (function_parameter : option A) : A :=
+  match function_parameter with
+  | Some value => value
+  | None =>
+    let '_ := false in
+    (@RocqOfOCaml.Basics.unreachable A _)
+  end.
+
+Module Recursive.
+  Fixpoint find {A : Set} (function_parameter : list A) : int :=
+    match function_parameter with
+    | [] => 0
+    | Datatypes.cons _ values => find values
+    end.
+End Recursive.
+
 Definition Applied_fargs := Fixed.Build_FArgs DefaultArgument.
 
 Definition Applied : Fixed.Fixed_result (_fargs := Applied_fargs) :=
@@ -113,7 +169,7 @@ Module Aliased.
   Definition Alias `{_fargs : FArgs} := Direct.
 
   Module Aliased_result.
-    Record signature `{_fargs : FArgs} {Direct_Map_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Direct_Map_t : Set} : Type := {
       Direct :
         Fixed.Fixed_result (_fargs := Direct_fargs) (Map_t := Direct_Map_t);
       Alias_Map_t := Direct_Map_t;
@@ -127,8 +183,8 @@ Module Aliased.
   (* Aliased *)
   Definition functor `{_fargs : FArgs} :Aliased_result (Direct_Map_t := _) :=
     {|
-      Aliased_result.Direct := (Direct (_fargs := _fargs));
-      Aliased_result.Alias := (Alias (_fargs := _fargs))
+      Aliased_result.Direct := Direct;
+      Aliased_result.Alias := Alias
     |}.
 End Aliased.
 Definition Aliased (Argument : ARGUMENT) :=
@@ -144,7 +200,7 @@ Module Base.
   Definition identity `{_fargs : FArgs} {A : Set} (value : A) : A := value.
 
   Module Base_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       t := int;
       identity : forall {A : Set} , A -> A;
     }.
@@ -154,9 +210,8 @@ Module Base.
 
   (* Base *)
   Definition functor `{_fargs : FArgs} :@Base_result _fargs :=
-    ({|
-      Base_result.identity (_fargs := _fargs) _ := (identity (_fargs := _fargs))
-    |} : @Base_result _fargs).
+    ((@Base_result.Build_signature _fargs (fun _ => identity)) :
+      @Base_result _fargs).
 End Base.
 Definition Base (Argument : ARGUMENT) :=
   @Base.functor (Base.Build_FArgs Argument).
@@ -185,7 +240,7 @@ Module Outer.
   End Namespace.
 
   Module Outer_result.
-    Record signature `{_fargs : FArgs} {Namespace_Repr_Map_t : Set} : Set := {
+    Record signature `{_fargs : FArgs} {Namespace_Repr_Map_t : Set} : Type := {
       Included : Base.Base_result (_fargs := Included_fargs);
       Namespace_t := int;
       Namespace_identity : forall {A : Set} , A -> A;
@@ -201,17 +256,16 @@ Module Outer.
   Definition functor `{_fargs : FArgs} :Outer_result (Namespace_Repr_Map_t := _)
     :=
     {|
-      Outer_result.Included := (Included (_fargs := _fargs));
-      Outer_result.Namespace_identity _ :=
-        (Namespace.identity (_fargs := _fargs));
-      Outer_result.Namespace_Repr := (Namespace.Repr (_fargs := _fargs))
+      Outer_result.Included := Included;
+      Outer_result.Namespace_identity _ := Namespace.identity;
+      Outer_result.Namespace_Repr := Namespace.Repr
     |}.
 End Outer.
 Definition Outer (Argument : ARGUMENT) :=
   @Outer.functor (Outer.Build_FArgs Argument).
 
 Module Anonymous_T_signature.
-  Record signature {t : Set} : Set := {
+  Record signature {t : Set} : Type := {
     t := t;
   }.
 End Anonymous_T_signature.
@@ -228,7 +282,7 @@ Module Anonymous.
     : T.(Anonymous_T_signature.t) := value.
 
   Module Anonymous_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       identity : T.(Anonymous_T_signature.t) -> T.(Anonymous_T_signature.t);
     }.
   End Anonymous_result.
@@ -238,23 +292,21 @@ Module Anonymous.
 
   (* Anonymous *)
   Definition functor `{_fargs : FArgs} :@Anonymous_result T_t _fargs :=
-    ({|
-      Anonymous_result.identity (T_t := T_t) (_fargs := _fargs) :=
-        (identity (_fargs := _fargs))
-    |} : @Anonymous_result T_t _fargs).
+    ((@Anonymous_result.Build_signature T_t _fargs identity) :
+      @Anonymous_result T_t _fargs).
 End Anonymous.
 Definition Anonymous {T_t : Set} (T : Anonymous_T_signature (t := T_t)) :=
   @Anonymous.functor T_t (Anonymous.Build_FArgs T).
 
 Module INPUT.
-  Record signature : Set := {
+  Record signature : Type := {
     value : int;
   }.
 End INPUT.
 Definition INPUT := INPUT.signature.
 
 Module OUTPUT.
-  Record signature : Set := {
+  Record signature : Type := {
     result_value : int;
   }.
 End OUTPUT.
@@ -269,7 +321,7 @@ Module Consume.
   Definition Result `{_fargs : FArgs} := Producer Input.
 
   Module Consume_result.
-    Record signature `{_fargs : FArgs} : Set := {
+    Record signature `{_fargs : FArgs} : Type := {
       Result : OUTPUT;
     }.
   End Consume_result.
@@ -278,9 +330,7 @@ Module Consume.
 
   (* Consume *)
   Definition functor `{_fargs : FArgs} :@Consume_result _fargs :=
-    ({|
-      Consume_result.Result (_fargs := _fargs) := (Result (_fargs := _fargs))
-    |} : @Consume_result _fargs).
+    ((@Consume_result.Build_signature _fargs Result) : @Consume_result _fargs).
 End Consume.
 Definition Consume (Producer : forall (Input : INPUT), OUTPUT) (Input : INPUT)
   := @Consume.functor (Consume.Build_FArgs Producer Input).
