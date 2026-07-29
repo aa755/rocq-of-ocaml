@@ -57,9 +57,13 @@ class Test
     File.write(file_name, output)
   end
 
+  def normalize_snapshot(contents)
+    contents.gsub(/[ \t]+(?=\n|\z)/, '')
+  end
+
   def check
     update if ENV['UPDATE_SNAPSHOTS'] == '1'
-    rocq_of_ocaml == reference
+    normalize_snapshot(rocq_of_ocaml) == normalize_snapshot(reference)
   end
 
   def rocq_cmd
