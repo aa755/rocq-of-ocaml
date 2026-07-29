@@ -565,10 +565,16 @@ evaluation may diverge. Such a definition must be translated to an explicit
 partial computation type, and that effect must be propagated through strict
 callers and exported signatures.
 
-The translator currently recognizes this annotation but rejects it with a
-source-located error because this effect propagation is not implemented yet.
-It never turns possibly non-terminating recursion into an unchecked Gallina
-`Fixpoint`.
+Pure partial definitions return `RocqOfOCaml.Partial.Delay.t`. Partial
+definitions over a recognized monad return
+`RocqOfOCaml.Partial.Resumption.t`. Recursive calls produce a silent step, so
+the generated computation remains productive even when the source diverges.
+Strict callers, module signatures, includes, and functor results retain the
+partial result type.
+
+The translator emits a source-located warning because the translated interface
+differs from the OCaml interface. It never turns possibly non-terminating
+recursion into an unchecked Gallina `Fixpoint`.
 
 The underscore spelling `[@rocq_partial]` is also accepted.
 
@@ -602,15 +608,15 @@ let[@rocq.wf] rec gcd left right =
   if right = 0 then left else gcd right (left mod right)
 ```
 
-The current implementation emits an abstract `nat`-valued measure, a
-`Program Fixpoint`, and admitted decrease and well-foundedness obligations:
+The current implementation emits an abstract `nat`-valued measure and admitted
+decrease obligations. For example, the generated definition has the shape:
 
 ```rocq
 Parameter _rocq_measure_gcd : Z -> Z -> nat.
 
-Program Fixpoint gcd (left right : Z)
-    {measure (@_rocq_measure_gcd left right)} : Z :=
-  if ... then left else gcd right (Z.modulo left right).
+Program Definition gcd (left right : Z) : Z :=
+  @Fix _ (ltof _ _rocq_measure_gcd) (well_founded_ltof _ _rocq_measure_gcd)
+    (fun _ => Z) (fun state recurse => ...) (left, right).
 Admit Obligations.
 ```
 
@@ -618,10 +624,9 @@ This is an explicit temporary trust boundary. The generated measure and every
 admitted obligation must be replaced before relying on the definition in a
 sound development. The translator emits a source-located warning for it.
 
-This initial implementation supports one top-level recursive function per
-annotated group. Local and mutually recursive well-founded definitions are
-rejected. The attribute cannot be combined with `[@rocq_struct]` or
-`[@rocq_axiom_with_reason]`.
+Top-level, local, and mutually recursive definitions are supported. A mutual
+group is encoded through a tagged sum of its call states. The attribute cannot
+be combined with `[@rocq_struct]` or `[@rocq_axiom_with_reason]`.
 
 The underscore spelling `[@rocq_wf]` is also accepted.
 

@@ -671,6 +671,34 @@ and with the setting `["Dir", "t"]` it also correctly transforms the type of `x`
 Definition x : t := Dir.
 ```
 
+## recursion_strategies
+#### Example
+```json
+"recursion_strategies": [
+  ["lib/parser.ml", "Parser.loop", "well_founded"],
+  ["lib/stream.ml", "Stream.next", "partial"],
+  ["lib/client.ml", "Client.collect", "convergent"]
+]
+```
+
+#### Value
+A list of triples containing a source-path suffix, a dot-separated lexical
+definition name, and one of `well_founded`, `partial`, or `convergent`.
+
+An optional fourth integer selects the argument position at which a configured
+partial higher-order operation receives its callback.
+
+#### Explanation
+`well_founded` emits an abstract ranking function and explicit decrease
+obligations. `partial` changes the result to `Delay.t` or monadic
+`Resumption.t` and propagates that result through callers. `convergent` keeps a
+non-recursive caller's source result type and currently emits an explicit
+convergence obligation.
+
+Definition names include enclosing modules and local function names. This
+avoids unstable source line numbers and disambiguates repeated names such as
+`loop`.
+
 ## without_guard_checking
 #### Example
 ```

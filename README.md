@@ -92,24 +92,25 @@ You can start to experiment with the test files in `tests/` or look at our [onli
 
 Recursive definitions are emitted as ordinary Rocq `Fixpoint`s by default, so
 Rocq's guard checker accepts structural recursion and rejects other recursion.
-Use `[@rocq.wf]` for a top-level, single recursive binding that should instead
-be emitted as a `Program Fixpoint` with an abstract measure and admitted
-decrease obligations. A translation configuration can supply the same hint
-without changing the OCaml source:
+Use `[@rocq.wf]` for recursion justified by a well-founded measure, or
+`[@rocq.partial]` when evaluation may diverge. A translation configuration can
+supply the same classifications without changing the OCaml source:
 
 ```json
 {
   "recursion_strategies": [
-    ["path/to/source.ml", "Outer.Module.function_name", "well_founded"]
+    ["path/to/source.ml", "Outer.Module.total_function", "well_founded"],
+    ["path/to/source.ml", "Outer.Module.partial_function", "partial"]
   ]
 }
 ```
 
 The source path is matched as a path suffix. The definition name is its
 dot-separated lexical path through enclosing modules and functions, which
-also disambiguates repeated local names such as `loop`. The other accepted
-strategy is `"partial"`, which is currently diagnosed as unsupported until
-`Delay` effect propagation is implemented.
+also disambiguates repeated local names such as `loop`. Well-founded
+definitions expose an abstract measure and explicit decrease obligations.
+Partial definitions return `Delay.t` or monadic `Resumption.t`, and the changed
+result type is propagated through strict callers and module interfaces.
 
 ## Documentation
 You can read the documentation on the website of the project at [https://formal.land/docs/tools/rocq-of-ocaml/introduction](https://formal.land/docs/tools/rocq-of-ocaml/introduction).
