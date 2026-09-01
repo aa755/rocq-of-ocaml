@@ -15,21 +15,21 @@ Module Identity.
     T : TYPE (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition t `{_fargs : FArgs} : Set := T.(TYPE.t).
-
+  
   Definition identity `{_fargs : FArgs} (value : t) : t := value.
-
+  
   Module Identity_result.
     Record signature `{_fargs : FArgs} : Type := {
       t := T.(TYPE.t);
-      identity : T.(TYPE.t) -> T.(TYPE.t);
+      identity : t -> t;
     }.
   End Identity_result.
   Definition Identity_result `{_fargs : FArgs} := @Identity_result.signature _
     _.
   Arguments Identity_result {_ _}.
-
+  
   (* Identity *)
   Definition functor `{_fargs : FArgs} :@Identity_result T_t _fargs :=
     ((@Identity_result.Build_signature T_t _fargs identity) :
@@ -40,7 +40,7 @@ Definition Identity {T_t : Set} (T : TYPE (t := T_t)) :=
 
 Module Int_type.
   Definition t : Set := int.
-
+  
   (* Int_type *)
   Definition module :TYPE (t := t) := (ltac:(constructor) : TYPE (t := t)).
 End Int_type.
@@ -48,9 +48,9 @@ Definition Int_type := Int_type.module.
 
 Module Nested.
   Definition M_fargs := Identity.Build_FArgs Int_type.
-
+  
   Definition M : Identity.Identity_result (_fargs := M_fargs) :=
-    Identity Int_type.
+    (Identity.functor (_fargs := (M_fargs ))).
 End Nested.
 
 Definition nested_identity (value : Int_type.(TYPE.t)) : Int_type.(TYPE.t) :=

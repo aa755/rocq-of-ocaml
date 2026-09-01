@@ -70,13 +70,13 @@ Module F.
         (CV_t := V_CV_t);
   }.
   Arguments Build_FArgs {_ _ _ _}.
-
+  
   Definition foo `{_fargs : FArgs} : Set :=
     V.(Validator.Commitment_t) * V.(Validator.Commitment_NestedLevel_t).
-
+  
   Definition bar `{_fargs : FArgs} : string :=
     V.(Validator.Commitment_Foo).(WithBar.bar).
-
+  
   (* F *)
   Definition functor `{_fargs : FArgs} :WithBar :=
     {|

@@ -2,6 +2,10 @@ let keep = 1
 let drop = 2
 let drop_by_suffix = 5
 let drop_globally = 10
+let drop_unsupported_body () =
+  for _ = 0 to 1 do
+    ()
+  done
 external drop_external : int -> int = "drop_external"
 
 module Nested = struct

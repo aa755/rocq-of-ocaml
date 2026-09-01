@@ -15,9 +15,9 @@ Module Consumer.
     Item : ITEM (t := Item_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition t `{_fargs : FArgs} : Set := Item.(ITEM.t).
-
+  
   Module Consumer_result.
     Record signature `{_fargs : FArgs} : Type := {
       t := Item.(ITEM.t);
@@ -26,7 +26,7 @@ Module Consumer.
   Definition Consumer_result `{_fargs : FArgs} := @Consumer_result.signature _
     _.
   Arguments Consumer_result {_ _}.
-
+  
   (* Consumer *)
   Definition functor `{_fargs : FArgs} :@Consumer_result Item_t _fargs :=
     ((@Consumer_result.Build_signature Item_t _fargs) :

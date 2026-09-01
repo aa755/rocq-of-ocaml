@@ -18,6 +18,15 @@ module MergeRule = struct
   type t = { source1 : string; source2 : string; target : string }
 end
 
+module ModuleOverride = struct
+  type t = {
+    source : string;
+    definition : string;
+    module_path : string;
+    target : string;
+  }
+end
+
 module MonadicOperators = struct
   type t = { bind : string; name : string; return : string }
 end
@@ -49,7 +58,8 @@ module RenamingRule = struct
         then
           Some
             (target ^ "."
-            ^ String.sub path prefix_length (String.length path - prefix_length))
+            ^ String.sub path prefix_length (String.length path - prefix_length)
+            )
         else None
     | None -> (
         match String.starts_with ~prefix:"*." source with
@@ -66,7 +76,8 @@ module RenamingRule = struct
 
   let find (rules : t list) (source : string) : string option =
     rules
-    |> (* We reverse the list so that the last entry is taken into account. *)
+    |>
+    (* We reverse the list so that the last entry is taken into account. *)
     List.rev
     |> List.find_map (fun rule -> rewrite rule source)
 end
@@ -79,6 +90,15 @@ module RecursionStrategy = struct
     definition : string;
     kind : kind;
     arity : int option;
+  }
+end
+
+module TerminationCertificate = struct
+  type t = {
+    source : string;
+    definition : string;
+    measure : string;
+    tactic : string;
   }
 end
 
@@ -108,8 +128,10 @@ type t = {
   monadic_let_returns : MonadicOperators.t list;
   monadic_returns : Operator.t list;
   monadic_return_lets : MonadicOperators.t list;
+  module_overrides : ModuleOverride.t list;
   operator_infix : Operator.t list;
   recursion_strategies : RecursionStrategy.t list;
+  termination_certificates : TerminationCertificate.t list;
   renaming_rules : RenamingRule.t list;
   renaming_type_constructor : RenamingRule.t list;
   require : Import.t list;
@@ -146,8 +168,10 @@ let default (file_name : string) : t =
     monadic_let_returns = [];
     monadic_returns = [];
     monadic_return_lets = [];
+    module_overrides = [];
     operator_infix = [];
     recursion_strategies = [];
+    termination_certificates = [];
     renaming_rules =
       ConfigurationRenaming.rules
       |> List.map (fun (source, target) -> { RenamingRule.source; target });
@@ -170,7 +194,7 @@ let is_constructor_renamed (configuration : t) (typ : string) (name : string) :
     string option =
   configuration.constructor_map
   |> List.find_opt (fun { ConstructorMapping.source; typ = typ'; _ } ->
-         source = name && typ' = typ)
+      source = name && typ' = typ)
   |> Option.map (fun { ConstructorMapping.target; _ } -> target)
 
 let have_constant_warning (configuration : t) : bool =
@@ -181,8 +205,7 @@ let is_category_in_error_blacklist (configuration : t) (error_id : string) :
   List.mem error_id configuration.error_category_blacklist
 
 let filename_matches (actual : string) (configured : string) : bool =
-  configured = "*"
-  || actual = configured
+  configured = "*" || actual = configured
   ||
   let actual_length = String.length actual in
   let configured_length = String.length configured in
@@ -201,21 +224,19 @@ let is_message_in_error_blacklist (configuration : t) (message : string) : bool
     =
   configuration.error_message_blacklist
   |> List.exists (fun content ->
-         (* That is the simplest way I found to test string inclusion from the
+      (* That is the simplest way I found to test string inclusion from the
             standard library. *)
-         Str.replace_first (Str.regexp_string content) "" message <> message)
+      Str.replace_first (Str.regexp_string content) "" message <> message)
 
 let is_value_to_escape (configuration : t) (name : string) : bool =
   List.mem name configuration.escape_value
 
-let is_definition_excluded (configuration : t) (definition_path : string list)
-    : bool =
+let is_definition_excluded (configuration : t) (definition_path : string list) :
+    bool =
   let definition = String.concat "." definition_path in
   let definition_matches configured =
     if String.starts_with ~prefix:"*" configured then
-      let suffix =
-        String.sub configured 1 (String.length configured - 1)
-      in
+      let suffix = String.sub configured 1 (String.length configured - 1) in
       String.ends_with ~suffix definition
     else
       configured = definition
@@ -223,30 +244,27 @@ let is_definition_excluded (configuration : t) (definition_path : string list)
   in
   configuration.excluded_definitions
   |> List.exists (fun { DefinitionExclusion.source; definition = configured } ->
-         filename_matches configuration.file_name source
-         && definition_matches configured)
+      filename_matches configuration.file_name source
+      && definition_matches configured)
 
 (** Whether a requirement exported under [qualified_name] is intentionally
     discharged by a later, project-owned transformation of the generated
-    declaration.  This does not alter generated Rocq code; callers should only
+    declaration. This does not alter generated Rocq code; callers should only
     use it when the transformed declaration no longer has that requirement. *)
 let is_assumption_metadata_excluded (configuration : t)
     (qualified_name : string) : bool =
   let definition_matches configured =
     if String.starts_with ~prefix:"*" configured then
-      let suffix =
-        String.sub configured 1 (String.length configured - 1)
-      in
+      let suffix = String.sub configured 1 (String.length configured - 1) in
       String.ends_with ~suffix qualified_name
     else
       configured = qualified_name
       || String.ends_with ~suffix:("." ^ configured) qualified_name
   in
   configuration.assumption_metadata_exclusions
-  |> List.exists
-       (fun { DefinitionExclusion.source; definition = configured } ->
-         filename_matches configuration.file_name source
-         && definition_matches configured)
+  |> List.exists (fun { DefinitionExclusion.source; definition = configured } ->
+      filename_matches configuration.file_name source
+      && definition_matches configured)
 
 let get_equality_override (configuration : t) (definition_path : string list) :
     string option =
@@ -265,8 +283,8 @@ let get_head_suffix (configuration : t) : string =
   let suffixes =
     configuration.file_head_suffixes
     |> List.filter_map (fun { Import.source; target } ->
-           if filename_matches configuration.file_name source then Some target
-           else None)
+        if filename_matches configuration.file_name source then Some target
+        else None)
   in
   String.concat "\n" (configuration.head_suffix :: suffixes)
 
@@ -274,16 +292,74 @@ let get_recursion_strategy (configuration : t) (definition_path : string list) :
     RecursionStrategy.kind option =
   let definition = String.concat "." definition_path in
   configuration.recursion_strategies
-  |> List.find_opt (fun { RecursionStrategy.source; definition = configured; _ } ->
+  |> List.find_opt
+       (fun { RecursionStrategy.source; definition = configured; _ } ->
          configured = definition
          && filename_matches configuration.file_name source)
   |> Option.map (fun { RecursionStrategy.kind; _ } -> kind)
 
+let get_termination_certificate (configuration : t)
+    (definition_path : string list) : (string * string) option =
+  let definition = String.concat "." definition_path in
+  configuration.termination_certificates
+  |> List.find_opt
+       (fun { TerminationCertificate.source; definition = configured; _ } ->
+         configured = definition
+         && filename_matches configuration.file_name source)
+  |> Option.map (fun { TerminationCertificate.measure; tactic; _ } ->
+      (measure, tactic))
+
+let definition_matches (configured : string) (definition_path : string list) :
+    bool =
+  let definition = String.concat "." definition_path in
+  configured = definition
+  || String.ends_with ~suffix:("." ^ configured) definition
+
+let get_module_override (configuration : t) (definition_path : string list) :
+    string option =
+  configuration.module_overrides
+  |> List.find_map
+       (fun { ModuleOverride.source; definition; target; _ } ->
+         if
+           filename_matches configuration.file_name source
+           && definition_matches definition definition_path
+         then Some target
+         else None)
+
+let has_module_override_declaration (configuration : t) : bool =
+  configuration.module_overrides
+  |> List.exists (fun { ModuleOverride.source; _ } ->
+      filename_matches configuration.file_name source)
+
+let rewrite_module_override (configuration : t) (path : string) :
+    (string * string) option =
+  let rewrite_prefix source target =
+    if String.equal path source then Some (target, target)
+    else
+      let prefix = source ^ "." in
+      if String.starts_with ~prefix path then
+        Some
+          ( target ^ "."
+            ^ String.sub path (String.length prefix)
+                (String.length path - String.length prefix),
+            target )
+      else None
+  in
+  let rewrite
+      ({ ModuleOverride.source; definition; module_path; target } :
+        ModuleOverride.t) =
+    match rewrite_prefix module_path target with
+    | Some _ as rewritten -> rewritten
+    | None when filename_matches configuration.file_name source ->
+        rewrite_prefix definition target
+    | None -> None
+  in
+  configuration.module_overrides |> List.rev |> List.find_map rewrite
+
 let partial_definition_names (configuration : t) : string list =
   configuration.recursion_strategies
-  |> List.filter_map
-       (fun { RecursionStrategy.definition; kind; _ } ->
-         if kind = RecursionStrategy.Partial then Some definition else None)
+  |> List.filter_map (fun { RecursionStrategy.definition; kind; _ } ->
+      if kind = RecursionStrategy.Partial then Some definition else None)
 
 let recursion_definition_suffix_matches (configured : string)
     (definition_path : string list) : bool =
@@ -305,27 +381,17 @@ let has_recursion_strategy_suffix (configuration : t)
     (definition_path : string list) (kind : RecursionStrategy.kind) : bool =
   configuration.recursion_strategies
   |> List.exists
-       (fun
-         {
-           RecursionStrategy.definition;
-           kind = configured_kind;
-           _;
-         } ->
+       (fun { RecursionStrategy.definition; kind = configured_kind; _ } ->
          configured_kind = kind
          && recursion_definition_suffix_matches definition definition_path)
 
 let recursion_strategy_arity_suffix (configuration : t)
-    (definition_path : string list) (kind : RecursionStrategy.kind) :
-    int option =
+    (definition_path : string list) (kind : RecursionStrategy.kind) : int option
+    =
   configuration.recursion_strategies
   |> List.find_map
        (fun
-         {
-           RecursionStrategy.definition;
-           kind = configured_kind;
-           arity;
-           _;
-         } ->
+         { RecursionStrategy.definition; kind = configured_kind; arity; _ } ->
          if
            configured_kind = kind
            && recursion_definition_suffix_matches definition definition_path
@@ -349,17 +415,17 @@ let is_in_merge_returns (configuration : t) (source1 : string)
     (source2 : string) : string option =
   configuration.merge_returns
   |> List.find_map (fun (merge_rule : MergeRule.t) ->
-         if source1 = merge_rule.source1 && source2 = merge_rule.source2 then
-           Some merge_rule.target
-         else None)
+      if source1 = merge_rule.source1 && source2 = merge_rule.source2 then
+        Some merge_rule.target
+      else None)
 
 let is_in_merge_types (configuration : t) (source1 : string) (source2 : string)
     : string option =
   configuration.merge_types
   |> List.find_map (fun (merge_rule : MergeRule.t) ->
-         if source1 = merge_rule.source1 && source2 = merge_rule.source2 then
-           Some merge_rule.target
-         else None)
+      if source1 = merge_rule.source1 && source2 = merge_rule.source2 then
+        Some merge_rule.target
+      else None)
 
 let is_monadic_let (configuration : t) (name : string) : string option =
   let monadic_operator =
@@ -465,14 +531,16 @@ let variant_row_is_exact (configuration : t) (labels : string list) : bool =
           let labels = List.sort_uniq String.compare labels in
           let configured_labels =
             configuration.variant_types
-            |> List.filter_map (fun { VariantMapping.source; target = mapped } ->
+            |> List.filter_map
+                 (fun { VariantMapping.source; target = mapped } ->
                    if String.equal mapped target then Some source else None)
             |> List.sort_uniq String.compare
           in
           List.equal String.equal labels configured_labels)
 
 let is_without_guard_checking (configuration : t) : bool =
-  filename_is_listed configuration.file_name configuration.without_guard_checking
+  filename_is_listed configuration.file_name
+    configuration.without_guard_checking
 
 let is_without_default_imports (configuration : t) : bool =
   configuration.without_default_imports
@@ -495,8 +563,8 @@ let get_string_list (id : string) (json : Yojson.Basic.t) : string list =
   | `List jsons ->
       jsons
       |> List.map (function
-           | `String value -> value
-           | _ -> failwith error_message)
+        | `String value -> value
+        | _ -> failwith error_message)
   | _ -> failwith error_message
 
 let get_string_couple_list (id : string) (json : Yojson.Basic.t) :
@@ -506,8 +574,8 @@ let get_string_couple_list (id : string) (json : Yojson.Basic.t) :
   | `List jsons ->
       jsons
       |> List.map (function
-           | `List [ `String value1; `String value2 ] -> (value1, value2)
-           | _ -> failwith error_message)
+        | `List [ `String value1; `String value2 ] -> (value1, value2)
+        | _ -> failwith error_message)
   | _ -> failwith error_message
 
 let get_string_triple_list (id : string) (json : Yojson.Basic.t) :
@@ -517,9 +585,9 @@ let get_string_triple_list (id : string) (json : Yojson.Basic.t) :
   | `List jsons ->
       jsons
       |> List.map (function
-           | `List [ `String value1; `String value2; `String value3 ] ->
-               (value1, value2, value3)
-           | _ -> failwith error_message)
+        | `List [ `String value1; `String value2; `String value3 ] ->
+            (value1, value2, value3)
+        | _ -> failwith error_message)
   | _ -> failwith error_message
 
 let of_json (file_name : string) (json : Yojson.Basic.t) : t =
@@ -536,22 +604,19 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_couple_list "assumption_metadata_exclusions"
                 |> List.map (fun (source, definition) ->
-                       if definition = "" then
-                         failwith
-                           "Expected a qualified definition name in \
-                            assumption_metadata_exclusions";
-                       { DefinitionExclusion.source; definition })
+                    if definition = "" then
+                      failwith
+                        "Expected a qualified definition name in \
+                         assumption_metadata_exclusions";
+                    { DefinitionExclusion.source; definition })
               in
-              {
-                configuration with
-                assumption_metadata_exclusions = entry;
-              }
+              { configuration with assumption_metadata_exclusions = entry }
           | "constructor_map" ->
               let entry =
                 entry
                 |> get_string_triple_list "constructor_map"
                 |> List.map (fun (typ, source, target) ->
-                       { ConstructorMapping.source; target; typ })
+                    { ConstructorMapping.source; target; typ })
               in
               { configuration with constructor_map = entry }
           | "constant_warning" ->
@@ -571,11 +636,11 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_triple_list "equality_overrides"
                 |> List.map (fun (source, definition, target) ->
-                       if definition = "" || target = "" then
-                         failwith
-                           "Expected qualified definition and target names in \
-                            equality_overrides";
-                       { DefinitionOverride.source; definition; target })
+                    if definition = "" || target = "" then
+                      failwith
+                        "Expected qualified definition and target names in \
+                         equality_overrides";
+                    { DefinitionOverride.source; definition; target })
               in
               { configuration with equality_overrides = entry }
           | "excluded_definitions" ->
@@ -583,11 +648,11 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_couple_list "excluded_definitions"
                 |> List.map (fun (source, definition) ->
-                       if definition = "" then
-                         failwith
-                           "Expected a qualified definition name in \
-                            excluded_definitions";
-                       { DefinitionExclusion.source; definition })
+                    if definition = "" then
+                      failwith
+                        "Expected a qualified definition name in \
+                         excluded_definitions";
+                    { DefinitionExclusion.source; definition })
               in
               { configuration with excluded_definitions = entry }
           | "escape_value" ->
@@ -621,7 +686,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_triple_list "merge_returns"
                 |> List.map (fun (source1, source2, target) ->
-                       { MergeRule.source1; source2; target })
+                    { MergeRule.source1; source2; target })
               in
               { configuration with merge_returns = entry }
           | "merge_types" ->
@@ -629,7 +694,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_triple_list "merge_types"
                 |> List.map (fun (source1, source2, target) ->
-                       { MergeRule.source1; source2; target })
+                    { MergeRule.source1; source2; target })
               in
               { configuration with merge_types = entry }
           | "monadic_lets" ->
@@ -637,7 +702,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_couple_list "monadic_lets"
                 |> List.map (fun (name, notation) ->
-                       { Operator.name; notation })
+                    { Operator.name; notation })
               in
               { configuration with monadic_lets = entry }
           | "monadic_let_returns" ->
@@ -645,7 +710,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_triple_list "monadic_let_returns"
                 |> List.map (fun (name, bind, return) ->
-                       { MonadicOperators.bind; name; return })
+                    { MonadicOperators.bind; name; return })
               in
               { configuration with monadic_let_returns = entry }
           | "monadic_returns" ->
@@ -653,7 +718,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_couple_list "monadic_returns"
                 |> List.map (fun (name, notation) ->
-                       { Operator.name; notation })
+                    { Operator.name; notation })
               in
               { configuration with monadic_returns = entry }
           | "monadic_return_lets" ->
@@ -661,15 +726,48 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_triple_list "monadic_return_lets"
                 |> List.map (fun (name, bind, return) ->
-                       { MonadicOperators.bind; name; return })
+                    { MonadicOperators.bind; name; return })
               in
               { configuration with monadic_return_lets = entry }
+          | "module_overrides" ->
+              let entry =
+                let error_message =
+                  "Expected module_overrides entries to contain a source file, \
+                   qualified definition, logical source module path, and \
+                   target Rocq module"
+                in
+                let entries =
+                  match entry with
+                  | `List entries -> entries
+                  | _ -> failwith error_message
+                in
+                entries
+                |> List.map (function
+                  | `List
+                      [
+                        `String source;
+                        `String definition;
+                        `String module_path;
+                        `String target;
+                      ] ->
+                      if
+                        definition = "" || module_path = "" || target = ""
+                      then failwith error_message;
+                      {
+                        ModuleOverride.source;
+                        definition;
+                        module_path;
+                        target;
+                      }
+                  | _ -> failwith error_message)
+              in
+              { configuration with module_overrides = entry }
           | "operator_infix" ->
               let entry =
                 entry
                 |> get_string_couple_list "operator_infix"
                 |> List.map (fun (name, notation) ->
-                       { Operator.name; notation })
+                    { Operator.name; notation })
               in
               { configuration with operator_infix = entry }
           | "recursion_strategies" ->
@@ -685,48 +783,76 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 in
                 entries
                 |> List.map (function
-                     | `List
-                         [
-                           `String source;
-                           `String definition;
-                           `String strategy;
-                         ] ->
-                         (source, definition, strategy, None)
-                     | `List
-                         [
-                           `String source;
-                           `String definition;
-                           `String strategy;
-                           `Int arity;
-                         ]
-                       when arity >= 0 ->
-                         (source, definition, strategy, Some arity)
-                     | _ -> failwith error_message)
+                  | `List
+                      [ `String source; `String definition; `String strategy ]
+                    ->
+                      (source, definition, strategy, None)
+                  | `List
+                      [
+                        `String source;
+                        `String definition;
+                        `String strategy;
+                        `Int arity;
+                      ]
+                    when arity >= 0 ->
+                      (source, definition, strategy, Some arity)
+                  | _ -> failwith error_message)
                 |> List.map (fun (source, definition, strategy, arity) ->
-                       if definition = "" then
-                         failwith
-                           "Expected a qualified definition name in \
-                            recursion_strategies";
-                       let kind =
-                         match strategy with
-                         | "well_founded" ->
-                             RecursionStrategy.WellFounded
-                         | "partial" -> RecursionStrategy.Partial
-                         | "convergent" -> RecursionStrategy.Convergent
-                         | _ ->
-                             failwith
-                               "Expected recursion strategy \"well_founded\", \
-                                \"partial\", or \"convergent\""
-                       in
-                       { RecursionStrategy.source; definition; kind; arity })
+                    if definition = "" then
+                      failwith
+                        "Expected a qualified definition name in \
+                         recursion_strategies";
+                    let kind =
+                      match strategy with
+                      | "well_founded" -> RecursionStrategy.WellFounded
+                      | "partial" -> RecursionStrategy.Partial
+                      | "convergent" -> RecursionStrategy.Convergent
+                      | _ ->
+                          failwith
+                            "Expected recursion strategy \"well_founded\", \
+                             \"partial\", or \"convergent\""
+                    in
+                    { RecursionStrategy.source; definition; kind; arity })
               in
               { configuration with recursion_strategies = entry }
+          | "termination_certificates" ->
+              let entry =
+                let error_message =
+                  "Expected termination_certificates entries to contain a \
+                   source, qualified definition, Rocq measure expression, and \
+                   Rocq tactic"
+                in
+                let entries =
+                  match entry with
+                  | `List entries -> entries
+                  | _ -> failwith error_message
+                in
+                entries
+                |> List.map (function
+                  | `List
+                      [
+                        `String source;
+                        `String definition;
+                        `String measure;
+                        `String tactic;
+                      ] ->
+                      if definition = "" || measure = "" || tactic = "" then
+                        failwith error_message;
+                      {
+                        TerminationCertificate.source;
+                        definition;
+                        measure;
+                        tactic;
+                      }
+                  | _ -> failwith error_message)
+              in
+              { configuration with termination_certificates = entry }
           | "renaming_rules" ->
               let entry =
                 entry
                 |> get_string_couple_list "renaming_rules"
                 |> List.map (fun (source, target) ->
-                       { RenamingRule.source; target })
+                    { RenamingRule.source; target })
               in
               {
                 configuration with
@@ -737,7 +863,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_couple_list "renaming_type_constructor"
                 |> List.map (fun (source, target) ->
-                       { RenamingRule.source; target })
+                    { RenamingRule.source; target })
               in
               { configuration with renaming_type_constructor = entry }
           | "require" ->
@@ -769,7 +895,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_couple_list "variant_constructors"
                 |> List.map (fun (source, target) ->
-                       { VariantMapping.source; target })
+                    { VariantMapping.source; target })
               in
               { configuration with variant_constructors = entry }
           | "variant_types" ->
@@ -777,7 +903,7 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 entry
                 |> get_string_couple_list "variant_types"
                 |> List.map (fun (source, target) ->
-                       { VariantMapping.source; target })
+                    { VariantMapping.source; target })
               in
               { configuration with variant_types = entry }
           | "without_default_imports" ->

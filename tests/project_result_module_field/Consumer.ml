@@ -50,3 +50,11 @@ end
 
 module Coerced =
   Project.Provider.Consume (Produce) (Concrete)
+
+module NestedApplied = Project.Provider.Nested (Argument)
+
+module ChildApplied = NestedApplied.Child (struct
+  let value = 42
+end)
+
+let nested_child_value = ChildApplied.value

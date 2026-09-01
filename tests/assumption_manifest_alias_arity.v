@@ -17,30 +17,31 @@ Module Make.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition tails `{_fargs : FArgs}
-    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (list string)}
-    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (list Bytes.t)}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (list Bytes.t)}
+    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (list string)}
     (bytes_values : list Bytes.t) (string_values : list string)
     : list Bytes.t * list string :=
     let '_ := Argument.(ARGUMENT.token) in
     ((RocqOfOCaml.OCamlList.tl bytes_values),
       (RocqOfOCaml.OCamlList.tl string_values)).
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       tails :
         forall
-          `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (list string)},
-          list string -> list string -> list string * list string;
+          `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (list Bytes.t)}
+          `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (list string)},
+          list Bytes.t -> list string -> list Bytes.t * list string;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
-    ((@Make_result.Build_signature _fargs (fun _ => tails)) :
+    ((@Make_result.Build_signature _fargs (fun _ _ => tails)) :
       @Make_result _fargs).
 End Make.
 Definition Make (Argument : ARGUMENT) :=

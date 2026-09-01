@@ -9,6 +9,7 @@
 type t = {
   module_results : (Path.t * Path.t) list;
   module_applications : (Path.t * Path.t) list;
+  applicative_aliases : (Path.t * Path.t) list;
   module_aliases : (Path.t * Path.t) list;
   functor_results : (Path.t * Path.t) list;
   anonymous_functor_parameters : (Path.t * string * Path.t) list;
@@ -16,18 +17,21 @@ type t = {
     (Path.t * FunctorParameterHint.t list) list;
   result_module_fields : (Path.t * string * Path.t) list;
   module_types : (Path.t * Types.module_type) list;
+  declaration_type_paths : (Types.Uid.t * Path.t) list;
 }
 
 let empty =
   {
     module_results = [];
     module_applications = [];
+    applicative_aliases = [];
     module_aliases = [];
     functor_results = [];
     anonymous_functor_parameters = [];
     functor_parameter_types = [];
     result_module_fields = [];
     module_types = [];
+    declaration_type_paths = [];
   }
 
 let merge left right =
@@ -35,6 +39,8 @@ let merge left right =
     module_results = left.module_results @ right.module_results;
     module_applications =
       left.module_applications @ right.module_applications;
+    applicative_aliases =
+      left.applicative_aliases @ right.applicative_aliases;
     module_aliases = left.module_aliases @ right.module_aliases;
     functor_results = left.functor_results @ right.functor_results;
     anonymous_functor_parameters =
@@ -45,15 +51,19 @@ let merge left right =
     result_module_fields =
       left.result_module_fields @ right.result_module_fields;
     module_types = left.module_types @ right.module_types;
+    declaration_type_paths =
+      left.declaration_type_paths @ right.declaration_type_paths;
   }
 
 let project_paths_equal left right =
   Path.same left right
   ||
-  let has_global_head path =
-    match Path.head path with
-    | head -> Ident.global head
-    | exception _ -> false
+  let rec has_global_head path =
+    match path with
+    | Path.Pident ident -> Ident.global ident
+    | Path.Pdot (prefix, _) | Path.Pextra_ty (prefix, _) ->
+        has_global_head prefix
+    | Path.Papply (functor_path, _) -> has_global_head functor_path
   in
   has_global_head left
   && has_global_head right
@@ -108,6 +118,14 @@ let find_module_result path hints =
   in
   find [] path
 
+let find_applicative_alias path hints =
+  find_path path hints.applicative_aliases
+
+let find_declaration_type_path uid hints =
+  hints.declaration_type_paths
+  |> List.find_map (fun (candidate, path) ->
+         if Types.Uid.equal candidate uid then Some path else None)
+
 let find_result_module_field result_signature field_name hints =
   find_result_module_field_raw result_signature field_name hints
   |> Option.map (fun field_signature ->
@@ -128,21 +146,119 @@ let has_module_result_reference path hints =
   in
   find [] path
 
-let find_functor_result path hints =
+let find_functor_result_raw path hints =
   find_path path hints.functor_results
 
+(** Resolve a functor exported by the result of a functor application.  The
+    typed path [Applied.Child] no longer records that [Applied] was built by
+    [Outer (...)], but implementation CMTs retain that application in
+    [module_applications]. *)
+let find_applied_functor_child path hints =
+  let rec application_functor = function
+    | Path.Papply (functor_path, _) -> application_functor functor_path
+    | path -> path
+  in
+  let rec resolve_alias visited path =
+    if List.exists (project_paths_equal path) visited then path
+    else
+      match find_path path hints.module_aliases with
+      | Some target -> resolve_alias (path :: visited) target
+      | None -> (
+          match path with
+          | Path.Pdot (parent, field) ->
+              Path.Pdot (resolve_alias (path :: visited) parent, field)
+          | Path.Pextra_ty (parent, extra) ->
+              Path.Pextra_ty (resolve_alias (path :: visited) parent, extra)
+          | Path.Papply (functor_path, argument_path) ->
+              Path.Papply
+                ( resolve_alias (path :: visited) functor_path,
+                  resolve_alias (path :: visited) argument_path )
+          | Path.Pident _ -> path)
+  in
+  let local_module_application parent =
+    let has_global_head path = Ident.global (Path.head path) in
+    if has_global_head parent then None
+    else
+      let sources =
+        hints.module_applications
+        |> List.filter_map (fun (candidate, source) ->
+               if String.equal (Path.last candidate) (Path.last parent) then
+                 Some source
+               else None)
+        |> List.sort_uniq (fun left right ->
+               if project_paths_equal left right then 0
+               else Path.compare left right)
+      in
+      match sources with
+      | [ source_functor ] -> Some (parent, source_functor)
+      | [] | _ :: _ :: _ -> None
+  in
+  let rec resolve_parent visited parent =
+    if List.exists (project_paths_equal parent) visited then None
+    else
+      match find_path parent hints.module_applications with
+      | Some source_functor -> Some (parent, source_functor)
+      | None -> (
+          match find_path parent hints.applicative_aliases with
+          | Some application_alias ->
+              Some (application_alias, application_functor parent)
+          | None -> (
+              match find_path parent hints.module_aliases with
+              | Some target -> resolve_parent (parent :: visited) target
+              | None -> local_module_application parent))
+  in
+  match path with
+  | Path.Pdot (parent, field) -> (
+      match resolve_parent [] parent with
+      | Some (parent_application, source_functor) ->
+          let source_child =
+            Path.Pdot (resolve_alias [] source_functor, field)
+          in
+          if Option.is_some (find_functor_result_raw source_child hints) then
+            Some (source_child, parent_application)
+          else None
+      | None -> None)
+  | Path.Pident _ | Path.Papply _ | Path.Pextra_ty _ -> None
+
+let find_functor_result path hints =
+  match find_functor_result_raw path hints with
+  | Some _ as result -> result
+  | None ->
+      Option.bind (find_applied_functor_child path hints)
+        (fun (source_child, _) ->
+          find_functor_result_raw source_child hints)
+
+(** Resolve the result signature of a module binding whose right-hand side is
+    a functor application.  The applied functor can itself be exported by a
+    previous functor result, such as [Applied.Child (...)]. *)
+let find_module_application_result path hints =
+  Option.bind (find_path path hints.module_applications) (fun functor_path ->
+      find_functor_result functor_path hints)
+
 let find_anonymous_functor_parameter functor_path parameter_name hints =
-  hints.anonymous_functor_parameters
-  |> List.find_map
-       (fun (candidate, candidate_parameter, signature) ->
-         if
-           project_paths_equal candidate functor_path
-           && String.equal candidate_parameter parameter_name
-         then Some signature
-         else None)
+  let find functor_path =
+    hints.anonymous_functor_parameters
+    |> List.find_map
+         (fun (candidate, candidate_parameter, signature) ->
+           if
+             project_paths_equal candidate functor_path
+             && String.equal candidate_parameter parameter_name
+           then Some signature
+           else None)
+  in
+  match find functor_path with
+  | Some _ as result -> result
+  | None ->
+      Option.bind (find_applied_functor_child functor_path hints)
+        (fun (source_child, _) -> find source_child)
 
 let find_functor_parameter_types functor_path hints =
-  find_path functor_path hints.functor_parameter_types
+  match find_path functor_path hints.functor_parameter_types with
+  | Some _ as result -> result
+  | None ->
+      Option.bind (find_applied_functor_child functor_path hints)
+        (fun (source_child, _) ->
+          find_path source_child hints.functor_parameter_types)
 
 let find_module_type path hints =
   find_path path hints.module_types
@@ -181,6 +297,23 @@ let applied_functor_path (module_expr : Typedtree.module_expr) =
     | _ -> None
   in
   find module_expr
+
+let rec module_expr_path (module_expr : Typedtree.module_expr) =
+  match module_expr.Typedtree.mod_desc with
+  | Tmod_ident (path, _) -> Some path
+  | Tmod_apply (functor_expr, argument_expr, _) ->
+      Option.bind (module_expr_path functor_expr) (fun functor_path ->
+          Option.map
+            (fun argument_path ->
+              Path.Papply (functor_path, argument_path))
+            (module_expr_path argument_expr))
+  | Tmod_constraint (inner, _, _, _) -> module_expr_path inner
+  | Tmod_structure _
+  | Tmod_functor _
+  | Tmod_apply_unit _
+  | Tmod_unpack _
+  | Tmod_typed_hole ->
+      None
 
 let module_expr_structure (module_expr : Typedtree.module_expr) =
   let rec find module_expr =
@@ -340,14 +473,10 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
   let locals = ref [] in
   let declared_module_types = ref [] in
   let canonical_anonymous_signatures = ref [] in
-  let module_types_equivalent (module_type : Typedtree.module_type)
-      candidate =
-    try
-      Includemod.check_modtype_equiv ~loc:module_type.mty_loc
-        module_type.mty_env (Ident.create_local "_anonymous_signature")
-        candidate module_type.mty_type;
-      true
-    with _ -> false
+  let module_type_fingerprint (module_type : Typedtree.module_type) =
+    let mapper = Untypeast.default_mapper in
+    Format.asprintf "%a" Pprintast.module_type
+      (mapper.module_type mapper module_type)
   in
   let add_anonymous_functor_parameters owner canonical module_name module_expr =
     let rec collect module_expr =
@@ -363,11 +492,12 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
                   ( owner,
                     module_name ^ "_" ^ parameter_name ^ "_signature" )
               in
+              let fingerprint = module_type_fingerprint module_type in
               let canonical_signature =
                 !canonical_anonymous_signatures
                 |> List.find_map
-                     (fun (candidate_type, candidate_path) ->
-                       if module_types_equivalent module_type candidate_type then
+                     (fun (candidate_fingerprint, candidate_path) ->
+                       if String.equal fingerprint candidate_fingerprint then
                          Some candidate_path
                        else None)
               in
@@ -376,7 +506,7 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
                 | Some signature -> (signature, false)
                 | None ->
                     canonical_anonymous_signatures :=
-                      (module_type.mty_type, derived_signature)
+                      (fingerprint, derived_signature)
                       :: !canonical_anonymous_signatures;
                     (derived_signature, true)
               in
@@ -642,6 +772,29 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
                       (path, module_typ.mty_type) :: !hints.module_types;
                   }
             | None -> ())
+        | Tstr_type (_, declarations) ->
+            declarations
+            |> List.iter (fun (declaration : Typedtree.type_declaration) ->
+                   let path =
+                     Path.Pdot (owner, Ident.name declaration.typ_id)
+                   in
+                   let uids =
+                     match declaration.typ_type.type_kind with
+                     | Type_variant (constructors, _) ->
+                         List.map
+                           (fun constructor -> constructor.Types.cd_uid)
+                           constructors
+                     | Type_record (labels, _) ->
+                         List.map (fun label -> label.Types.ld_uid) labels
+                     | Type_abstract _ | Type_open -> []
+                   in
+                   hints :=
+                     {
+                       !hints with
+                       declaration_type_paths =
+                         List.map (fun uid -> (uid, path)) uids
+                         @ !hints.declaration_type_paths;
+                     })
         | _ -> ())
       structure.str_items
   and collect_binding owner (binding : Typedtree.module_binding) =
@@ -673,6 +826,18 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
               }
         | None -> ());
         add_functor canonical binding;
+        (match module_expr_path binding.mb_expr with
+        | Some (Path.Papply _ as application) ->
+            hints :=
+              {
+                !hints with
+                applicative_aliases =
+                  (qualify_path !locals application, canonical)
+                  :: !hints.applicative_aliases;
+              }
+        | Some (Path.Pident _ | Path.Pdot _ | Path.Pextra_ty _)
+        | None ->
+            ());
         (match applied_functor_path binding.mb_expr with
         | Some source_functor ->
             let source_functor =

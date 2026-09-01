@@ -21,6 +21,11 @@ let target_path (target : string) : string list =
   String.split_on_char '.' target
   |> List.filter (fun component -> not (String.equal component ""))
 
+let of_string (path : string) : t =
+  match List.rev (target_path path) with
+  | [] -> invalid_arg "PathName.of_string: empty path"
+  | base :: path -> __make (List.rev path) base
+
 let try_to_use (head : string) (name : string) : string list option Monad.t =
   let* configuration = get_configuration in
   let require = Configuration.should_require configuration head in
@@ -34,43 +39,64 @@ let try_to_use (head : string) (name : string) : string list option Monad.t =
       return (Some (target_path require))
   | None, None -> return None
 
+let required_path_name (path_name : t) : t option Monad.t =
+  let { path; base } = path_name in
+  let path = path |> List.map Name.to_string in
+  let base = Name.to_string base in
+  match (path, base) with
+  | source :: name :: rest, _ ->
+      let* required_path = try_to_use source name in
+      return
+        (Option.map
+           (fun required_path -> __make (required_path @ (name :: rest)) base)
+           required_path)
+  | [ source ], name ->
+      let* required_path = try_to_use source name in
+      return
+        (Option.map (fun required_path -> __make required_path base) required_path)
+  | _ -> return None
+
+let override_conversion (path_name : t) : t option Monad.t =
+  let* configuration = get_configuration in
+  match
+    Configuration.rewrite_module_override configuration (to_string path_name)
+  with
+  | None -> return None
+  | Some (rewritten, target_module) ->
+      let* () = use (RequireImport target_module) in
+      return (Some (of_string rewritten))
+
+let try_module_override (path_name : t) : t option Monad.t =
+  let* required = required_path_name path_name in
+  override_conversion (Option.value required ~default:path_name)
+
 (* Convert an identifier from OCaml to its Rocq's equivalent, or [None] if no
    conversion is needed. We consider all the paths in the standard library
    to be converted, as conversion also means keeping the name as it (without
    taking into accounts that the stdlib was open). *)
 let try_convert (path_name : t) : t option Monad.t =
   let make path base = return (Some (__make path base)) in
-  let { path; base } = path_name in
-  let path = path |> List.map Name.to_string in
-  let base = Name.to_string base in
-  let* renamed_path_name =
-    match (path, base) with
-    | source :: name :: rest, _ ->
-        let* required_path = try_to_use source name in
-        (match required_path with
-        | Some required_path -> make (required_path @ (name :: rest)) base
-        | None -> return None)
-    | [ source ], name ->
-        let* required_path = try_to_use source name in
-        (match required_path with
-        | Some required_path -> make required_path base
-        | None -> return None)
-    | _ -> return None
+  let* renamed_path_name = required_path_name path_name in
+  let* module_override =
+    override_conversion (Option.value renamed_path_name ~default:path_name)
   in
-  let* configuration = get_configuration in
-  let path_name_rewrite =
-    Configuration.is_in_renaming_rule configuration
-      (to_string (Option.value renamed_path_name ~default:path_name))
-  in
-  match path_name_rewrite with
-  | Some path_name -> (
-      match List.rev (String.split_on_char '.' path_name) with
-      | [] -> failwith "Unexpected empty list"
-      | base :: rev_path -> make (List.rev rev_path) base)
-  | None -> (
-      match path_name.path with
-      | Name.Make "Stdlib" :: _ -> return (Some path_name)
-      | _ -> return renamed_path_name)
+  match module_override with
+  | Some _ -> return module_override
+  | None ->
+      let* configuration = get_configuration in
+      let path_name_rewrite =
+        Configuration.is_in_renaming_rule configuration
+          (to_string (Option.value renamed_path_name ~default:path_name))
+      in
+      match path_name_rewrite with
+      | Some path_name -> (
+          match List.rev (String.split_on_char '.' path_name) with
+          | [] -> failwith "Unexpected empty list"
+          | base :: rev_path -> make (List.rev rev_path) base)
+      | None -> (
+          match path_name.path with
+          | Name.Make "Stdlib" :: _ -> return (Some path_name)
+          | _ -> return renamed_path_name)
 
 let convert (path_name : t) : t Monad.t =
   try_convert path_name >>= fun conversion ->
@@ -168,8 +194,16 @@ let of_path_without_convert (is_value : bool) (path : Path.t) : t Monad.t =
   in
   aux path >>= fun (path, base) -> return (of_name (List.rev path) base)
 
+let rec static_path = function
+  | Path.Pident _ as path -> path
+  | Path.Pdot (prefix, field) -> Path.Pdot (static_path prefix, field)
+  | Path.Papply (functor_path, _) -> static_path functor_path
+  | Path.Pextra_ty (prefix, extra) ->
+      Path.Pextra_ty (static_path prefix, extra)
+
 let of_path_with_convert (is_value : bool) (path : Path.t) : t Monad.t =
-  of_path_without_convert is_value path >>= fun path -> convert path
+  of_path_without_convert is_value (static_path path) >>= fun path ->
+  convert path
 
 let of_path_and_name_with_convert (path : Path.t) (name : Name.t) : t Monad.t =
   let rec aux path : (Name.t list * Name.t) Monad.t =
@@ -222,11 +256,47 @@ let rec iterate_in_aliases (path : Path.t) (nb_args : int) : Path.t Monad.t =
   | _ -> return path
   | exception Not_found -> return path
 
+(** Constructors and record labels are declared in the static body of a
+    functor, not in the value that represents one particular application.
+    Normalize strengthened result aliases such as [Applied.t] back to their
+    applicative type path before [static_path] removes the arguments. *)
+let normalize_type_path (path : Path.t) : Path.t Monad.t =
+  let* env = get_env in
+  return
+    (match Env.normalize_type_path None env path with
+    | normalized -> normalized
+    | exception _ -> path)
+
+let rec expand_module_alias_source (path : Path.t) : Path.t Monad.t =
+  let* direct = get_module_path_alias_source path in
+  match direct with
+  | Some source -> expand_module_alias_source source
+  | None -> (
+      match path with
+      | Path.Pdot (prefix, field) ->
+          let* prefix = expand_module_alias_source prefix in
+          return (Path.Pdot (prefix, field))
+      | Path.Pextra_ty (prefix, extra) ->
+          let* prefix = expand_module_alias_source prefix in
+          return (Path.Pextra_ty (prefix, extra))
+      | Path.Papply (functor_path, argument_path) ->
+          let* functor_path = expand_module_alias_source functor_path in
+          let* argument_path = expand_module_alias_source argument_path in
+          return (Path.Papply (functor_path, argument_path))
+      | Path.Pident _ -> return path)
+
 let of_constructor_description
     (constructor_description : Data_types.constructor_description) : t Monad.t =
   match Types.get_desc constructor_description.cstr_res with
   | Tconstr (path, args, _) ->
+      let* declaration_path =
+        get_declaration_type_path constructor_description.cstr_uid
+      in
+      let path = Option.value declaration_path ~default:path in
+      let* path = expand_module_alias_source path in
+      let* path = normalize_type_path path in
       let* path = iterate_in_aliases path (List.length args) in
+      let path = static_path path in
       let typ_ident = Path.head path in
       of_path_without_convert false path >>= fun { path; _ } ->
       let* cstr_name =
@@ -260,7 +330,14 @@ let of_label_description (label_description : Data_types.label_description) :
     t Monad.t =
   match Types.get_desc label_description.lbl_res with
   | Tconstr (path, args, _) ->
+      let* declaration_path =
+        get_declaration_type_path label_description.lbl_uid
+      in
+      let path = Option.value declaration_path ~default:path in
+      let* path = expand_module_alias_source path in
+      let* path = normalize_type_path path in
       let* path = iterate_in_aliases path (List.length args) in
+      let path = static_path path in
       of_path_without_convert false path >>= fun { path; base } ->
       Name.of_string false label_description.lbl_name >>= fun lbl_name ->
       let path_name = { path = path @ [ base ]; base = lbl_name } in

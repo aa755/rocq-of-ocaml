@@ -13,12 +13,12 @@ Module Number.
   Class FArgs := {
     Token : TOKEN;
   }.
-
+  
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := int.
-
+    
     Definition make `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-
+    
     Module Impl_signature.
       Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
@@ -27,7 +27,7 @@ Module Number.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_ _}.
-
+    
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature (t := _) :=
       {|
@@ -35,13 +35,13 @@ Module Number.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-
+  
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-
+  
   Definition make `{_fargs : FArgs} : int -> t :=
     Impl.(Impl.Impl_signature.make).
-
+  
   Definition _Set `{_fargs : FArgs} :=
     RocqOfOCaml.OCamlSet.Make
       (let t : Set := Impl.(Impl.Impl_signature.t) in
@@ -53,18 +53,20 @@ Module Number.
       ({|
         RocqOfOCaml.OCamlMap.OrderedType.compare := compare
       |} : RocqOfOCaml.OCamlMap.OrderedType (t := t))).
-
+  
   Module Number_result.
     Record signature `{_fargs : FArgs} {Impl_t : Set} {Set_t : Set} : Type := {
       Impl : Number.Impl.Impl_signature (t := Impl_t);
       t := Impl_t;
       make : int -> Impl_t;
       _Set : RocqOfOCaml.OCamlSet.S (elt := Impl_t) (t := Set_t);
+      Impl_t := Impl_t;
+      Set_t := Set_t;
     }.
   End Number_result.
   Definition Number_result `{_fargs : FArgs} := @Number_result.signature _.
   Arguments Number_result {_ _ _}.
-
+  
   (* Number *)
   Definition functor `{_fargs : FArgs} :Number_result (Impl_t := _) (Set_t := _)
     :=
@@ -80,12 +82,12 @@ Module Representation.
   Class FArgs := {
     Token : TOKEN;
   }.
-
+  
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := string.
-
+    
     Definition make `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-
+    
     Module Impl_signature.
       Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
@@ -94,7 +96,7 @@ Module Representation.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_ _}.
-
+    
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature (t := _) :=
       {|
@@ -102,27 +104,28 @@ Module Representation.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-
+  
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-
+  
   Definition make `{_fargs : FArgs} : string -> t :=
     Impl.(Impl.Impl_signature.make).
-
+  
   Definition bytes_marker `{_fargs : FArgs} : unit := tt.
-
+  
   Module Representation_result.
     Record signature `{_fargs : FArgs} {Impl_t : Set} : Type := {
       Impl : Representation.Impl.Impl_signature (t := Impl_t);
       t := Impl_t;
       make : string -> Impl_t;
       bytes_marker : unit;
+      Impl_t := Impl_t;
     }.
   End Representation_result.
   Definition Representation_result `{_fargs : FArgs} :=
     @Representation_result.signature _.
   Arguments Representation_result {_ _}.
-
+  
   (* Representation *)
   Definition functor `{_fargs : FArgs} :Representation_result (Impl_t := _) :=
     {|
@@ -138,12 +141,12 @@ Module ConcreteRepresentation.
   Class FArgs := {
     Token : TOKEN;
   }.
-
+  
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := string.
-
+    
     Definition make `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-
+    
     Module Impl_signature.
       Record signature `{_fargs : FArgs} : Type := {
         t := string;
@@ -152,7 +155,7 @@ Module ConcreteRepresentation.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_}.
-
+    
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature :=
       {|
@@ -160,13 +163,13 @@ Module ConcreteRepresentation.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-
+  
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-
+  
   Definition make `{_fargs : FArgs} : t -> Impl.(Impl.Impl_signature.t) :=
     Impl.(Impl.Impl_signature.make).
-
+  
   Module ConcreteRepresentation_result.
     Record signature `{_fargs : FArgs} : Type := {
       Impl : ConcreteRepresentation.Impl.Impl_signature;
@@ -177,7 +180,7 @@ Module ConcreteRepresentation.
   Definition ConcreteRepresentation_result `{_fargs : FArgs} :=
     @ConcreteRepresentation_result.signature _.
   Arguments ConcreteRepresentation_result {_}.
-
+  
   (* ConcreteRepresentation *)
   Definition functor `{_fargs : FArgs} :@ConcreteRepresentation_result _fargs :=
     ((@ConcreteRepresentation_result.Build_signature _fargs Impl make) :
@@ -190,207 +193,209 @@ Module Pair.
   Class FArgs := {
     Token : TOKEN;
   }.
-
+  
   Definition S_fargs `{_fargs : FArgs} := Number.Build_FArgs Token.
-
+  
   Definition S `{_fargs : FArgs} : Number.Number_result (_fargs := S_fargs) :=
-    Number Token.
-
+    (Number.functor (_fargs := (S_fargs ))).
+  
   Module Signed.
     (** Inclusion of the module [S] *)
     Module Impl.
       Definition t `{_fargs : FArgs} :=
         S.(Number.Number_result.Impl).(Number.Impl.Impl_signature.t).
-
+      
       Definition make `{_fargs : FArgs} : int -> t :=
         S.(Number.Number_result.Impl).(Number.Impl.Impl_signature.make).
     End Impl.
-
+    
     Definition Impl `{_fargs : FArgs} := S.(Number.Number_result.Impl).
-
+    
     Definition t `{_fargs : FArgs} := S.(Number.Number_result.t).
-
+    
     Definition make `{_fargs : FArgs} : int -> t :=
       S.(Number.Number_result.make).
-
+    
     Module _Set.
       Definition elt `{_fargs : FArgs} :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.elt).
-
+      
       Definition t `{_fargs : FArgs} :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.t).
-
+      
       Definition empty `{_fargs : FArgs} : t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.empty).
-
+      
       Definition add `{_fargs : FArgs} : elt -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.add).
-
+      
       Definition singleton `{_fargs : FArgs} : elt -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.singleton).
-
+      
       Definition remove `{_fargs : FArgs} : elt -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.remove).
-
+      
       Definition union `{_fargs : FArgs} : t -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.union).
-
+      
       Definition inter `{_fargs : FArgs} : t -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.inter).
-
+      
       Definition disjoint `{_fargs : FArgs} : t -> t -> bool :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.disjoint).
-
+      
       Definition diff `{_fargs : FArgs} : t -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.diff).
-
+      
       Definition cardinal `{_fargs : FArgs} : t -> int :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.cardinal).
-
+      
       Definition elements `{_fargs : FArgs} : t -> list elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.elements).
-
+      
       Definition min_elt `{_fargs : FArgs}
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.min_elt).
-
+      
       Definition min_elt_opt `{_fargs : FArgs} : t -> option elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.min_elt_opt).
-
+      
       Definition max_elt `{_fargs : FArgs}
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.max_elt).
-
+      
       Definition max_elt_opt `{_fargs : FArgs} : t -> option elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.max_elt_opt).
-
+      
       Definition choose `{_fargs : FArgs}
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.choose).
-
+      
       Definition choose_opt `{_fargs : FArgs} : t -> option elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.choose_opt).
-
+      
       Definition find `{_fargs : FArgs}
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
         elt -> t -> elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find).
-
+      
       Definition find_opt `{_fargs : FArgs} : elt -> t -> option elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_opt).
-
+      
       Definition find_first `{_fargs : FArgs}
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
         (elt -> bool) -> t -> elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_first).
-
+      
       Definition find_first_opt `{_fargs : FArgs} :
         (elt -> bool) -> t -> option elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_first_opt).
-
+      
       Definition find_last `{_fargs : FArgs}
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
         (elt -> bool) -> t -> elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_last).
-
+      
       Definition find_last_opt `{_fargs : FArgs} :
         (elt -> bool) -> t -> option elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.find_last_opt).
-
+      
       Definition iter `{_fargs : FArgs} : (elt -> unit) -> t -> unit :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.iter).
-
+      
       Definition fold `{_fargs : FArgs} {acc : Set} :
         (elt -> acc -> acc) -> t -> acc -> acc :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.fold).
-
+      
       Definition map `{_fargs : FArgs} : (elt -> elt) -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.map).
-
+      
       Definition filter `{_fargs : FArgs} : (elt -> bool) -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.filter).
-
+      
       Definition filter_map `{_fargs : FArgs} : (elt -> option elt) -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.filter_map).
-
+      
       Definition partition `{_fargs : FArgs} : (elt -> bool) -> t -> t * t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.partition).
-
+      
       Definition split `{_fargs : FArgs} : elt -> t -> t * bool * t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.split).
-
+      
       Definition is_empty `{_fargs : FArgs} : t -> bool :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.is_empty).
-
+      
       Definition mem `{_fargs : FArgs} : elt -> t -> bool :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.mem).
-
+      
       Definition equal `{_fargs : FArgs} : t -> t -> bool :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.equal).
-
+      
       Definition compare `{_fargs : FArgs} : t -> t -> int :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.compare).
-
+      
       Definition subset `{_fargs : FArgs} : t -> t -> bool :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.subset).
-
+      
       Definition for_all `{_fargs : FArgs} : (elt -> bool) -> t -> bool :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.for_all).
-
+      
       Definition _exists `{_fargs : FArgs} : (elt -> bool) -> t -> bool :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S._exists).
-
+      
       Definition to_list `{_fargs : FArgs} : t -> list elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_list).
-
+      
       Definition of_list `{_fargs : FArgs} : list elt -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.of_list).
-
+      
       Definition to_seq_from `{_fargs : FArgs} :
         elt -> t -> RocqOfOCaml.OCamlSeq.t elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_seq_from).
-
+      
       Definition to_seq `{_fargs : FArgs} : t -> RocqOfOCaml.OCamlSeq.t elt :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_seq).
-
+      
       Definition to_rev_seq `{_fargs : FArgs} : t -> RocqOfOCaml.OCamlSeq.t elt
         := S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.to_rev_seq).
-
+      
       Definition add_seq `{_fargs : FArgs} :
         RocqOfOCaml.OCamlSeq.t elt -> t -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.add_seq).
-
+      
       Definition of_seq `{_fargs : FArgs} : RocqOfOCaml.OCamlSeq.t elt -> t :=
         S.(Number.Number_result._Set).(RocqOfOCaml.OCamlSet.S.of_seq).
     End _Set.
-
+    
     Definition _Set `{_fargs : FArgs} := S.(Number.Number_result._Set).
-
+    
     Definition Repr_fargs `{_fargs : FArgs} := Representation.Build_FArgs Token.
-
+    
     Definition Repr `{_fargs : FArgs} :
       Representation.Representation_result (_fargs := Repr_fargs) :=
-      Representation Token.
-
+      (Representation.functor (_fargs := (Repr_fargs ))).
+    
     Definition Bytes_fargs `{_fargs : FArgs} :=
       ConcreteRepresentation.Build_FArgs Token.
-
+    
     Definition Bytes `{_fargs : FArgs} :
       ConcreteRepresentation.ConcreteRepresentation_result
-        (_fargs := Bytes_fargs) := ConcreteRepresentation Token.
-
+        (_fargs := Bytes_fargs) := (ConcreteRepresentation.functor
+      (_fargs := (Bytes_fargs ))).
+    
     Definition of_repr `{_fargs : FArgs}
-      (function_parameter : Repr.(Representation.Representation_result.t))
+      (function_parameter :
+        (Repr (_fargs := _fargs)).(Representation.Representation_result.t))
       : S.(Number.Number_result.t) :=
       let '_ := function_parameter in
       S.(Number.Number_result.make) 0.
-
+    
     Definition of_bytes `{_fargs : FArgs} (function_parameter : string)
       : S.(Number.Number_result.t) :=
       let '_ := function_parameter in
       S.(Number.Number_result.make) 0.
   End Signed.
-
+  
   Module Pair_result.
     Record signature `{_fargs : FArgs} {S_Impl_t : Set} {S_Set_t : Set}
       {Signed_Repr_Impl_t : Set} : Type := {
@@ -411,11 +416,14 @@ Module Pair.
           (_fargs := Signed.Bytes_fargs);
       Signed_of_repr : Signed_Repr_Impl_t -> S_Impl_t;
       Signed_of_bytes : string -> S_Impl_t;
+      S_Impl_t := S_Impl_t;
+      S_Set_t := S_Set_t;
+      Signed_Repr_Impl_t := Signed_Repr_Impl_t;
     }.
   End Pair_result.
   Definition Pair_result `{_fargs : FArgs} := @Pair_result.signature _.
   Arguments Pair_result {_ _ _ _}.
-
+  
   (* Pair *)
   Definition functor `{_fargs : FArgs}
     :Pair_result (S_Impl_t := _) (S_Set_t := _) (Signed_Repr_Impl_t := _) :=

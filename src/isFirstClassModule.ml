@@ -434,14 +434,45 @@ module Hash = Hashtbl.Make (struct
   let hash { include_hidden_hints; module_typ; module_path } =
     Hashtbl.hash
       ( include_hidden_hints,
-        Hashtbl.hash_param 1 1 module_typ,
+        Hashtbl.hash_param 10 50 module_typ,
         module_path )
+end)
+
+type logical_hash_index = {
+  logical_include_hidden_hints : bool;
+  logical_module_path : Path.t;
+}
+
+module LogicalHash = Hashtbl.Make (struct
+  type t = logical_hash_index
+
+  let equal left right =
+    Bool.equal left.logical_include_hidden_hints
+      right.logical_include_hidden_hints
+    && Path.same left.logical_module_path right.logical_module_path
+
+  let hash
+      {
+        logical_include_hidden_hints;
+        logical_module_path;
+      } =
+    Hashtbl.hash
+      ( logical_include_hidden_hints,
+        Hashtbl.hash_param 10 50 logical_module_path )
 end)
 
 (** Large functor bodies repeatedly expose the same expanded module types.
     Cache successful discovery as well as misses so each signature does not
     rescan the complete typing environment on every use. *)
 let module_typ_first_class_hash : maybe_found Hash.t = Hash.create 64
+
+(** Compiler-libs frequently copies module types while expanding functor
+    applications.  Those copies defeat the physical-identity cache above.
+    A named module path identifies one declaration in the fixed typing
+    environment, so cache its classification by the stamped [Path.t].
+    Anonymous module types deliberately stay on the context-sensitive path. *)
+let logical_module_typ_first_class_hash : maybe_found LogicalHash.t =
+  LogicalHash.create 64
 
 let is_module_typ_first_class ?(include_hidden_hints = false)
     (module_typ : Types.module_type) (module_path : Path.t option) :
@@ -477,6 +508,27 @@ let is_module_typ_first_class ?(include_hidden_hints = false)
   | Some index -> (
       match Hash.find_opt module_typ_first_class_hash index with
       | Some result -> return result
+      | None when Option.is_some module_path ->
+          let module_path = Option.get module_path in
+          let logical_index =
+            {
+              logical_include_hidden_hints = include_hidden_hints;
+              logical_module_path = module_path;
+            }
+          in
+          (match
+             LogicalHash.find_opt logical_module_typ_first_class_hash
+               logical_index
+           with
+          | Some result ->
+              Hash.replace module_typ_first_class_hash index result;
+              return result
+          | None ->
+              let* result = classify () in
+              Hash.replace module_typ_first_class_hash index result;
+              LogicalHash.replace logical_module_typ_first_class_hash
+                logical_index result;
+              return result)
       | None ->
           let* result = classify () in
           Hash.replace module_typ_first_class_hash index result;

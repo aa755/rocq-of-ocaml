@@ -4,9 +4,9 @@ Require Import RocqOfOCaml.Settings.
 
 Module Option.
   Definition t (a : Set) : Set := option a.
-
+  
   Definition none {A : Set} : option A := None.
-
+  
   Definition _return {A : Set} (value : A) : option A := Some value.
 End Option.
 
@@ -21,9 +21,9 @@ Module Make.
   Class FArgs := {
     Token : Make_Token_signature;
   }.
-
+  
   Module Option := Option.
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       Option_t := fun (a : Set) => option a;
@@ -33,7 +33,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
     ((@Make_result.Build_signature _fargs (fun _ => Option.none)
@@ -52,20 +52,17 @@ Module Result.
       ({|
         Make_Token_signature.token := Token.token
       |} : Make_Token_signature).
-
+  
   Definition Make_include : Make.Make_result (_fargs := Make_include_fargs) :=
-    Make
-      ({|
-        Make_Token_signature.token := Token.token
-      |} : Make_Token_signature).
-
+    (Make.functor (_fargs := (Make_include_fargs ))).
+  
   (** Inclusion of the module [Make_include] *)
   Module Option.
     Definition t (a : Set) := Make_include.(Make.Make_result.Option_t) a.
-
+    
     Definition none {A : Set} : Make_include.(Make.Make_result.Option_t) A :=
       Make_include.(Make.Make_result.Option_none).
-
+    
     Definition _return {A : Set} :
       A -> Make_include.(Make.Make_result.Option_t) A :=
       Make_include.(Make.Make_result.Option_return).

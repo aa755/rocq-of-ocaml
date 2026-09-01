@@ -19,7 +19,7 @@ Definition m_value (x_value : t) : int :=
       (let '_ := x_value in
       equiv_decb 1 2),
       match x_value with
-      | Bar n_value => RocqOfOCaml.Basics.Stdlib.gt n_value 12
+      | Bar n_value => Z.gtb n_value 12
       | _ => false
       end,
       match x_value with
@@ -37,7 +37,7 @@ Definition guarded_unit (n_value : int) : int :=
   match
     (tt,
       (let '_ := tt in
-      RocqOfOCaml.Basics.Stdlib.gt n_value 0)) with
+      Z.gtb n_value 0)) with
   | (_, true) => n_value
   | (_, _) => 0
   end.

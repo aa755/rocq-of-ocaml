@@ -5,6 +5,10 @@ Require Import RocqOfOCaml.Settings.
 Module Sig.
   Record signature {t : Set -> Set} : Type := {
     t := t;
+    t__rocq_record_make : forall {a : Set} , int -> int -> a -> t a;
+    t__rocq_record_get_x : forall {a : Set} , t a -> int;
+    t__rocq_record_get_y : forall {a : Set} , t a -> int;
+    t__rocq_record_get_label : forall {a : Set} , t a -> a;
     v_value : t string;
   }.
 End Sig.
@@ -27,12 +31,26 @@ Module M.
       Build t_a r.(x) r.(y) label.
   End t.
   Definition t := t.record.
-
+  
   Definition v_value : t string := {| t.x := 0; t.y := 1; t.label := "hi"; |}.
-
+  
   (* M *)
   Definition module :Sig (t := t) :=
     {|
+      Sig.t__rocq_record_make :=
+        fun _rocq_record_parameter_0 _rocq_record_field_x _rocq_record_field_y
+          _rocq_record_field_label =>
+          {| t.x := _rocq_record_field_x; t.y := _rocq_record_field_y;
+            t.label := _rocq_record_field_label; |};
+      Sig.t__rocq_record_get_x :=
+        fun _rocq_record_parameter_0 _rocq_record_value =>
+          _rocq_record_value.(t.x);
+      Sig.t__rocq_record_get_y :=
+        fun _rocq_record_parameter_0 _rocq_record_value =>
+          _rocq_record_value.(t.y);
+      Sig.t__rocq_record_get_label :=
+        fun _rocq_record_parameter_0 _rocq_record_value =>
+          _rocq_record_value.(t.label);
       Sig.v_value := v_value
     |}.
 End M.
@@ -40,4 +58,4 @@ Definition M := M.module.
 
 Definition v_value : M.(Sig.t) string := M.(Sig.v_value).
 
-Definition s_value : string := M.(Sig.v_value).(M.t.label).
+Definition s_value : string := M.(Sig.t__rocq_record_get_label) M.(Sig.v_value).

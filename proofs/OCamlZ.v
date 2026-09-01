@@ -125,6 +125,11 @@ Definition powm `{Unreachable Z} (base exponent modulus : Z) : Z :=
       unreachable
   end.
 
+(** Zarith delegates modular inversion and the Legendre symbol to GMP. *)
+Parameter invert : Z -> Z -> Z.
+
+Parameter legendre : Z -> Z -> int.
+
 (** Zarith delegates this operation to OCaml's representation-sensitive
     generic hash. *)
 Parameter hash : Z -> int.

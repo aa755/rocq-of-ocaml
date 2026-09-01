@@ -12,7 +12,7 @@ Module Stable.
   Class FArgs := {
     X : Stable_X_signature;
   }.
-
+  
   Module t.
     Record record `{_fargs : FArgs} : Set := Build {
       value : int;
@@ -21,19 +21,21 @@ Module Stable.
       Build _ value.
   End t.
   Definition t `{_fargs : FArgs} := t.record.
-
+  
   Definition make `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (value : int)
     : t :=
     {| t.value := RocqOfOCaml.OCamlList.hd (Datatypes.cons value nil); |}.
-
+  
   Definition read `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (record : t)
     : int := RocqOfOCaml.OCamlList.hd (Datatypes.cons record.(t.value) nil).
-
+  
   Module Stable_result.
     Record signature `{_fargs : FArgs} {t : Set} : Type := {
       t := t;
+      t__rocq_record_make : int -> t;
+      t__rocq_record_get_value : t -> int;
       make :
         forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int},
           int -> t;
@@ -44,12 +46,17 @@ Module Stable.
   End Stable_result.
   Definition Stable_result `{_fargs : FArgs} := @Stable_result.signature _.
   Arguments Stable_result {_ _}.
-
+  
   (* Stable *)
   Definition functor `{_fargs : FArgs} :Stable_result (t := _) :=
     {|
-      Stable_result.make _ := make;
-      Stable_result.read _ := read
+      Stable_result.t__rocq_record_make :=
+        fun _rocq_record_field_value =>
+          {| t.value := _rocq_record_field_value; |};
+      Stable_result.t__rocq_record_get_value :=
+        fun _rocq_record_value => _rocq_record_value.(t.value);
+      Stable_result.make := @make _;
+      Stable_result.read := @read _
     |}.
 End Stable.
 Definition Stable (X : Stable_X_signature) :=

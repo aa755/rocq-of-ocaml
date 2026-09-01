@@ -153,6 +153,9 @@ module Command = struct
              context.included_record_aliases)
     | GetConstructorName uid ->
         Result.success (ConstructorNames.find uid context.constructor_names)
+    | GetDeclarationTypePath uid ->
+        Result.success
+          (ProjectHints.find_declaration_type_path uid context.project_hints)
     | GetValueName ident ->
         Result.success (ValueNames.find ident context.value_names)
     | GetModulePathAlias path ->
@@ -176,29 +179,77 @@ module Command = struct
               with
               | Some _ as target -> target
               | None ->
-                  ModulePathAliases.find normalized_path context.loc
-                    context.module_path_aliases)
+                  (match
+                     ModulePathAliases.find normalized_path context.loc
+                       context.module_path_aliases
+                   with
+                  | Some _ as target -> target
+                  | None ->
+                      ProjectHints.find_applicative_alias normalized_path
+                        context.project_hints))
         in
         Result.success
           (match alias with
           | Some target when Path.same path target -> None
           | Some _ | None -> alias)
+    | GetModulePathAliasSource path ->
+        let normalized_path = normalize_project_path context.env path in
+        let source =
+          match
+            context.module_path_alias_overrides
+            |> List.find_map (fun (source, target) ->
+                   if Path.same path target || Path.same normalized_path target
+                   then Some source
+                   else None)
+          with
+          | Some _ as source -> source
+          | None -> (
+              match
+                ModulePathAliases.find_source path context.loc
+                  context.module_path_aliases
+              with
+              | Some _ as source -> source
+              | None ->
+                  ModulePathAliases.find_source normalized_path context.loc
+                    context.module_path_aliases)
+        in
+        Result.success source
     | GetSignatureHint path ->
         let normalized_path =
           normalize_project_path context.env path
         in
-        Result.success
-          (match SignatureHints.find path context.signature_hints with
+        let direct path =
+          match SignatureHints.find path context.signature_hints with
           | Some _ as result -> result
+          | None ->
+              ProjectHints.find_module_result path context.project_hints
+        in
+        let alias_source =
+          match
+            context.module_path_alias_overrides
+            |> List.find_map (fun (source, target) ->
+                   if Path.same path target || Path.same normalized_path target
+                   then Some source
+                   else None)
+          with
+          | Some _ as source -> source
           | None -> (
               match
-                SignatureHints.find normalized_path
-                  context.signature_hints
+                ModulePathAliases.find_source path context.loc
+                  context.module_path_aliases
               with
-              | Some _ as result -> result
+              | Some _ as source -> source
               | None ->
-                  ProjectHints.find_module_result normalized_path
-                    context.project_hints))
+                  ModulePathAliases.find_source normalized_path context.loc
+                    context.module_path_aliases)
+        in
+        Result.success
+          (match direct path with
+          | Some _ as result -> result
+          | None -> (
+              match direct normalized_path with
+              | Some _ as result -> result
+              | None -> Option.bind alias_source direct))
     | GetModuleTypeHint path ->
         Result.success
           (match
@@ -242,15 +293,26 @@ module Command = struct
                 context.project_hints)
     | GetFunctorResultSignature functor_path ->
         Result.success
-          (match
-             SignatureHints.find_functor_result_signature functor_path
-               context.signature_hints
-           with
+          (let path = normalize_project_path context.env functor_path in
+           let project_result =
+             ProjectHints.find_module_result path context.project_hints
+           in
+           match project_result with
           | Some _ as result -> result
-          | None ->
-              ProjectHints.find_functor_result
-                (normalize_project_path context.env functor_path)
-                context.project_hints)
+          | None -> (
+              match
+                ProjectHints.find_module_application_result path
+                  context.project_hints
+              with
+              | Some _ as result -> result
+              | None -> (
+              match
+                SignatureHints.find_functor_result_signature functor_path
+                  context.signature_hints
+              with
+              | Some _ as result -> result
+              | None ->
+                  ProjectHints.find_functor_result path context.project_hints)))
     | GetResultModuleField (result_signature, field_name) ->
         Result.success
           (match
@@ -268,8 +330,15 @@ module Command = struct
              result_signature namespace context.signature_hints)
     | GetAppliedFunctorChild path ->
         Result.success
-          (SignatureHints.find_applied_functor_child path
-             context.signature_hints)
+          (match
+             SignatureHints.find_applied_functor_child path
+               context.signature_hints
+           with
+          | Some _ as result -> result
+          | None ->
+              ProjectHints.find_applied_functor_child
+                (normalize_project_path context.env path)
+                context.project_hints)
     | Raise (value, category, message) ->
         let result = Result.success value in
         let errors =

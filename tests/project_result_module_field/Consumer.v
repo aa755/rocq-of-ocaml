@@ -6,7 +6,7 @@ Require TestProject.Provider.
 
 Module Argument.
   Definition token : unit := tt.
-
+  
   (* Argument *)
   Definition module :Provider.ARGUMENT :=
     {|
@@ -20,23 +20,26 @@ Definition DirectApplied_fargs :=
 
 Definition DirectApplied :
   Provider.Fixed.Fixed_result (_fargs := DirectApplied_fargs) :=
-  TestProject.Provider.Fixed Argument.
+  (TestProject.Provider.Fixed.functor (_fargs := (DirectApplied_fargs ))).
 
 Definition projected_missing
-  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
-  DirectApplied.(TestProject.Provider.Fixed.Fixed_result.missing).
+  `{_rocq_assumption_0 :
+    RocqOfOCaml.Basics.Unreachable DirectApplied.(Provider.Fixed.Fixed_result.t)} : int :=
+  (DirectApplied.(Provider.Fixed.Fixed_result.missing)
+    (_rocq_assumption_0 := _rocq_assumption_0)).
 
 (** Inclusion of the module [TestProject.Provider.Applied] *)
 Definition t := TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.t).
 
-Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : t
-  := TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.missing).
+Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} :=
+  TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.missing)
+    (_rocq_assumption_0 := _rocq_assumption_0).
 
 Module Map.
   Definition t :=
     TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
-
-  Definition empty : t :=
+  
+  Definition empty :=
     TestProject.Provider.Applied.(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
 End Map.
 
@@ -66,36 +69,36 @@ Definition shadowed_failure
 Definition Result_fargs := TestProject.Provider.Outer.Build_FArgs Argument.
 
 Definition Result : Provider.Outer.Outer_result (_fargs := Result_fargs) :=
-  TestProject.Provider.Outer Argument.
+  (TestProject.Provider.Outer.functor (_fargs := (Result_fargs ))).
 
 Module Alias.
   Definition t := int.
-
+  
   Definition identity {A : Set} :=
-    Result.(TestProject.Provider.Outer.Outer_result.Namespace_identity) (A := A).
-
+    Result.(Provider.Outer.Outer_result.Namespace_identity) (A := A).
+  
   Module Repr.
     Definition t :=
-      Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.t).
-
+      Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.t).
+    
     Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t}
       :=
-      Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.missing).
-
+      Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.missing)
+        (_rocq_assumption_0 := _rocq_assumption_0).
+    
     Module Map.
       Definition t :=
-        Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
-
+        Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+      
       Definition empty :=
-        Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
+        Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
     End Map.
-
+    
     Definition Map :=
-      Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).
+      Result.(Provider.Outer.Outer_result.Namespace_Repr).(Provider.Fixed.Fixed_result.Map).
   End Repr.
-
-  Definition Repr :=
-    Result.(TestProject.Provider.Outer.Outer_result.Namespace_Repr).
+  
+  Definition Repr := Result.(Provider.Outer.Outer_result.Namespace_Repr).
 End Alias.
 
 Definition AliasedResult_fargs :=
@@ -103,30 +106,30 @@ Definition AliasedResult_fargs :=
 
 Definition AliasedResult :
   Provider.Aliased.Aliased_result (_fargs := AliasedResult_fargs) :=
-  TestProject.Provider.Aliased Argument.
+  (TestProject.Provider.Aliased.functor (_fargs := (AliasedResult_fargs ))).
 
 Module AliasedField.
   Definition t :=
-    AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.t).
-
+    AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.t).
+  
   Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
     :=
-    AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.missing).
-
+    AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.missing)
+      (_rocq_assumption_0 := _rocq_assumption_0).
+  
   Module Map.
     Definition t :=
-      AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
-
+      AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.t).
+    
     Definition empty :=
-      AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
+      AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).(Provider.Fixed.Map.Map_signature.empty).
   End Map.
-
+  
   Definition Map :=
-    AliasedResult.(TestProject.Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).
+    AliasedResult.(Provider.Aliased.Aliased_result.Alias).(Provider.Fixed.Fixed_result.Map).
 End AliasedField.
 
-Definition aliased_map : Set :=
-  AliasedField.Map.(Provider.Fixed.Map.Map_signature.t).
+Definition aliased_map : Set := AliasedField.Map.t.
 
 Definition AnonymousInt_fargs :=
   TestProject.Provider.Anonymous.Build_FArgs
@@ -136,25 +139,22 @@ Definition AnonymousInt_fargs :=
 
 Definition AnonymousInt :
   Provider.Anonymous.Anonymous_result (_fargs := AnonymousInt_fargs) :=
-  TestProject.Provider.Anonymous
-    (let t : Set := int in
-    ((ltac:(constructor) : Provider.Anonymous_T_signature (t := t)) :
-      Provider.Anonymous_T_signature (t := t))).
+  (TestProject.Provider.Anonymous.functor (_fargs := (AnonymousInt_fargs ))).
 
 Definition anonymous_identity : int :=
-  AnonymousInt.(TestProject.Provider.Anonymous.Anonymous_result.identity) 42.
+  AnonymousInt.(Provider.Anonymous.Anonymous_result.identity) 42.
 
 Module Produce.
   Class FArgs := {
     Input : Provider.INPUT;
   }.
-
+  
   Definition result_value `{_fargs : FArgs} : int :=
     Input.(Provider.INPUT.value).
-
+  
   Definition extra `{_fargs : FArgs} : int :=
     Z.add Input.(Provider.INPUT.value) 1.
-
+  
   Module Produce_result.
     Record signature `{_fargs : FArgs} : Type := {
       result_value : int;
@@ -163,7 +163,7 @@ Module Produce.
   End Produce_result.
   Definition Produce_result `{_fargs : FArgs} := @Produce_result.signature _.
   Arguments Produce_result {_}.
-
+  
   (* Produce *)
   Definition functor `{_fargs : FArgs} :@Produce_result _fargs :=
     ((@Produce_result.Build_signature _fargs result_value extra) :
@@ -174,7 +174,7 @@ Definition Produce (Input : Provider.INPUT) :=
 
 Module Concrete.
   Definition value : int := 41.
-
+  
   (* Concrete *)
   Definition module :Provider.INPUT :=
     {|
@@ -193,11 +193,20 @@ Definition Coerced_fargs :=
       |}) Concrete.
 
 Definition Coerced : Provider.Consume.Consume_result (_fargs := Coerced_fargs)
-  :=
-  TestProject.Provider.Consume
-    (fun (Input : Provider.INPUT) =>
-      let module_coercion := Produce Input in
-      {|
-        Provider.OUTPUT.result_value :=
-          module_coercion.(Produce.Produce_result.result_value)
-      |}) Concrete.
+  := (TestProject.Provider.Consume.functor (_fargs := (Coerced_fargs ))).
+
+Definition NestedApplied_fargs :=
+  TestProject.Provider.Nested.Build_FArgs Argument.
+
+Definition NestedApplied :
+  Provider.Nested.Nested_result (_fargs := NestedApplied_fargs) :=
+  (TestProject.Provider.Nested.functor (_fargs := (NestedApplied_fargs ))).
+
+Definition ChildApplied :=
+  (Provider.Nested.Child (_fargs := NestedApplied_fargs))
+    (let value := 42 in
+    ({|
+      Provider.INPUT.value := value
+    |} : Provider.INPUT)).
+
+Definition nested_child_value : int := ChildApplied.(Provider.INPUT.value).

@@ -16,16 +16,16 @@ Module Make.
     M : S (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   (** Inclusion of the module [M] *)
   Definition t `{_fargs : FArgs} (a _error : Set) := M.(S.t) a _error.
-
+  
   Definition _return `{_fargs : FArgs} {a _error : Set} : a -> t a _error :=
     M.(S._return).
-
+  
   Module Option.
     Definition t `{_fargs : FArgs} (a : Set) : Set := option a.
-
+    
     Definition iterM `{_fargs : FArgs} {a _error : Set}
       (value : option a) (f_value : a -> M.(S.t) unit _error)
       : M.(S.t) unit _error :=
@@ -34,20 +34,20 @@ Module Make.
       | None => (M.(S._return) (_error := _error) (a := unit)) tt
       end.
   End Option.
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
-      t := fun (a _error : Set) => M.(S.t) a _error;
-      _return : forall {_error a : Set} , a -> M.(S.t) a _error;
+      t := fun (a _error : Set) => t a _error;
+      _return : forall {_error a : Set} , a -> t a _error;
       Option_t := fun (a : Set) => option a;
       Option_iterM :
         forall {_error a : Set} ,
-          option a -> (a -> M.(S.t) unit _error) -> M.(S.t) unit _error;
+          option a -> (a -> t unit _error) -> t unit _error;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
     ((@Make_result.Build_signature M_t _fargs (fun _ _ => _return)
@@ -139,13 +139,7 @@ Definition Make_include_fargs :=
     |} : S (t := t))).
 
 Definition Make_include : Make.Make_result (_fargs := Make_include_fargs) :=
-  Make
-    (let t (a _error : Set) : Set := RocqOfOCaml.OCamlResult.t a _error in
-    let _return {A B : Set} (value : A) : RocqOfOCaml.OCamlResult.t A B :=
-      ((inl value) : RocqOfOCaml.OCamlResult.t A B) in
-    ({|
-      S._return _ _ := _return
-    |} : S (t := t))).
+  (Make.functor (_fargs := (Make_include_fargs ))).
 
 (** Inclusion of the module [Make_include] *)
 Definition t (a _error : Set) := Make_include.(Make.Make_result.t) a _error.
@@ -155,7 +149,7 @@ Definition _return {a _error : Set} : a -> t a _error :=
 
 Module Option.
   Definition t (a : Set) := Make_include.(Make.Make_result.Option_t) a.
-
+  
   Definition iterM {a _error : Set} :
     Make_include.(Make.Make_result.Option_t) a ->
     (a -> Make_include.(Make.Make_result.t) unit _error) ->

@@ -5,7 +5,7 @@ From Stdlib Require Import Program.Wf.
 
 Module Arithmetic.
   Parameter _rocq_measure_gcd : forall (_left : int) (_right : int), nat.
-
+  
   Program Definition gcd (_left : int) (_right : int) : int :=
     let _rocq_measure (_rocq_state : int * int) : nat := let '(_left, _right) := _rocq_state in
     _rocq_measure_gcd _left _right in
@@ -17,6 +17,6 @@ Module Arithmetic.
         _left
       else
         gcd _right (Z.rem _left _right)) (_left, _right).
-
+  
   Admit Obligations.
 End Arithmetic.

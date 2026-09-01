@@ -13,12 +13,12 @@ Module F.
   Class FArgs := {
     X : F_X_signature;
   }.
-
+  
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := int.
-
+    
     Definition value `{_fargs : FArgs} : int := X.(F_X_signature.value).
-
+    
     Module Impl_signature.
       Record signature `{_fargs : FArgs} : Type := {
         t := int;
@@ -27,7 +27,7 @@ Module F.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_}.
-
+    
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature :=
       {|
@@ -35,12 +35,12 @@ Module F.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-
+  
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-
+  
   Definition value `{_fargs : FArgs} : t := Impl.(Impl.Impl_signature.value).
-
+  
   Module F_result.
     Record signature `{_fargs : FArgs} : Type := {
       Impl : F.Impl.Impl_signature;
@@ -50,7 +50,7 @@ Module F.
   End F_result.
   Definition F_result `{_fargs : FArgs} := @F_result.signature _.
   Arguments F_result {_}.
-
+  
   (* F *)
   Definition functor `{_fargs : FArgs} :@F_result _fargs :=
     ((@F_result.Build_signature _fargs Impl value) : @F_result _fargs).
@@ -64,25 +64,25 @@ Module Applied.
       ({|
         F_X_signature.value := value
       |} : F_X_signature)).
-
-  Definition F_include : F.F_result (_fargs := F_include_fargs) :=
-    F
-      (let value := 7 in
-      ({|
-        F_X_signature.value := value
-      |} : F_X_signature)).
-
+  
+  Definition F_include : F.F_result (_fargs := F_include_fargs) := (F.functor
+    (_fargs := (F_include_fargs ))).
+  
   (** Inclusion of the module [F_include] *)
   Module Impl.
     Definition t := F_include.(F.F_result.Impl).(F.Impl.Impl_signature.t).
-
-    Definition value : t :=
+    
+    Definition value :=
       F_include.(F.F_result.Impl).(F.Impl.Impl_signature.value).
   End Impl.
-
+  
+  Section _rocq_include_assumptions_Impl.
+  #[local] Existing Instance F_include_fargs.
+  
   Definition Impl := F_include.(F.F_result.Impl).
-
+  
   Definition t := F_include.(F.F_result.t).
-
-  Definition value : t := F_include.(F.F_result.value).
+  
+  Definition value := F_include.(F.F_result.value).
+  End _rocq_include_assumptions_Impl.
 End Applied.

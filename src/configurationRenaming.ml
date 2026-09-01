@@ -199,6 +199,8 @@ let rules =
     ("Z.op_starstar", "Z.pow");
     ("Z.op_tildedollar", "RocqOfOCaml.OCamlZ.op_tildedollar");
     ("Z.div_rem", "Z.quotrem");
+    ("Z.ediv_rem", "Z.div_eucl");
+    ("Z.erem", "Z.modulo");
     ("Z.of_int", "RocqOfOCaml.OCamlZ.of_int");
     ("Z.of_int32", "RocqOfOCaml.OCamlZ.of_int32");
     ("Z.of_int64", "RocqOfOCaml.OCamlZ.of_int64");
@@ -216,6 +218,8 @@ let rules =
     ("Z.to_bits", "RocqOfOCaml.OCamlZ.to_bits");
     ("Z.of_bits", "RocqOfOCaml.OCamlZ.of_bits");
     ("Z.powm", "RocqOfOCaml.OCamlZ.powm");
+    ("Z.invert", "RocqOfOCaml.OCamlZ.invert");
+    ("Z.legendre", "RocqOfOCaml.OCamlZ.legendre");
     ("Z.hash", "RocqOfOCaml.OCamlZ.hash");
     ("Z.to_string", "RocqOfOCaml.OCamlZ.to_string");
     ("Z.of_string", "RocqOfOCaml.OCamlZ.of_string");

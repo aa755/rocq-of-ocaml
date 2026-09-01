@@ -1,0 +1,9 @@
+{
+  "recursion_strategies": [
+    [
+      "tests/well_founded_nested_functor.ml",
+      "Outer.Search.run.loop",
+      "well_founded"
+    ]
+  ]
+}

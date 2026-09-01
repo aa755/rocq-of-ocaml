@@ -67,10 +67,10 @@ Module With_cast.
   Inductive int_or_bool : Set :=
   | Int : int_or_bool
   | Bool : int_or_bool.
-
+  
   Definition to_int {a : Set}
-    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool}
-    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable bool}
     (kind : int_or_bool) (x_value : a) : int :=
     match (kind, x_value) with
     | (Int, x_value) =>

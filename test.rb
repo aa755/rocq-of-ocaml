@@ -96,8 +96,10 @@ Recursive Extraction Library #{base_name}.
 end
 
 class ProjectResultModuleFieldTest < Test
-  def initialize
-    @directory = 'tests/project_result_module_field'
+  def initialize(directory = 'tests/project_result_module_field',
+      provider_prefixes = ['TestProject.Provider', 'Project.Provider', 'Provider'])
+    @directory = directory
+    @provider_prefixes = provider_prefixes
     super(File.join(@directory, 'Consumer.ml'))
   end
 
@@ -126,40 +128,39 @@ class ProjectResultModuleFieldTest < Test
     Dir.mktmpdir('rocq-of-ocaml-project-test') do |directory|
       metadata_directory = File.join(directory, 'metadata')
       FileUtils.mkdir_p(metadata_directory)
-      ['Provider.ml', 'Project.ml', 'Consumer.ml', 'Consumer.json'].each do |name|
+      Dir.children(@directory).grep(/\A(?:Provider|Project|Consumer)\.(?:ml|json)\z/).each do |name|
         FileUtils.cp(File.join(@directory, name), directory)
       end
-      compile_commands = [
-        ['ocamlc', '-bin-annot', '-c', 'Provider.ml'],
-        ['ocamlc', '-bin-annot', '-I', '.', '-c', 'Project.ml'],
-        ['ocamlc', '-bin-annot', '-I', '.', '-c', 'Consumer.ml']
-      ]
+      compile_commands = [['ocamlc', '-bin-annot', '-c', 'Provider.ml']]
+      compile_commands << ['ocamlc', '-bin-annot', '-I', '.', '-c', 'Project.ml'] if File.exist?(File.join(directory, 'Project.ml'))
+      compile_commands << ['ocamlc', '-bin-annot', '-I', '.', '-c', 'Consumer.ml']
       return false unless compile_commands.all? do |command|
         system(*command, chdir: directory, out: File::NULL, err: File::NULL)
       end
+      provider_command = [
+        executable,
+        *@provider_prefixes.flat_map do |prefix|
+          ['-assumption-prefix', prefix]
+        end,
+        '-assumption-metadata-output',
+        File.join(metadata_directory, 'provider.rocq-assumptions'),
+        '-output', '/dev/stdout',
+        'Provider.ml'
+      ]
+      provider_command.insert(1, '-config', 'Provider.json') if File.exist?(File.join(directory, 'Provider.json'))
       snapshots['Provider.v'] =
-        capture_translation(
-          [
-            executable,
-            '-assumption-prefix', 'Project.Provider',
-            '-assumption-prefix', 'Provider',
-            '-assumption-metadata-output',
-            File.join(metadata_directory, 'provider.rocq-assumptions'),
-            '-output', '/dev/stdout',
-            'Provider.ml'
-          ],
-          directory
-        )
+        capture_translation(provider_command, directory)
+      consumer_command = [
+        executable,
+        '-project-cmt-dir', '.',
+        '-assumption-metadata-dir', metadata_directory,
+        '-output', '/dev/stdout',
+        'Consumer.ml'
+      ]
+      consumer_command.insert(1, '-config', 'Consumer.json') if File.exist?(File.join(directory, 'Consumer.json'))
       snapshots['Consumer.v'] =
         capture_translation(
-          [
-            executable,
-            '-config', 'Consumer.json',
-            '-project-cmt-dir', '.',
-            '-assumption-metadata-dir', metadata_directory,
-            '-output', '/dev/stdout',
-            'Consumer.ml'
-          ],
+          consumer_command,
           directory
         )
     end
@@ -380,7 +381,19 @@ end
 test_files = Dir.glob('tests/*.ml*').select do |file_name|
   not file_name.include?("disabled")
 end
-tests = Tests.new(test_files + [ProjectResultModuleFieldTest.new])
+tests = Tests.new(test_files + [
+  ProjectResultModuleFieldTest.new,
+  ProjectResultModuleFieldTest.new('tests/project_applied_module_metadata'),
+  ProjectResultModuleFieldTest.new('tests/project_applied_functor_assumption'),
+  ProjectResultModuleFieldTest.new('tests/project_assumption_binder_order'),
+  ProjectResultModuleFieldTest.new(
+    'tests/project_nested_applied_call_order',
+    ['TestProject.Provider']
+  ),
+  ProjectResultModuleFieldTest.new('tests/project_signature_associated_type'),
+  ProjectResultModuleFieldTest.new('tests/project_signature_field_context'),
+  ProjectResultModuleFieldTest.new('tests/project_module_override_metadata')
+])
 tests.check
 puts
 tests.rocq

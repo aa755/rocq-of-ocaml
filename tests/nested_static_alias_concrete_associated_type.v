@@ -11,9 +11,9 @@ Definition PARAM := PARAM.signature.
 
 Module Key.
   Definition t : Set := int.
-
+  
   Definition compare : int -> int -> int := RocqOfOCaml.OCamlInt.compare.
-
+  
   (* Key *)
   Definition module :RocqOfOCaml.OCamlMap.OrderedType (t := int) :=
     {|
@@ -24,7 +24,7 @@ Definition Key := Key.module.
 
 Module GlobalAddress.
   Definition t : Set := int.
-
+  
   Definition _Set := RocqOfOCaml.OCamlSet.Make Key.
 End GlobalAddress.
 
@@ -32,26 +32,27 @@ Module Inner.
   Class FArgs := {
     Param : PARAM;
   }.
-
+  
   Module Address := GlobalAddress.
-
+  
   Definition empty `{_fargs : FArgs}
     : Address._Set.(RocqOfOCaml.OCamlSet.S.t) :=
     Address._Set.(RocqOfOCaml.OCamlSet.S.empty).
-
+  
   Definition value `{_fargs : FArgs} : int := Param.(PARAM.value).
-
+  
   Module Inner_result.
     Record signature `{_fargs : FArgs} {Address_Set_t : Set} : Type := {
       Address_t := int;
       Address_Set : RocqOfOCaml.OCamlSet.S (elt := int) (t := Address_Set_t);
       empty : Address_Set_t;
       value : int;
+      Address_Set_t := Address_Set_t;
     }.
   End Inner_result.
   Definition Inner_result `{_fargs : FArgs} := @Inner_result.signature _.
   Arguments Inner_result {_ _}.
-
+  
   (* Inner *)
   Definition functor `{_fargs : FArgs} :Inner_result (Address_Set_t := _) :=
     {|
@@ -66,22 +67,23 @@ Module Outer.
   Class FArgs := {
     Param : PARAM;
   }.
-
+  
   Definition Vm_fargs `{_fargs : FArgs} := Inner.Build_FArgs Param.
-
+  
   Definition Vm `{_fargs : FArgs} : Inner.Inner_result (_fargs := Vm_fargs) :=
-    Inner Param.
-
+    (Inner.functor (_fargs := (Vm_fargs ))).
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} {Vm_Address_Set_t : Set} : Type := {
       Vm :
         Inner.Inner_result (_fargs := Vm_fargs)
           (Address_Set_t := Vm_Address_Set_t);
+      Vm_Address_Set_t := Vm_Address_Set_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (Vm_Address_Set_t := _) :=
     {|
@@ -92,7 +94,7 @@ Definition Outer (Param : PARAM) := @Outer.functor (Outer.Build_FArgs Param).
 
 Module Param.
   Definition value : int := 42.
-
+  
   (* Param *)
   Definition module :PARAM :=
     {|
@@ -103,7 +105,8 @@ Definition Param := Param.module.
 
 Definition Result_fargs := Outer.Build_FArgs Param.
 
-Definition Result : Outer.Outer_result (_fargs := Result_fargs) := Outer Param.
+Definition Result : Outer.Outer_result (_fargs := Result_fargs) :=
+  (Outer.functor (_fargs := (Result_fargs ))).
 
 Definition empty
   : Result.(Outer.Outer_result.Vm).(Inner.Inner_result.Address_Set).(RocqOfOCaml.OCamlSet.S.t) :=

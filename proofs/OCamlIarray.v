@@ -9,6 +9,13 @@ Local Open Scope Z_scope.
 
 Definition t (a : Set) : Set := list a.
 
+Definition length {a : Set} (values : t a) : int :=
+  Z.of_nat (List.length values).
+
+Definition of_list {a : Set} (values : list a) : t a := values.
+
+Definition to_list {a : Set} (values : t a) : list a := values.
+
 Fixpoint init_nat {a : Set}
     (remaining : nat) (index : int) (element : int -> a) : t a :=
   match remaining with
@@ -56,6 +63,27 @@ Fixpoint fold_left {a acc : Set}
   | value :: values' =>
       fold_left function_value (function_value state value) values'
   end.
+
+Definition fold_right {a acc : Set}
+    (function_value : a -> acc -> acc) (values : t a) (state : acc) : acc :=
+  List.fold_right function_value state values.
+
+Fixpoint exists2_same_length {a b : Set}
+    (predicate : a -> b -> bool) (left : t a) (right : t b) : bool :=
+  match left, right with
+  | [], [] => false
+  | left_head :: left_tail, right_head :: right_tail =>
+      orb (predicate left_head right_head)
+        (exists2_same_length predicate left_tail right_tail)
+  | _, _ => false
+  end.
+
+Definition _exists2 {a b : Set} `{Unreachable bool}
+    (predicate : a -> b -> bool) (left : t a) (right : t b) : bool :=
+  if Nat.eqb (List.length left) (List.length right) then
+    exists2_same_length predicate left right
+  else
+    RocqOfOCaml.Basics.Stdlib.invalid_arg "Iarray.exists2".
 
 Fixpoint find_mapi_from {a b : Set}
     (function_value : int -> a -> option b)

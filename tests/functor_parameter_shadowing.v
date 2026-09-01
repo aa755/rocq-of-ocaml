@@ -16,19 +16,19 @@ Module Enrich.
     M : MONAD (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition t `{_fargs : FArgs} (a : Set) : Set := M.(MONAD.t) a.
-
+  
   Definition _return `{_fargs : FArgs} {A : Set} : A -> M.(MONAD.t) A :=
     M.(MONAD._return).
-
+  
   Definition map `{_fargs : FArgs} {A B : Set} (f_value : A -> B) (x_value : A)
     : M.(MONAD.t) B := (M.(MONAD._return) (a := B)) (f_value x_value).
-
+  
   Module Nested.
     Definition identity `{_fargs : FArgs} {A : Set} (value : A) : A := value.
   End Nested.
-
+  
   Module Enrich_result.
     Record signature `{_fargs : FArgs} : Type := {
       t := fun (a : Set) => M.(MONAD.t) a;
@@ -39,7 +39,7 @@ Module Enrich.
   End Enrich_result.
   Definition Enrich_result `{_fargs : FArgs} := @Enrich_result.signature _ _.
   Arguments Enrich_result {_ _}.
-
+  
   (* Enrich *)
   Definition functor `{_fargs : FArgs} :@Enrich_result M_t _fargs :=
     ((@Enrich_result.Build_signature M_t _fargs (fun _ => _return)
@@ -57,19 +57,19 @@ Module Trans.
     Inner_parameter : MONAD (t := Inner_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Inner_fargs `{_fargs : FArgs} :=
     Enrich_alias.Build_FArgs Inner_parameter.
-
+  
   Definition Inner `{_fargs : FArgs} :
-    Enrich_alias.Enrich_result (_fargs := Inner_fargs) :=
-    Enrich_alias Inner_parameter.
-
+    Enrich_alias.Enrich_result (_fargs := Inner_fargs) := (Enrich_alias.functor
+    (_fargs := (Inner_fargs ))).
+  
   Definition lift `{_fargs : FArgs} {A : Set} (x_value : A)
     : Inner_parameter.(MONAD.t) A :=
-    (Inner.(Enrich_alias.Enrich_result.map) (B := A) (A := A))
-      (fun (value : A) => value) x_value.
-
+    ((Inner (_fargs := _fargs)).(Enrich_alias.Enrich_result.map) (B := A)
+      (A := A)) (fun (value : A) => value) x_value.
+  
   Module Trans_result.
     Record signature `{_fargs : FArgs} : Type := {
       Inner : Enrich_alias.Enrich_result (_fargs := Inner_fargs);
@@ -78,7 +78,7 @@ Module Trans.
   End Trans_result.
   Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _.
   Arguments Trans_result {_ _}.
-
+  
   (* Trans *)
   Definition functor `{_fargs : FArgs} :@Trans_result Inner_t _fargs :=
     ((@Trans_result.Build_signature Inner_t _fargs Inner (fun _ => lift)) :
@@ -96,32 +96,26 @@ Module Included.
       ({|
         MONAD._return _ := _return
       |} : MONAD (t := t))).
-
+  
   Definition Enrich_alias_include :
     Enrich_alias.Enrich_result (_fargs := Enrich_alias_include_fargs) :=
-    Enrich_alias
-      (let t (a : Set) : Set := a in
-      let _return {A : Set} (value : A) : A :=
-        value in
-      ({|
-        MONAD._return _ := _return
-      |} : MONAD (t := t))).
-
+    (Enrich_alias.functor (_fargs := (Enrich_alias_include_fargs ))).
+  
   (** Inclusion of the module [Enrich_alias_include] *)
   Definition t (a : Set) :=
     Enrich_alias_include.(Enrich_alias.Enrich_result.t) a.
-
+  
   Definition _return {A : Set} : A -> A :=
     Enrich_alias_include.(Enrich_alias.Enrich_result._return).
-
+  
   Definition map {A B : Set} : (A -> B) -> A -> B :=
     Enrich_alias_include.(Enrich_alias.Enrich_result.map).
-
+  
   Module Nested.
     (** Inclusion from a translated functor-result record *)
     Definition identity {A : Set} : A -> A :=
       Enrich_alias_include.(Enrich_alias.Enrich_result.Nested_identity).
-
+    
     Definition apply {A : Set} (value : A) : A := identity value.
   End Nested.
 End Included.

@@ -16,16 +16,15 @@ Module Extend.
     Monad : CORE (t := Monad_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   (** Inclusion of the module [Monad] *)
   Definition t `{_fargs : FArgs} (a : Set) := Monad.(CORE.t) a.
-
+  
   Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
     Monad.(CORE._return).
-
+  
   (* Extend *)
-  Definition functor `{_fargs : FArgs}
-    :CORE (t := fun (a : Set) => Monad.(CORE.t) a) :=
+  Definition functor `{_fargs : FArgs} :CORE (t := fun (a : Set) => t a) :=
     {|
       CORE._return _ := _return
     |}.
@@ -45,11 +44,11 @@ Arguments WITH_GET {_}.
 
 Module Base.
   Definition t (a : Set) : Set := option a.
-
+  
   Definition _return {a : Set} (value : a) : t a := Some value.
-
+  
   Definition get : t int := Some 0.
-
+  
   (* Base *)
   Definition module :WITH_GET (t := fun (a : Set) => option a) :=
     {|
@@ -64,23 +63,23 @@ Module Make.
     Monad : WITH_GET (t := Monad_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   (** Inclusion of the module [Monad] *)
   Definition get `{_fargs : FArgs} : Monad.(WITH_GET.t) int :=
     Monad.(WITH_GET.get).
-
+  
   Definition Extend_include `{_fargs : FArgs} :=
     Extend
       ({|
         CORE._return _ := Monad.(WITH_GET._return)
       |} : CORE (t := Monad.(WITH_GET.t))).
-
+  
   (** Inclusion of the module [Extend_include] *)
   Definition t `{_fargs : FArgs} (a : Set) := Extend_include.(CORE.t) a.
-
+  
   Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
     Extend_include.(CORE._return).
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs}
     :WITH_GET (t := fun (a : Set) => Monad.(WITH_GET.t) a) :=
@@ -94,14 +93,14 @@ Definition Make {Monad_t : Set -> Set} (Monad : WITH_GET (t := Monad_t)) :=
 
 Module Result.
   Definition Make_include := Make Base.
-
+  
   (** Inclusion of the module [Make_include] *)
-  Definition get : option int := Make_include.(WITH_GET.get).
-
+  Definition get := Make_include.(WITH_GET.get).
+  
   Definition t (a : Set) := Make_include.(WITH_GET.t) a.
-
+  
   Definition _return {a : Set} : a -> t a := Make_include.(WITH_GET._return).
-
+  
   (* Result *)
   Definition module :WITH_GET (t := fun (a : Set) => option a) :=
     {|

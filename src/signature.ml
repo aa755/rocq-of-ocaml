@@ -22,9 +22,81 @@ type let_in_type_target =
 
 type let_in_type = (Name.t list * let_in_type_target) list
 
+let map_types (map : Type.t -> Type.t) (signature : t) : t =
+  let map_requirements requirements =
+    requirements |> List.map (fun (kind, typ) -> (kind, map typ))
+  in
+  let rec map_item = function
+    | Module (name, typ, requirements) ->
+        Module (name, map typ, map_requirements requirements)
+    | ModuleWithSignature items -> ModuleWithSignature (List.map map_item items)
+    | TypSynonym (name, typ) -> TypSynonym (name, map typ)
+    | Value (name, typ, requirements) ->
+        Value (name, map typ, map_requirements requirements)
+    | ModuleWithTypeParams (name, typ, parameters) ->
+        ModuleWithTypeParams (name, map typ, parameters)
+    | (Error _ | Documentation _ | TypExistential _) as item -> item
+  in
+  { signature with items = List.map map_item signature.items }
+
 let type_of_let_in_type_target = function
   | LocalConstructor target -> Type.Variable target
   | ManifestConstructor target -> target
+
+(** A first-class module field fixes each named parameter of its result
+    signature.  Subsequent fields should use those fixed parameters directly:
+    retaining a projection such as [M.(S.t)] needlessly asks Rocq to infer the
+    hidden arguments of [S], even though the enclosing dependent record already
+    binds the same type as (say) [M_t]. *)
+let abstract_fixed_associated_types (signature : t) (typ : Type.t) : Type.t =
+  let rec abstract typ = function
+    | Module
+        ( module_name,
+          Type.Signature (_signature_path, parameters),
+          _ )
+    | ModuleWithTypeParams
+        ( module_name,
+          Type.Signature (_signature_path, parameters),
+          _ ) ->
+        parameters
+        |> List.fold_left
+             (fun typ (parameter_name, target) ->
+               match target with
+               | None -> typ
+               | Some target ->
+                   Type.subst_constructor_definition
+                     [ module_name; parameter_name ] target typ)
+             typ
+    | ModuleWithSignature items -> List.fold_left abstract typ items
+    | Error _ | Documentation _ | Module _ | ModuleWithTypeParams _
+    | TypExistential _ | TypSynonym _ | Value _ ->
+        typ
+  in
+  List.fold_left abstract typ signature.items
+
+(** Inferred requirements may arrive after a result signature was synthesized.
+    Rebase qualified implementation paths such as [F.Make.Host.t] onto the
+    flattened dependent-record parameter [Host_t]. *)
+let abstract_owned_result_types (signature : t) (typ : Type.t) : Type.t =
+  let rec add_manifest_names names = function
+    | TypSynonym (name, _) | ModuleWithTypeParams (name, _, _) ->
+        Name.Set.add name names
+    | ModuleWithSignature items -> List.fold_left add_manifest_names names items
+    | Error _ | Documentation _ | Module _ | TypExistential _ | Value _ -> names
+  in
+  let owned =
+    signature.typ_params
+    |> List.fold_left
+         (fun names (name, _) ->
+           Name.Set.add name names)
+         (List.fold_left add_manifest_names Name.Set.empty signature.items)
+    |> Name.Set.filter (fun name ->
+        String.contains (Name.to_string name) '_')
+  in
+  Type.project_type_names ~unqualified:false
+    (fun name ->
+      if Name.Set.mem name owned then Some (MixedPath.of_name name) else None)
+    typ
 
 let add_assumption_requirements (specs : Exp.assumption_call_specs)
     (signature : t) : t =
@@ -42,12 +114,19 @@ let add_assumption_requirements (specs : Exp.assumption_call_specs)
       | _ -> [])
   in
   let call_type_correspondences = call_type_correspondences signature.items in
+  let normalize_requirement_type typ =
+    typ |> abstract_fixed_associated_types signature
+    |> abstract_owned_result_types signature
+  in
   let requirements_for name typ existing_requirements =
     match
       Exp.assumption_call_spec_for_field specs
         { PathName.path = []; base = name }
     with
-    | None -> existing_requirements
+    | None ->
+        existing_requirements
+        |> List.map (fun (kind, typ) ->
+            (kind, normalize_requirement_type typ))
     | Some
         {
           Exp.call_typ = declared_call;
@@ -57,7 +136,7 @@ let add_assumption_requirements (specs : Exp.assumption_call_specs)
         } ->
         (if inferred_requirements = [] then existing_requirements
          else inferred_requirements)
-        |> Exp.sort_uniq_assumptions
+        |> Exp.order_assumption_binders_with_specs specs
         |> List.map (fun (kind, required_typ) ->
             let specialize declared actual typ =
               match
@@ -85,7 +164,7 @@ let add_assumption_requirements (specs : Exp.assumption_call_specs)
                         Type.arrow_result typ
                       else required_typ)
             in
-            (kind, specialized))
+            (kind, normalize_requirement_type specialized))
   in
   let rec add_to_item = function
     | Value (name, typ, existing_requirements) ->
@@ -98,10 +177,108 @@ let add_assumption_requirements (specs : Exp.assumption_call_specs)
   in
   { signature with items = List.map add_to_item signature.items }
 
+let is_generated_record_operation (name : Name.t) : bool =
+  let text = Name.to_string name in
+  let marker = "__rocq_record_" in
+  let marker_length = String.length marker in
+  let rec search offset =
+    if offset + marker_length > String.length text then false
+    else if String.sub text offset marker_length = marker then true
+    else search (offset + 1)
+  in
+  search 0
+
+(** Type parameters of a generated dependent record can themselves depend on
+    translated assumptions.  Record fields whose types mention such a
+    parameter must quantify over the same assumptions, even when their value
+    expressions are total. *)
+let contextual_typ_params (signature : t) :
+    Exp.assumption_requirement list Name.Map.t =
+  let rec uses parameter = function
+    | Module (_, typ, requirements) ->
+        if Type.uses_local_type_parameter parameter typ then [ requirements ]
+        else []
+    | ModuleWithSignature items -> List.concat_map (uses parameter) items
+    | Error _ | Documentation _ | TypExistential _ | TypSynonym _ | Value _
+    | ModuleWithTypeParams _ ->
+        []
+  in
+  let common_requirements = function
+    | [] -> None
+    | first :: remaining ->
+        let common =
+          List.fold_left
+            (fun candidates requirements ->
+              List.filter
+                (fun candidate ->
+                  List.exists
+                    (fun requirement ->
+                      Exp.compare_assumption_requirement candidate requirement
+                      = 0)
+                    requirements)
+                candidates)
+            first remaining
+          |> Exp.sort_uniq_assumptions
+        in
+        if common = [] then None else Some common
+  in
+  signature.typ_params
+  |> List.fold_left
+       (fun contextual (parameter, _) ->
+         match
+           common_requirements
+             (List.concat_map (uses parameter) signature.items)
+         with
+         | Some requirements -> Name.Map.add parameter requirements contextual
+         | None -> contextual)
+       Name.Map.empty
+
+let add_contextual_item_requirements contextual typ requirements =
+  Name.Map.fold
+    (fun parameter contexts requirements ->
+      if not (Type.uses_local_type_parameter parameter typ) then requirements
+      else
+        List.fold_left
+          (fun requirements context ->
+            if
+              List.exists
+                (fun requirement ->
+                  Exp.compare_assumption_requirement requirement context = 0)
+                requirements
+            then requirements
+            else requirements @ [ context ])
+          requirements contexts)
+    contextual requirements
+
+(** Persist contextual requirements before module-field arities are computed.
+    Adding them only in [to_coq_item] makes a field declaration quantify over
+    assumptions while its generated record assignment omits the corresponding
+    lambdas. *)
+let materialize_contextual_requirements (signature : t) : t =
+  let contextual = contextual_typ_params signature in
+  let rec materialize = function
+    | Value (name, typ, requirements) ->
+        Value
+          ( name,
+            typ,
+            add_contextual_item_requirements contextual typ requirements )
+    | Module (name, typ, requirements) ->
+        Module
+          ( name,
+            typ,
+            add_contextual_item_requirements contextual typ requirements )
+    | ModuleWithSignature items ->
+        ModuleWithSignature (List.map materialize items)
+    | item -> item
+  in
+  { signature with items = List.map materialize signature.items }
+
 (** Set requirements observed on concrete generated record fields. The field
     expressions have already gone through call-requirement propagation and type
     specialization, so these requirements are authoritative for matching fields
-    in a synthesized functor-result signature. *)
+    in a synthesized functor-result signature.  Record constructors and
+    projections execute no source operation; type dependencies for them are
+    reconstructed later from their normalized field types. *)
 let add_field_assumption_requirements
     (requirements : Exp.assumption_requirement list Name.Map.t) (signature : t)
     : t =
@@ -110,8 +287,10 @@ let add_field_assumption_requirements
         Value
           ( name,
             typ,
-            Name.Map.find_opt name requirements
-            |> Option.value ~default:existing_requirements )
+            if is_generated_record_operation name then []
+            else
+              Name.Map.find_opt name requirements
+              |> Option.value ~default:existing_requirements )
     | Module (name, typ, existing_requirements) ->
         Module
           ( name,
@@ -123,6 +302,7 @@ let add_field_assumption_requirements
     | item -> item
   in
   { signature with items = List.map add_to_item signature.items }
+  |> materialize_contextual_requirements
 
 let field_assumption_requirements (signature : t) :
     Exp.assumption_requirement list Name.Map.t =
@@ -184,8 +364,11 @@ let normalize_manifest_requirements (signature : t)
   let requirements =
     requirements
     |> List.map (fun (kind, typ) ->
-        (kind, normalize_manifest_type signature typ))
-    |> Exp.sort_uniq_assumptions
+        ( kind,
+          typ |> abstract_fixed_associated_types signature
+          |> abstract_owned_result_types signature
+          |> normalize_manifest_type signature ))
+    |> Exp.stable_uniq_assumptions
   in
   let rendered_type typ =
     typ |> Type.to_coq None None |> SmartPrint.to_string 1_000_000 0
@@ -223,11 +406,29 @@ let assumption_call_specs (signature : t) : Exp.assumption_call_specs =
     List.fold_left abstract_types Name.Set.empty signature.items
   in
   let manifests = manifest_types signature in
+  let rec is_alias_manifest = function
+    | Type.Variable _
+    | Type.Apply (_, []) ->
+        true
+    | Type.FunTyps ([], body) -> is_alias_manifest body
+    | _ -> false
+  in
   let abstract_manifest_types typ =
     manifests
     |> List.fold_left
          (fun typ (name, manifest) ->
-           Type.rewrite_exact_subtypes manifest (Type.Variable name) typ)
+           let normalized_manifest =
+             normalize_manifest_type signature manifest
+           in
+           if
+             is_alias_manifest normalized_manifest
+             && not (is_self_manifest name normalized_manifest)
+           then
+             typ
+             |> Type.rewrite_exact_subtypes manifest (Type.Variable name)
+             |> Type.rewrite_exact_subtypes normalized_manifest
+                  (Type.Variable name)
+           else typ)
          typ
   in
   let rec direct_type_name = function
@@ -269,15 +470,26 @@ let assumption_call_specs (signature : t) : Exp.assumption_call_specs =
       (fun projected (name, _) -> add_projected_type name name projected)
       projected manifests
   in
+  let rec add_projected_modules projected = function
+    | Module (name, _, _) -> add_projected_type name name projected
+    | ModuleWithSignature items ->
+        List.fold_left add_projected_modules projected items
+    | Error _ | Documentation _ | Value _ | TypExistential _ | TypSynonym _
+    | ModuleWithTypeParams _ ->
+        projected
+  in
+  let projected_types =
+    List.fold_left add_projected_modules projected_types signature.items
+  in
   let rec collect specs = function
-    | Value (name, typ, (_ :: _ as requirements))
-    | Module (name, typ, (_ :: _ as requirements)) ->
+    | Value (name, typ, requirements) | Module (name, typ, requirements) ->
         let typ =
           normalize_manifest_type signature typ |> abstract_manifest_types
         in
         let requirements =
           normalize_manifest_requirements signature requirements
-          |> List.map (fun (kind, typ) -> (kind, abstract_manifest_types typ))
+          |> List.map (fun (kind, typ) ->
+              (kind, abstract_manifest_types typ))
         in
         Name.Map.add name
           {
@@ -424,11 +636,19 @@ let concrete_manifest_declaration (env : Env.t) (typ : Types.type_expr) :
     Types.type_expr option =
   let rec resolve visited followed_declaration typ =
     match Types.get_desc typ with
-    | Tconstr (path, _, _) -> (
+    | Tconstr (path, arguments, _) -> (
         if List.exists (Path.same path) visited then None
         else
           match Env.find_type path env with
-          | { Types.type_manifest = Some manifest; _ } ->
+          | {
+           Types.type_manifest = Some manifest;
+           type_params = parameters;
+           _;
+          } ->
+              let manifest =
+                try Ctype.apply env parameters manifest arguments
+                with Ctype.Cannot_apply -> manifest
+              in
               resolve (path :: visited) true manifest
           | { Types.type_manifest = None; _ } | (exception Not_found) ->
               if followed_declaration then Some typ else None)
@@ -460,25 +680,27 @@ let add_new_let_in_type (prefix : string list) (let_in_type : let_in_type)
 
 let propagate_module_alias (prefix : string list) (ident : Ident.t)
     (target_path : Path.t) (let_in_type : let_in_type) : let_in_type Monad.t =
-  let* { PathName.path; base } =
-    PathName.of_path_without_convert false target_path
-  in
-  let target_prefix = path @ [ base ] in
-  let* local_prefix =
-    prefix @ [ Ident.name ident ] |> Monad.List.map (Name.of_string false)
-  in
-  let propagated =
-    let_in_type
-    |> List.concat_map (fun (source, target) ->
-        match remove_path_prefix target_prefix source with
-        | Some (_ :: _ as suffix) ->
-            local_prefix @ suffix |> path_suffixes
-            |> List.filter (fun source ->
-                List.length source > List.length suffix)
-            |> List.map (fun source -> (source, target))
-        | Some [] | None -> [])
-  in
-  return (propagated @ let_in_type)
+  if path_contains_functor_application target_path then return let_in_type
+  else
+    let* { PathName.path; base } =
+      PathName.of_path_without_convert false target_path
+    in
+    let target_prefix = path @ [ base ] in
+    let* local_prefix =
+      prefix @ [ Ident.name ident ] |> Monad.List.map (Name.of_string false)
+    in
+    let propagated =
+      let_in_type
+      |> List.concat_map (fun (source, target) ->
+          match remove_path_prefix target_prefix source with
+          | Some (_ :: _ as suffix) ->
+              local_prefix @ suffix |> path_suffixes
+              |> List.filter (fun source ->
+                  List.length source > List.length suffix)
+              |> List.map (fun source -> (source, target))
+          | Some [] | None -> [])
+    in
+    return (propagated @ let_in_type)
 
 let direct_manifest_alias ?(scope = []) (let_in_type : let_in_type)
     (typ : Types.type_expr) : Type.t option Monad.t =
@@ -568,6 +790,26 @@ let quantified_value_type ?(expand_aliases = false) (typ : Types.type_expr) :
     |> List.map (fun typ -> (typ, 0))
   in
   return (Type.ForallTyps (typ_args, typ))
+
+(** Translate a record field in the scope of the record's type parameters.
+    Translating the field as an independent value would quantify those
+    parameters inside the field type and leave the surrounding [t a]
+    occurrence unbound. *)
+let record_field_type (parameters : Name.t list) (typ : Types.type_expr) :
+    Type.t Monad.t =
+  let variables =
+    parameters
+    |> List.fold_left
+         (fun variables parameter ->
+           Name.Map.add parameter parameter variables)
+         Name.Map.empty
+  in
+  let* typ, _, _ = Type.of_typ_expr true variables typ in
+  return typ
+
+let quantify_record_operation (parameters : (Name.t * int) list)
+    (typ : Type.t) : Type.t =
+  match parameters with [] -> typ | _ :: _ -> Type.ForallTyps (parameters, typ)
 
 type constructor_alias = Name.t list * MixedPath.t
 
@@ -674,6 +916,14 @@ let apply_constructor_aliases (aliases : constructor_alias list) (typ : Type.t)
   List.fold_left
     (fun typ (source, target) -> Type.subst_constructor_path source target typ)
     typ aliases
+
+let record_operation_name (is_constructor : bool) (prefix : string list)
+    (type_name : string) (field_name : string option) : Name.t Monad.t =
+  let operation =
+    if is_constructor then "_rocq_record_make"
+    else "_rocq_record_get_" ^ Option.get field_name
+  in
+  Name.of_strings true (prefix @ [ type_name; operation ])
 
 let rec items_of_types_signature ?(abstract_functor_applications = false)
     ?(expand_aliases = false) ?signature_path ?partial_monad_manifest
@@ -782,6 +1032,25 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
           |> apply_configured_manifest_rewrites
         in
         let typ_with_let_in_type = apply_let_in_type let_in_type typ in
+        let typ_with_let_in_type =
+          let introduced_variables =
+            Name.Set.diff
+              (Type.typ_args_of_typ typ_with_let_in_type)
+              (Type.typ_args_of_typ typ)
+          in
+          let local_constructors =
+            let_in_type
+            |> List.fold_left
+                 (fun names (_, target) ->
+                   match target with
+                   | LocalConstructor name -> Name.Set.add name names
+                   | ManifestConstructor _ -> names)
+                 Name.Set.empty
+          in
+          if Name.Set.subset introduced_variables local_constructors then
+            typ_with_let_in_type
+          else typ
+        in
         let* typ_with_let_in_type =
           if is_partial then
             return
@@ -803,9 +1072,70 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
         return
           ( Value (prefixed_name, typ_with_let_in_type, requirements),
             let_in_type )
-    | Sig_type (ident, { type_manifest = None; _ }, _, _) ->
+    | Sig_type
+        ( ident,
+          { type_manifest = None; type_params; type_kind; _ },
+          _,
+          _ ) ->
         let* name, let_in_type = add_new_let_in_type prefix let_in_type ident in
-        return (TypExistential name, let_in_type)
+        (match type_kind with
+        | Type_record (labels, _) ->
+            let* typ_args =
+              type_params |> Monad.List.map Type.of_type_expr_variable
+            in
+            let record_type =
+              match typ_args with
+              | [] -> Type.Variable name
+              | arguments ->
+                  Type.Apply
+                    ( MixedPath.of_name name,
+                      List.map
+                        (fun argument -> (Type.Variable argument, false))
+                        arguments )
+            in
+            let* fields =
+              labels
+              |> Monad.List.map (fun ({ Types.ld_id; ld_type; _ } :
+                                      Types.label_declaration) ->
+                  let* field_type = record_field_type typ_args ld_type in
+                  return
+                    ( Ident.name ld_id,
+                      apply_let_in_type let_in_type field_type ))
+            in
+            let* constructor_name =
+              record_operation_name true prefix (Ident.name ident) None
+            in
+            let record_parameters =
+              List.map (fun parameter -> (parameter, 0)) typ_args
+            in
+            let constructor_type =
+              List.fold_right
+                (fun (_, field_type) result -> Type.Arrow (field_type, result))
+                fields record_type
+              |> quantify_record_operation record_parameters
+            in
+            let* projections =
+              fields
+              |> Monad.List.map (fun (field, field_type) ->
+                  let* projection_name =
+                    record_operation_name false prefix (Ident.name ident)
+                      (Some field)
+                  in
+                  return
+                    (Value
+                       ( projection_name,
+                         quantify_record_operation record_parameters
+                           (Type.Arrow (record_type, field_type)),
+                         [] )))
+            in
+            return
+              ( ModuleWithSignature
+                  (TypExistential name
+                   :: Value (constructor_name, constructor_type, [])
+                   :: projections),
+                let_in_type )
+        | Type_abstract _ | Type_variant _ | Type_open ->
+            return (TypExistential name, let_in_type))
     | Sig_type (ident, { type_manifest = Some typ; _ }, _, _)
       when abstract_functor_applications && is_functor_application_alias env typ
       -> (
@@ -816,9 +1146,17 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
         let* concrete_manifest =
           concrete_result_manifest (prefix @ [ Ident.name ident ])
         in
+        let prefer_closed_source_manifest target =
+          if Name.Set.is_empty (Type.typ_args_of_typ target) then return target
+          else
+            let* source = Type.of_type_expr_without_free_vars typ in
+            if Name.Set.is_empty (Type.typ_args_of_typ source) then return source
+            else return target
+        in
         match concrete_manifest with
         | Some declaration ->
             let* target = Type.of_type_expr_without_free_vars declaration in
+            let* target = prefer_closed_source_manifest target in
             let target =
               target
               |> apply_constructor_aliases constructor_aliases
@@ -852,6 +1190,7 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
                     let* target =
                       Type.of_type_expr_without_free_vars declaration
                     in
+                    let* target = prefer_closed_source_manifest target in
                     let target =
                       target
                       |> apply_constructor_aliases constructor_aliases
@@ -865,7 +1204,11 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
                       add_new_let_in_type prefix let_in_type ident
                     in
                     return (TypExistential name, let_in_type))))
-    | Sig_type (ident, { type_manifest = Some typ; type_params; _ }, _, _) ->
+    | Sig_type
+        ( ident,
+          { type_manifest = Some typ; type_params; type_kind; _ },
+          _,
+          _ ) ->
         let previous_let_in_type = let_in_type in
         let* name, let_in_type = add_new_let_in_type prefix let_in_type ident in
         let* typ_args =
@@ -898,7 +1241,64 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
           apply_let_in_type previous_let_in_type
             (Type.FunTyps (List.map fst typ_args, typ))
         in
-        return (TypSynonym (name, typ_with_let_in_type), let_in_type)
+        let type_item = TypSynonym (name, typ_with_let_in_type) in
+        (match type_kind with
+        | Type_record (labels, _) ->
+            let record_type =
+              match List.map fst typ_args with
+              | [] -> Type.Variable name
+              | arguments ->
+                  Type.Apply
+                    ( MixedPath.of_name name,
+                      List.map
+                        (fun argument -> (Type.Variable argument, false))
+                        arguments )
+            in
+            let* fields =
+              labels
+              |> Monad.List.map (fun ({ Types.ld_id; ld_type; _ } :
+                                      Types.label_declaration) ->
+                  let* field_type =
+                    record_field_type (List.map fst typ_args) ld_type
+                  in
+                  let field_type =
+                    field_type
+                    |> apply_constructor_aliases constructor_aliases
+                    |> apply_let_in_type previous_let_in_type
+                  in
+                  return (Ident.name ld_id, field_type))
+            in
+            let* constructor_name =
+              record_operation_name true prefix (Ident.name ident) None
+            in
+            let record_parameters = typ_args in
+            let constructor_type =
+              List.fold_right
+                (fun (_, field_type) result -> Type.Arrow (field_type, result))
+                fields record_type
+              |> quantify_record_operation record_parameters
+            in
+            let* projections =
+              fields
+              |> Monad.List.map (fun (field, field_type) ->
+                  let* projection_name =
+                    record_operation_name false prefix (Ident.name ident)
+                      (Some field)
+                  in
+                  return
+                    (Value
+                       ( projection_name,
+                         quantify_record_operation record_parameters
+                           (Type.Arrow (record_type, field_type)),
+                         [] )))
+            in
+            return
+              ( ModuleWithSignature
+                  (type_item :: Value (constructor_name, constructor_type, [])
+                   :: projections),
+                let_in_type )
+        | Type_abstract _ | Type_variant _ | Type_open ->
+            return (type_item, let_in_type))
     | Sig_typext (_, { ext_type_path; _ }, _, _)
       when abstract_functor_applications
            && Path.same ext_type_path Predef.path_exn ->
@@ -1385,18 +1785,7 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
                         ])),
                 let_in_type )
             in
-            if abstract_functor_applications then return result
-            else
-              raise result Module
-                ("Sub-module '" ^ Ident.name ident ^ "' in included "
-               ^ "signature.\n\n"
-               ^ "Sub-modules in included signatures are not handled well yet. \
-                  It does not work if there are destructive type substitutions \
-                  (:=) in the sub-module or type definitions in the \
-                  sub-module's source signature. We do not develop this \
-                  feature further as it is working in our cases.\n\n"
-               ^ "A safer way is to make a sub-module instead of an `include`."
-                )
+            return result
         | Not_found reason -> (
             let* env = get_env in
             let strengthened_module_type = Env.scrape_alias env md_type in
@@ -1696,7 +2085,19 @@ let of_types_signature ?(abstract_functor_applications = false)
           (name, 0))
         missing_parameters
   in
-  return { items; typ_params }
+  let contextual_type_fields =
+    typ_params
+    |> List.filter_map (fun (name, _) ->
+        if Name.Set.mem name defined_types then None
+        else
+          (* A nested module's associated type is a contextual parameter of
+             the flattened result record.  Expose that parameter as a
+             definitional field as well, so clients can refer to it through
+             the instantiated result (for example [R.C_t]) rather than a
+             binder that is no longer in scope. *)
+          Some (TypExistential name))
+  in
+  return { items = items @ contextual_type_fields; typ_params }
 
 let wrap_documentation (items_value : (item list * 'a) Monad.t) :
     (item list * 'a) Monad.t =
@@ -1776,8 +2177,19 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
                            Name.of_string false prefixed_id
                          in
                          let* module_typ = ModuleTyp.of_ocaml md_type in
-                         let* _, typ =
+                         let* (_, _, free_vars), typ =
                            ModuleTyp.to_typ [] prefixed_id false module_typ
+                         in
+                         let* module_name = Name.of_string false id in
+                         let let_in_type =
+                           free_vars
+                           |> List.fold_left
+                                (fun let_in_type
+                                     { ModuleTyp.name; source_name; _ } ->
+                                  ( [ module_name; source_name ],
+                                    LocalConstructor name )
+                                  :: let_in_type)
+                                let_in_type
                          in
                          return
                            ([ Module (prefixed_name, typ, []) ], let_in_type)))
@@ -1787,18 +2199,84 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
                   ([ Error "recursive_module" ], let_in_type)
                   NotSupported "Recursive module signatures are not handled."
             | Tsig_type
-                (_, [ { typ_id; typ_type = { type_manifest = None; _ }; _ } ])
+                ( _,
+                  [
+                    {
+                      typ_id;
+                      typ_type =
+                        { type_manifest = None; type_params; type_kind; _ };
+                      _;
+                    };
+                  ] )
               ->
                 let* name, let_in_type =
                   add_new_let_in_type prefix let_in_type typ_id
                 in
-                return ([ TypExistential name ], let_in_type)
+                (match type_kind with
+                | Type_record (labels, _) ->
+                    let* typ_args =
+                      type_params |> Monad.List.map Type.of_type_expr_variable
+                    in
+                    let record_type =
+                      match typ_args with
+                      | [] -> Type.Variable name
+                      | arguments ->
+                          Type.Apply
+                            ( MixedPath.of_name name,
+                              List.map
+                                (fun argument -> (Type.Variable argument, false))
+                                arguments )
+                    in
+                    let* fields =
+                      labels
+                      |> Monad.List.map (fun ({ Types.ld_id; ld_type; _ } :
+                                              Types.label_declaration) ->
+                          let* field_type = record_field_type typ_args ld_type in
+                          return
+                            ( Ident.name ld_id,
+                              apply_let_in_type let_in_type field_type ))
+                    in
+                    let* constructor_name =
+                      record_operation_name true prefix (Ident.name typ_id) None
+                    in
+                    let record_parameters =
+                      List.map (fun parameter -> (parameter, 0)) typ_args
+                    in
+                    let constructor_type =
+                      List.fold_right
+                        (fun (_, field_type) result ->
+                          Type.Arrow (field_type, result))
+                        fields record_type
+                      |> quantify_record_operation record_parameters
+                    in
+                    let* projections =
+                      fields
+                      |> Monad.List.map (fun (field, field_type) ->
+                          let* projection_name =
+                            record_operation_name false prefix
+                              (Ident.name typ_id) (Some field)
+                          in
+                          return
+                            (Value
+                               ( projection_name,
+                                 quantify_record_operation record_parameters
+                                   (Type.Arrow (record_type, field_type)),
+                                 [] )))
+                    in
+                    return
+                      ( TypExistential name
+                        :: Value (constructor_name, constructor_type, [])
+                        :: projections,
+                        let_in_type )
+                | Type_abstract _ | Type_variant _ | Type_open ->
+                    return ([ TypExistential name ], let_in_type))
             | Tsig_type (_, typs) | Tsig_typesubst typs -> (
                 match typs with
                 | [
                  {
                    typ_id;
-                   typ_type = { type_manifest = Some typ; type_params; _ };
+                   typ_type =
+                     { type_manifest = Some typ; type_params; type_kind; _ };
                    _;
                  };
                 ] ->
@@ -1813,8 +2291,64 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
                       apply_let_in_type let_in_type
                         (Type.FunTyps (typ_args, typ))
                     in
-                    return
-                      ([ TypSynonym (name, typ_with_let_in_type) ], let_in_type)
+                    let type_item = TypSynonym (name, typ_with_let_in_type) in
+                    (match type_kind with
+                    | Type_record (labels, _) ->
+                        let record_type =
+                          match typ_args with
+                          | [] -> Type.Variable name
+                          | arguments ->
+                              Type.Apply
+                                ( MixedPath.of_name name,
+                                  List.map
+                                    (fun argument ->
+                                      (Type.Variable argument, false))
+                                    arguments )
+                        in
+                        let* fields =
+                          labels
+                          |> Monad.List.map (fun ({ Types.ld_id; ld_type; _ } :
+                                                  Types.label_declaration) ->
+                              let* field_type = record_field_type typ_args ld_type in
+                              return
+                                ( Ident.name ld_id,
+                                  apply_let_in_type let_in_type field_type ))
+                        in
+                        let* constructor_name =
+                          record_operation_name true prefix (Ident.name typ_id)
+                            None
+                        in
+                        let record_parameters =
+                          List.map (fun parameter -> (parameter, 0)) typ_args
+                        in
+                        let constructor_type =
+                          List.fold_right
+                            (fun (_, field_type) result ->
+                              Type.Arrow (field_type, result))
+                            fields record_type
+                          |> quantify_record_operation record_parameters
+                        in
+                        let* projections =
+                          fields
+                          |> Monad.List.map (fun (field, field_type) ->
+                              let* projection_name =
+                                record_operation_name false prefix
+                                  (Ident.name typ_id) (Some field)
+                              in
+                              return
+                                (Value
+                                   ( projection_name,
+                                     quantify_record_operation record_parameters
+                                       (Type.Arrow (record_type, field_type)),
+                                     [] )))
+                        in
+                        return
+                          ( type_item
+                            :: Value (constructor_name, constructor_type, [])
+                            :: projections,
+                            let_in_type )
+                    | Type_abstract _ | Type_variant _ | Type_open ->
+                        return ([ type_item ], let_in_type))
                 | typs ->
                     let* rev_typs, let_in_type =
                       Monad.List.fold_left
@@ -1883,47 +2417,6 @@ let of_signature (signature : signature) : t Monad.t =
 let to_coq_prefixed_name (prefix : Name.t list) (name : Name.t) : SmartPrint.t =
   separate !^"_" (List.map Name.to_coq (prefix @ [ name ]))
 
-let contextual_typ_params (signature : t) :
-    Exp.assumption_requirement list Name.Map.t =
-  let rec uses parameter = function
-    | Module (_, typ, requirements) ->
-        if Type.uses_local_type_parameter parameter typ then [ requirements ]
-        else []
-    | ModuleWithSignature items -> List.concat_map (uses parameter) items
-    | Error _ | Documentation _ | TypExistential _ | TypSynonym _ | Value _
-    | ModuleWithTypeParams _ ->
-        []
-  in
-  let common_requirements = function
-    | [] -> None
-    | first :: remaining ->
-        let common =
-          List.fold_left
-            (fun candidates requirements ->
-              List.filter
-                (fun candidate ->
-                  List.exists
-                    (fun requirement ->
-                      Exp.compare_assumption_requirement candidate requirement
-                      = 0)
-                    requirements)
-                candidates)
-            first remaining
-          |> Exp.sort_uniq_assumptions
-        in
-        if common = [] then None else Some common
-  in
-  signature.typ_params
-  |> List.fold_left
-       (fun contextual (parameter, _) ->
-         match
-           common_requirements
-             (List.concat_map (uses parameter) signature.items)
-         with
-         | Some requirements -> Name.Map.add parameter requirements contextual
-         | None -> contextual)
-       Name.Map.empty
-
 let contextualize_item_type contextual requirements typ =
   Name.Map.fold
     (fun parameter contexts typ ->
@@ -1946,6 +2439,11 @@ let contextualize_item_type contextual requirements typ =
         contexts typ)
     contextual typ
 
+(** If an associated type is indexed by generated assumptions, every field
+    whose type mentions that associated type must quantify over those indices.
+    The source field itself may be total (record constructors and projections
+    are typical examples), so its ordinary call-requirement analysis does not
+    necessarily discover them. *)
 let to_coq_signature_typ_params contextual typ_params =
   typ_params
   |> List.map (fun (name, arity) ->
@@ -1962,23 +2460,61 @@ let to_coq_signature_typ_params contextual typ_params =
       braces (nest (Name.to_coq name ^^ !^":" ^^ Type.to_coq None None typ)))
   |> separate space
 
-let rec to_coq_item contextual (signature_item : item) : SmartPrint.t =
+let named_requirements requirements =
+  requirements
+  |> List.mapi (fun index requirement ->
+      ( Name.of_string_raw (Printf.sprintf "_rocq_assumption_%d" index),
+        requirement ))
+
+let materialize_named_requirements materialize_requirement_type requirements =
+  requirements
+  |> named_requirements
+  |> List.fold_left
+       (fun materialized (name, (kind, typ)) ->
+         let requirement =
+           (kind, materialize_requirement_type materialized typ)
+         in
+         materialized @ [ (name, requirement) ])
+       []
+
+let rec take count values =
+  if count <= 0 then []
+  else
+    match values with
+    | [] -> []
+    | value :: remaining -> value :: take (count - 1) remaining
+
+let rec to_coq_item
+    (materialize_requirement_type :
+      (Name.t * Exp.assumption_requirement) list -> Type.t -> Type.t)
+    (order_requirements :
+      Name.t ->
+      Exp.assumption_requirement list -> Exp.assumption_requirement list)
+    contextual (signature_item : item) : SmartPrint.t =
   match signature_item with
   | Error message -> !^("(* " ^ message ^ " *)")
   | Documentation message -> !^("(** " ^ message ^ " *)")
   | Module (name, typ, requirements) ->
+    let requirements = order_requirements name requirements in
+      let requirements =
+        add_contextual_item_requirements contextual typ requirements
+      in
       let typ = contextualize_item_type contextual requirements typ in
+      let named_requirements =
+        materialize_named_requirements materialize_requirement_type requirements
+      in
       let requirement_binders =
-        requirements
-        |> List.mapi (fun index requirement ->
+        named_requirements
+        |> List.map (fun (binder, (kind, typ)) ->
             !^"`"
             ^-^ braces
                   (nest
-                     (!^(Printf.sprintf "_rocq_assumption_%d" index)
+                     (Name.to_coq binder
                      ^^ !^":"
                      ^^ Type.to_coq None None
-                          (Exp.assumption_class_type requirement))))
+                          (Exp.assumption_class_type (kind, typ)))))
       in
+      let typ = materialize_requirement_type named_requirements typ in
       let rendered_type =
         match requirement_binders with
         | [] -> Type.to_coq None None typ
@@ -1992,12 +2528,18 @@ let rec to_coq_item contextual (signature_item : item) : SmartPrint.t =
   | ModuleWithTypeParams (name, typ, _) ->
       nest (Name.to_coq name ^^ !^":" ^^ Type.to_coq None None typ ^-^ !^";")
   | ModuleWithSignature items ->
-      separate newline (to_coq_items contextual items)
+      separate newline
+        (to_coq_items materialize_requirement_type order_requirements contextual
+           items)
   | TypExistential name ->
       nest (Name.to_coq name ^^ !^":=" ^^ Name.to_coq name ^-^ !^";")
   | TypSynonym (name, typ) ->
       nest (Name.to_coq name ^^ !^":=" ^^ Type.to_coq None None typ ^-^ !^";")
   | Value (name, typ, requirements) ->
+      let requirements = order_requirements name requirements in
+      let requirements =
+        add_contextual_item_requirements contextual typ requirements
+      in
       let typ = contextualize_item_type contextual requirements typ in
       let rec collect_type_parameters parameters typ =
         match typ with
@@ -2006,17 +2548,21 @@ let rec to_coq_item contextual (signature_item : item) : SmartPrint.t =
         | body -> (parameters, body)
       in
       let parameters, body = collect_type_parameters [] typ in
+      let named_requirements =
+        materialize_named_requirements materialize_requirement_type requirements
+      in
       let requirement_binders =
-        requirements
-        |> List.mapi (fun index requirement ->
+        named_requirements
+        |> List.map (fun (binder, (kind, typ)) ->
             !^"`"
             ^-^ braces
                   (nest
-                     (!^(Printf.sprintf "_rocq_assumption_%d" index)
+                     (Name.to_coq binder
                      ^^ !^":"
                      ^^ Type.to_coq None None
-                          (Exp.assumption_class_type requirement))))
+                          (Exp.assumption_class_type (kind, typ)))))
       in
+      let body = materialize_requirement_type named_requirements body in
       let rendered_type =
         match (parameters, requirement_binders) with
         | [], [] -> Type.to_coq None None body
@@ -2031,8 +2577,11 @@ let rec to_coq_item contextual (signature_item : item) : SmartPrint.t =
       in
       nest (Name.to_coq name ^^ !^":" ^^ rendered_type ^-^ !^";")
 
-and to_coq_items contextual (items : item list) : SmartPrint.t list =
-  List.map (to_coq_item contextual) items
+and to_coq_items materialize_requirement_type order_requirements contextual
+    (items : item list) : SmartPrint.t list =
+  List.map
+    (to_coq_item materialize_requirement_type order_requirements contextual)
+    items
 
 let rec item_has_field (item : item) : bool =
   match item with
@@ -2042,43 +2591,81 @@ let rec item_has_field (item : item) : bool =
   | Value _ ->
       true
 
-let to_coq_definition (fargs : FArgs.t) (name : Name.t) (signature : t) :
-    SmartPrint.t =
+let to_coq_definition ?(dependency_free_vars : ModuleTyp.free_vars = [])
+    ?(dependency_parameters : (Name.t * Type.t) list = [])
+    ?(order_requirements = fun _ requirements -> requirements)
+    ?(materialize_requirement_type = fun _ typ -> typ) (fargs : FArgs.t)
+    (name : Name.t) (signature : t) : SmartPrint.t =
   let contextual = contextual_typ_params signature in
+  let dependency_definition_binders =
+    ModuleTyp.to_coq_grouped_free_vars dependency_free_vars
+    ^^ group
+         (separate space
+            (dependency_parameters
+            |> List.map (fun (name, typ) ->
+                   nest
+                     (braces
+                        (Name.to_coq name ^^ !^":"
+                       ^^ Type.to_coq None None typ)))))
+  in
+  let dependency_declaration_binders =
+    ModuleTyp.to_coq_grouped_free_vars dependency_free_vars
+    ^^ group
+         (separate space
+            (dependency_parameters
+            |> List.map (fun (name, typ) ->
+                   nest
+                     (braces
+                        (Name.to_coq name ^^ !^":"
+                       ^^ Type.to_coq None None typ)))))
+  in
+  let dependency_arguments =
+    List.map
+      (fun { ModuleTyp.name; _ } -> Name.to_coq name)
+      dependency_free_vars
+    @ List.map (fun (name, _) -> Name.to_coq name) dependency_parameters
+  in
   let declaration =
     if not (List.exists item_has_field signature.items) then
       nest
-        (!^"Inductive" ^^ !^"signature" ^^ FArgs.to_coq fargs
+        (!^"Inductive" ^^ !^"signature" ^^ dependency_declaration_binders
+        ^^ FArgs.to_coq fargs
         ^^ to_coq_signature_typ_params contextual signature.typ_params
         ^^ nest (!^":" ^^ !^"Type")
         ^^ !^":=" ^^ newline ^^ !^"|" ^^ !^"Build_signature" ^^ !^":"
         ^^ !^"signature" ^-^ !^".")
     else
       nest
-        (!^"Record" ^^ !^"signature" ^^ FArgs.to_coq fargs
+        (!^"Record" ^^ !^"signature" ^^ dependency_declaration_binders
+        ^^ FArgs.to_coq fargs
         ^^ to_coq_signature_typ_params contextual signature.typ_params
         ^^ nest (!^":" ^^ !^"Type")
         ^^ !^":=" ^^ !^"{" ^^ newline
-        ^^ indent (separate newline (to_coq_items contextual signature.items))
+        ^^ indent
+             (separate newline
+                (to_coq_items materialize_requirement_type order_requirements
+                   contextual signature.items))
         ^^ newline ^^ !^"}" ^-^ !^".")
   in
   !^"Module" ^^ Name.to_coq name ^-^ !^"." ^^ newline ^^ indent declaration
   ^^ newline ^^ !^"End" ^^ Name.to_coq name ^-^ !^"." ^^ newline
   ^^ nest
-       (!^"Definition" ^^ Name.to_coq name ^^ FArgs.to_coq fargs ^^ !^":="
+       (!^"Definition" ^^ Name.to_coq name ^^ dependency_definition_binders
+       ^^ FArgs.to_coq fargs ^^ !^":="
        ^^
-       match fargs with
-       | Some _ ->
+       match (dependency_arguments, fargs) with
+       | _ :: _, _ | [], Some _ ->
            separate space
              ((!^"@" ^-^ Name.to_coq name ^-^ !^"." ^-^ !^"signature")
-             :: FArgs.to_coq_underscores fargs)
+             :: dependency_arguments @ FArgs.to_coq_underscores fargs)
            ^-^ !^"."
-       | None ->
+       | [], None ->
            (match signature.typ_params with [] -> empty | _ :: _ -> !^"@")
            ^-^ Name.to_coq name ^-^ !^"." ^-^ !^"signature" ^-^ !^".")
   ^^
-  match (fargs, signature.typ_params) with
-  | None, [] -> empty
+  match (dependency_arguments, fargs, signature.typ_params) with
+  | _ :: _, _, _ -> empty
+  | [], None, [] -> empty
   | _ ->
       newline
       ^^ nest

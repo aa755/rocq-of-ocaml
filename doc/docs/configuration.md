@@ -487,6 +487,38 @@ Infix "/i32" := Int32.div (at level 40, left associativity).
 ```
 There should be no bugs due to the precedence of the operators, as we always parenthesis in case of doubt. However, having the right precedence may be nice when doing the proofs and pretty-printing terms. A good way to know about the precedences is to look at the reserved operator of the [standard library of Rocq](https://rocq-prover.org/doc/v9.0/stdlib/Stdlib.Init.Notations.html).
 
+## module_overrides
+#### Example
+```
+"module_overrides": [
+  [
+    "lib/numeric.ml",
+    "Uint",
+    "My_library.Numeric.Uint",
+    "MyProject.UintN"
+  ]
+]
+```
+
+#### Value
+A list of quadruples containing the source file, the qualified definition name
+within that file, the logical OCaml module path, and the replacement Rocq
+module.
+
+#### Explanation
+This option replaces a complete OCaml module with a hand-written Rocq model.
+At the declaration site, the generated code defines a module alias to the
+replacement. References to the source module and its descendants are rewritten
+to the replacement, and the replacement is imported automatically. Generated
+assumption requirements and serialized cross-compilation-unit metadata are
+rewritten as well. Type aliases are not expanded through an overridden module,
+so an abstract source type can have a different representation in the Rocq
+model.
+
+The replacement must provide every type and value used by the translated
+program. Establishing that it faithfully models the OCaml module is a proof
+obligation outside the translation itself.
+
 ## renaming_rules
 #### Example
 ```
@@ -698,6 +730,37 @@ convergence obligation.
 Definition names include enclosing modules and local function names. This
 avoids unstable source line numbers and disambiguates repeated names such as
 `loop`.
+
+## termination_certificates
+#### Example
+```json
+"termination_certificates": [
+  [
+    "lib/parser.ml",
+    "Parser.loop",
+    "ParserProof.loop_rank _rocq_state",
+    "ParserProof.solve_loop_decrease"
+  ]
+]
+```
+
+#### Value
+A list of quadruples containing a source-path suffix, an exact dot-separated
+definition name, a Rocq expression of type `nat`, and a Rocq tactic.
+
+#### Explanation
+A certificate completes a definition classified as `well_founded`. The
+measure expression is emitted as the body of the generated `_rocq_measure`;
+it may refer to the generated `_rocq_state` and to variables captured by a
+local recursive function. The tactic is emitted at every fully applied
+recursive call and must prove that the next state has a smaller measure.
+
+When a certificate is present, the generated definition contains neither an
+abstract measure nor `Admit Obligations`. Rocq checks every decrease proof.
+Use `head_suffix` or `file_head_suffixes` to import the module defining the
+measure and tactic. Recursive calls must be fully applied. Certified mutual
+well-founded groups use a sum-tagged dispatcher state; the configured measure
+and call-site tactic must handle every member of the recursive group.
 
 ## without_guard_checking
 #### Example

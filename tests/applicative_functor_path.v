@@ -7,25 +7,26 @@ Module Outer.
     T : RocqOfOCaml.OCamlSet.OrderedType (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition _Set `{_fargs : FArgs} := RocqOfOCaml.OCamlSet.Make T.
-
+  
   Definition singleton_and_mem `{_fargs : FArgs}
     (x_value : T.(RocqOfOCaml.OCamlMap.OrderedType.t)) : bool :=
     let values := _Set.(RocqOfOCaml.OCamlSet.S.singleton) x_value in
     _Set.(RocqOfOCaml.OCamlSet.S.mem) x_value values.
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} {Set_t : Set} : Type := {
       _Set :
         RocqOfOCaml.OCamlSet.S (elt := T.(RocqOfOCaml.OCamlMap.OrderedType.t))
           (t := Set_t);
       singleton_and_mem : T.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool;
+      Set_t := Set_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (Set_t := _) :=
     {|
@@ -38,9 +39,9 @@ Definition Outer {T_t : Set} (T : RocqOfOCaml.OCamlSet.OrderedType (t := T_t))
 
 Module Int_order.
   Definition t : Set := int.
-
+  
   Definition compare (_left : int) (_right : int) : int := Z.sub _left _right.
-
+  
   (* Int_order *)
   Definition module :RocqOfOCaml.OCamlMap.OrderedType (t := int) :=
     {|
@@ -52,7 +53,7 @@ Definition Int_order := Int_order.module.
 Definition Applied_fargs := Outer.Build_FArgs Int_order.
 
 Definition Applied : Outer.Outer_result (_fargs := Applied_fargs) :=
-  Outer Int_order.
+  (Outer.functor (_fargs := (Applied_fargs ))).
 
 Definition contains_one : bool :=
   Applied.(Outer.Outer_result.singleton_and_mem) 1.
@@ -62,26 +63,27 @@ Module Anonymous_outer.
     T : RocqOfOCaml.OCamlMap.OrderedType (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition _Set `{_fargs : FArgs} := RocqOfOCaml.OCamlSet.Make T.
-
+  
   Definition singleton_and_mem `{_fargs : FArgs}
     (x_value : T.(RocqOfOCaml.OCamlMap.OrderedType.t)) : bool :=
     let values := _Set.(RocqOfOCaml.OCamlSet.S.singleton) x_value in
     _Set.(RocqOfOCaml.OCamlSet.S.mem) x_value values.
-
+  
   Module Anonymous_outer_result.
     Record signature `{_fargs : FArgs} {Set_t : Set} : Type := {
       _Set :
         RocqOfOCaml.OCamlSet.S (elt := T.(RocqOfOCaml.OCamlMap.OrderedType.t))
           (t := Set_t);
       singleton_and_mem : T.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool;
+      Set_t := Set_t;
     }.
   End Anonymous_outer_result.
   Definition Anonymous_outer_result `{_fargs : FArgs} :=
     @Anonymous_outer_result.signature _ _.
   Arguments Anonymous_outer_result {_ _ _}.
-
+  
   (* Anonymous_outer *)
   Definition functor `{_fargs : FArgs} :Anonymous_outer_result (Set_t := _) :=
     {|

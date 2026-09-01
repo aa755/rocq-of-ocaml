@@ -41,6 +41,27 @@ let find (path : Path.t) (location : Location.t) (aliases : t) : Path.t option =
          | ordering -> ordering)
   |> List.find_map (fun alias -> Some alias.target)
 
+(** Recover the source of an alias from its generated local target.  This is
+    used to carry module-signature information across bindings such as
+    [module Alias = Parameter], where the parameter is represented by a Rocq
+    record and field accesses must remain record projections. *)
+let find_source (path : Path.t) (location : Location.t) (aliases : t) :
+    Path.t option =
+  let current_position = location.loc_start.pos_cnum in
+  aliases
+  |> List.filter (fun alias ->
+         alias.available_after <= current_position
+         && alias.scope_start <= current_position
+         && current_position <= alias.scope_end
+         && Path.same path alias.target)
+  |> List.sort (fun left right ->
+         let left_size = left.scope_end - left.scope_start in
+         let right_size = right.scope_end - right.scope_start in
+         match Int.compare left_size right_size with
+         | 0 -> Int.compare right.available_after left.available_after
+         | ordering -> ordering)
+  |> List.find_map (fun alias -> Some alias.source)
+
 let rec module_expr_path (module_expr : Typedtree.module_expr) : Path.t option =
   let normalize path =
     Env.normalize_module_path None module_expr.mod_env path

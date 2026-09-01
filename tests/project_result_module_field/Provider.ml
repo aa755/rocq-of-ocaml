@@ -93,3 +93,14 @@ module Consume (Producer : functor (Input : INPUT) -> OUTPUT) (Input : INPUT) =
 struct
   module Result = Producer (Input)
 end
+
+module Nested (OuterArgument : ARGUMENT) = struct
+  module Child (InnerArgument : sig
+    val value : int
+  end) =
+  struct
+    let value =
+      let () = OuterArgument.token in
+      InnerArgument.value
+  end
+end

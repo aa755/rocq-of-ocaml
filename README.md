@@ -111,6 +111,10 @@ also disambiguates repeated local names such as `loop`. Well-founded
 definitions expose an abstract measure and explicit decrease obligations.
 Partial definitions return `Delay.t` or monadic `Resumption.t`, and the changed
 result type is propagated through strict callers and module interfaces.
+The optional `termination_certificates` configuration supplies a concrete
+Rocq measure and a named call-site tactic for a `well_founded` definition;
+successfully checked certificates remove both the abstract measure and
+`Admit Obligations` from the generated definition.
 
 ## Documentation
 You can read the documentation on the website of the project at [https://formal.land/docs/tools/rocq-of-ocaml/introduction](https://formal.land/docs/tools/rocq-of-ocaml/introduction).

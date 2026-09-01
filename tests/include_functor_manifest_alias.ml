@@ -7,10 +7,12 @@ module Make (Argument : Empty) = struct
     type t
 
     val make : int -> t
+    val default : t option
   end = struct
     type t = int
 
     let make value = value
+    let default = Some 0
   end
 
   include Impl
@@ -23,6 +25,8 @@ module Empty_value = struct
 end
 
 module Base = Make (Empty_value)
+
+let base_default : Base.t = Option.get Base.default
 
 module Extended = struct
   include Base

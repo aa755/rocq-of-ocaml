@@ -24,7 +24,7 @@ Module Family.
     T : TYPE (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Module SIG.
     Record signature `{_fargs : FArgs} : Type := {
       apply : T.(TYPE.t) -> T.(TYPE.t);
@@ -32,14 +32,14 @@ Module Family.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _.
   Arguments SIG {_ _}.
-
+  
   Module Family_result.
     Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Family_result.
   Definition Family_result `{_fargs : FArgs} := @Family_result.signature _ _.
   Arguments Family_result {_ _}.
-
+  
   (* Family *)
   Definition functor `{_fargs : FArgs} :@Family_result T_t _fargs :=
     ((@Family_result.Build_signature T_t _fargs) : @Family_result T_t _fargs).
@@ -56,9 +56,9 @@ Module Consume.
     Input : INPUT (t := T.(TYPE.t));
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition result_value `{_fargs : FArgs} : T.(TYPE.t) := Input.(INPUT.value).
-
+  
   Module Consume_result.
     Record signature `{_fargs : FArgs} : Type := {
       result_value : T.(TYPE.t);
@@ -66,7 +66,7 @@ Module Consume.
   End Consume_result.
   Definition Consume_result `{_fargs : FArgs} := @Consume_result.signature _ _.
   Arguments Consume_result {_ _}.
-
+  
   (* Consume *)
   Definition functor `{_fargs : FArgs} :@Consume_result T_t _fargs :=
     ((@Consume_result.Build_signature T_t _fargs result_value) :
@@ -88,11 +88,11 @@ Module Produce.
   Class FArgs := {
     Input : INPUT (t := int);
   }.
-
+  
   Definition apply `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-
+  
   Definition extra `{_fargs : FArgs} : int := Input.(INPUT.value).
-
+  
   Module Produce_result.
     Record signature `{_fargs : FArgs} : Type := {
       apply : forall {A : Set} , A -> A;
@@ -101,7 +101,7 @@ Module Produce.
   End Produce_result.
   Definition Produce_result `{_fargs : FArgs} := @Produce_result.signature _.
   Arguments Produce_result {_}.
-
+  
   (* Produce *)
   Definition functor `{_fargs : FArgs} :@Produce_result _fargs :=
     ((@Produce_result.Build_signature _fargs (fun _ => apply) extra) :
@@ -112,9 +112,9 @@ Definition Produce (Input : INPUT (t := int)) :=
 
 Module Input.
   Definition t : Set := int.
-
+  
   Definition value : int := 42.
-
+  
   (* Input *)
   Definition module :INPUT (t := int) :=
     {|
@@ -133,9 +133,4 @@ Definition Applied_fargs :=
       |}) Input.
 
 Definition Applied : Consume.Consume_result (_fargs := Applied_fargs) :=
-  Consume ((ltac:(constructor) : TYPE (t := IntType.t)) : TYPE (t := IntType.t))
-    (fun (Input : INPUT (t := int)) =>
-      let module_coercion := Produce Input in
-      {|
-        Family.SIG.apply := module_coercion.(Produce.Produce_result.apply)
-      |}) Input.
+  (Consume.functor (_fargs := (Applied_fargs ))).

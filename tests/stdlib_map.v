@@ -5,9 +5,9 @@ Require Import RocqOfOCaml.Settings.
 (** [Stdlib.Map] is mapped to the executable Gallina compatibility layer. *)
 Module Int_order.
   Definition t : Set := int.
-
+  
   Definition compare (_left : int) (_right : int) : int := Z.sub _left _right.
-
+  
   (* Int_order *)
   Definition module :RocqOfOCaml.OCamlMap.OrderedType (t := int) :=
     {|
@@ -31,345 +31,270 @@ Module Extended.
     Ord : RocqOfOCaml.OCamlMap.OrderedType (t := Ord_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition RocqOfOCaml_OCamlMap_Make_include `{_fargs : FArgs} :=
     RocqOfOCaml.OCamlMap.Make Ord.
-
+  
   (** Inclusion of the module [RocqOfOCaml_OCamlMap_Make_include] *)
   Definition key `{_fargs : FArgs} :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.key).
-
+  
   Definition t `{_fargs : FArgs} (a : Set) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.t) a.
-
+  
   Definition empty `{_fargs : FArgs} {a : Set} : t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.empty).
-
+  
   Definition add `{_fargs : FArgs} {a : Set} : key -> a -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.add).
-
+  
   Definition add_to_list `{_fargs : FArgs} {a : Set} :
     key -> a -> t (list a) -> t (list a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.add_to_list).
-
+  
   Definition update `{_fargs : FArgs} {a : Set} :
     key -> (option a -> option a) -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.update).
-
+  
   Definition singleton `{_fargs : FArgs} {a : Set} : key -> a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.singleton).
-
+  
   Definition remove `{_fargs : FArgs} {a : Set} : key -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.remove).
-
+  
   Definition merge `{_fargs : FArgs} {a b c : Set} :
     (key -> option a -> option b -> option c) -> t a -> t b -> t c :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.merge).
-
+  
   Definition union `{_fargs : FArgs} {a : Set} :
     (key -> a -> a -> option a) -> t a -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.union).
-
+  
   Definition cardinal `{_fargs : FArgs} {a : Set} : t a -> int :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.cardinal).
-
+  
   Definition bindings `{_fargs : FArgs} {a : Set} : t a -> list (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.bindings).
-
+  
   Definition min_binding `{_fargs : FArgs} {a : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
     t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.min_binding).
-
+  
   Definition min_binding_opt `{_fargs : FArgs} {a : Set} :
     t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.min_binding_opt).
-
+  
   Definition max_binding `{_fargs : FArgs} {a : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
     t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.max_binding).
-
+  
   Definition max_binding_opt `{_fargs : FArgs} {a : Set} :
     t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.max_binding_opt).
-
+  
   Definition choose `{_fargs : FArgs} {a : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
     t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.choose).
-
+  
   Definition choose_opt `{_fargs : FArgs} {a : Set} : t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.choose_opt).
-
+  
   Definition find `{_fargs : FArgs} {a : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable a} : key -> t a -> a
     := RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find).
-
+  
   Definition find_opt `{_fargs : FArgs} {a : Set} : key -> t a -> option a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_opt).
-
+  
   Definition find_first `{_fargs : FArgs} {a : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
     (key -> bool) -> t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_first).
-
+  
   Definition find_first_opt `{_fargs : FArgs} {a : Set} :
     (key -> bool) -> t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_first_opt).
-
+  
   Definition find_last `{_fargs : FArgs} {a : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)} :
     (key -> bool) -> t a -> key * a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_last).
-
+  
   Definition find_last_opt `{_fargs : FArgs} {a : Set} :
     (key -> bool) -> t a -> option (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.find_last_opt).
-
+  
   Definition iter `{_fargs : FArgs} {a : Set} :
     (key -> a -> unit) -> t a -> unit :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.iter).
-
+  
   Definition fold `{_fargs : FArgs} {a acc : Set} :
     (key -> a -> acc -> acc) -> t a -> acc -> acc :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.fold).
-
+  
   Definition map `{_fargs : FArgs} {a b : Set} : (a -> b) -> t a -> t b :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.map).
-
+  
   Definition mapi `{_fargs : FArgs} {a b : Set} : (key -> a -> b) -> t a -> t b
     := RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.mapi).
-
+  
   Definition filter `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.filter).
-
+  
   Definition filter_map `{_fargs : FArgs} {a b : Set} :
     (key -> a -> option b) -> t a -> t b :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.filter_map).
-
+  
   Definition partition `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> t a * t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.partition).
-
+  
   Definition split `{_fargs : FArgs} {a : Set} :
     key -> t a -> t a * option a * t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.split).
-
+  
   Definition is_empty `{_fargs : FArgs} {a : Set} : t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.is_empty).
-
+  
   Definition mem `{_fargs : FArgs} {a : Set} : key -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.mem).
-
+  
   Definition equal `{_fargs : FArgs} {a : Set} :
     (a -> a -> bool) -> t a -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.equal).
-
+  
   Definition compare `{_fargs : FArgs} {a : Set} :
     (a -> a -> int) -> t a -> t a -> int :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.compare).
-
+  
   Definition for_all `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.for_all).
-
+  
   Definition _exists `{_fargs : FArgs} {a : Set} :
     (key -> a -> bool) -> t a -> bool :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S._exists).
-
+  
   Definition to_list `{_fargs : FArgs} {a : Set} : t a -> list (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_list).
-
+  
   Definition of_list `{_fargs : FArgs} {a : Set} : list (key * a) -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.of_list).
-
+  
   Definition to_seq `{_fargs : FArgs} {a : Set} :
     t a -> RocqOfOCaml.OCamlSeq.t (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_seq).
-
+  
   Definition to_rev_seq `{_fargs : FArgs} {a : Set} :
     t a -> RocqOfOCaml.OCamlSeq.t (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_rev_seq).
-
+  
   Definition to_seq_from `{_fargs : FArgs} {a : Set} :
     key -> t a -> RocqOfOCaml.OCamlSeq.t (key * a) :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.to_seq_from).
-
+  
   Definition add_seq `{_fargs : FArgs} {a : Set} :
     RocqOfOCaml.OCamlSeq.t (key * a) -> t a -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.add_seq).
-
+  
   Definition of_seq `{_fargs : FArgs} {a : Set} :
     RocqOfOCaml.OCamlSeq.t (key * a) -> t a :=
     RocqOfOCaml_OCamlMap_Make_include.(RocqOfOCaml.OCamlMap.S.of_seq).
-
+  
   Definition lookup `{_fargs : FArgs} {A : Set} (key : key) (map : t A)
     : option A := find_opt key map.
-
+  
   Module Extended_result.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
       key := Ord.(RocqOfOCaml.OCamlMap.OrderedType.t);
       t := t;
       empty : forall {a : Set} , t a;
-      add :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t a -> t a;
-      add_to_list :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t (list a) ->
-          t (list a);
-      update :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> (option a -> option a) ->
-          t a -> t a;
-      singleton :
-        forall {a : Set} , Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t a;
-      remove :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> t a;
+      add : forall {a : Set} , key -> a -> t a -> t a;
+      add_to_list : forall {a : Set} , key -> a -> t (list a) -> t (list a);
+      update : forall {a : Set} , key -> (option a -> option a) -> t a -> t a;
+      singleton : forall {a : Set} , key -> a -> t a;
+      remove : forall {a : Set} , key -> t a -> t a;
       merge :
         forall {a b c : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> option a -> option b ->
-          option c) -> t a -> t b -> t c;
+          (key -> option a -> option b -> option c) -> t a -> t b -> t c;
       union :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> a -> option a) ->
-          t a -> t a -> t a;
+        forall {a : Set} , (key -> a -> a -> option a) -> t a -> t a -> t a;
       cardinal : forall {a : Set} , t a -> int;
-      bindings :
-        forall {a : Set} ,
-          t a -> list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+      bindings : forall {a : Set} , t a -> list (key * a);
       min_binding :
         forall {a : Set}
           `{_rocq_assumption_0 :
             RocqOfOCaml.Basics.Unreachable
-              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
-          t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
-      min_binding_opt :
-        forall {a : Set} ,
-          t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)}, t a -> key * a;
+      min_binding_opt : forall {a : Set} , t a -> option (key * a);
       max_binding :
         forall {a : Set}
           `{_rocq_assumption_0 :
             RocqOfOCaml.Basics.Unreachable
-              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
-          t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
-      max_binding_opt :
-        forall {a : Set} ,
-          t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)}, t a -> key * a;
+      max_binding_opt : forall {a : Set} , t a -> option (key * a);
       choose :
         forall {a : Set}
           `{_rocq_assumption_0 :
             RocqOfOCaml.Basics.Unreachable
-              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
-          t a -> Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
-      choose_opt :
-        forall {a : Set} ,
-          t a -> option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+              (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)}, t a -> key * a;
+      choose_opt : forall {a : Set} , t a -> option (key * a);
       find :
         forall {a : Set}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable a},
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> a;
-      find_opt :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> option a;
+          key -> t a -> a;
+      find_opt : forall {a : Set} , key -> t a -> option a;
       find_first :
         forall {a : Set}
           `{_rocq_assumption_0 :
             RocqOfOCaml.Basics.Unreachable
               (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+          (key -> bool) -> t a -> key * a;
       find_first_opt :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-          option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} , (key -> bool) -> t a -> option (key * a);
       find_last :
         forall {a : Set}
           `{_rocq_assumption_0 :
             RocqOfOCaml.Basics.Unreachable
               (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)},
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a;
+          (key -> bool) -> t a -> key * a;
       find_last_opt :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> bool) -> t a ->
-          option (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
-      iter :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> unit) -> t a -> unit;
+        forall {a : Set} , (key -> bool) -> t a -> option (key * a);
+      iter : forall {a : Set} , (key -> a -> unit) -> t a -> unit;
       fold :
-        forall {a acc : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> acc -> acc) ->
-          t a -> acc -> acc;
+        forall {a acc : Set} , (key -> a -> acc -> acc) -> t a -> acc -> acc;
       map : forall {a b : Set} , (a -> b) -> t a -> t b;
-      mapi :
-        forall {a b : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> b) -> t a -> t b;
-      filter :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> t a;
-      filter_map :
-        forall {a b : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> option b) -> t a ->
-          t b;
-      partition :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a ->
-          t a * t a;
-      split :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a ->
-          t a * option a * t a;
+      mapi : forall {a b : Set} , (key -> a -> b) -> t a -> t b;
+      filter : forall {a : Set} , (key -> a -> bool) -> t a -> t a;
+      filter_map : forall {a b : Set} , (key -> a -> option b) -> t a -> t b;
+      partition : forall {a : Set} , (key -> a -> bool) -> t a -> t a * t a;
+      split : forall {a : Set} , key -> t a -> t a * option a * t a;
       is_empty : forall {a : Set} , t a -> bool;
-      mem :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a -> bool;
+      mem : forall {a : Set} , key -> t a -> bool;
       equal : forall {a : Set} , (a -> a -> bool) -> t a -> t a -> bool;
       compare : forall {a : Set} , (a -> a -> int) -> t a -> t a -> int;
-      for_all :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> bool;
-      _exists :
-        forall {a : Set} ,
-          (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> bool) -> t a -> bool;
-      to_list :
-        forall {a : Set} ,
-          t a -> list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
-      of_list :
-        forall {a : Set} ,
-          list (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a) -> t a;
-      to_seq :
-        forall {a : Set} ,
-          t a ->
-          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
-      to_rev_seq :
-        forall {a : Set} ,
-          t a ->
-          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+      for_all : forall {a : Set} , (key -> a -> bool) -> t a -> bool;
+      _exists : forall {a : Set} , (key -> a -> bool) -> t a -> bool;
+      to_list : forall {a : Set} , t a -> list (key * a);
+      of_list : forall {a : Set} , list (key * a) -> t a;
+      to_seq : forall {a : Set} , t a -> RocqOfOCaml.OCamlSeq.t (key * a);
+      to_rev_seq : forall {a : Set} , t a -> RocqOfOCaml.OCamlSeq.t (key * a);
       to_seq_from :
-        forall {a : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t a ->
-          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a);
+        forall {a : Set} , key -> t a -> RocqOfOCaml.OCamlSeq.t (key * a);
       add_seq :
-        forall {a : Set} ,
-          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)
-          -> t a -> t a;
-      of_seq :
-        forall {a : Set} ,
-          RocqOfOCaml.OCamlSeq.t (Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) * a)
-          -> t a;
-      lookup :
-        forall {A : Set} ,
-          Ord.(RocqOfOCaml.OCamlMap.OrderedType.t) -> t A -> option A;
+        forall {a : Set} , RocqOfOCaml.OCamlSeq.t (key * a) -> t a -> t a;
+      of_seq : forall {a : Set} , RocqOfOCaml.OCamlSeq.t (key * a) -> t a;
+      lookup : forall {A : Set} , key -> t A -> option A;
     }.
   End Extended_result.
   Definition Extended_result `{_fargs : FArgs} := @Extended_result.signature _
     _.
   Arguments Extended_result {_ _ _}.
-
+  
   (* Extended *)
   Definition functor `{_fargs : FArgs} :Extended_result (t := _) :=
     {|

@@ -1,0 +1,30 @@
+{
+  "file_head_suffixes": [
+    ["tests/certified_well_founded_recursion.ml", "From Stdlib Require Import Lia."]
+  ],
+  "recursion_strategies": [
+    ["tests/certified_well_founded_recursion.ml", "Through_view.length", "well_founded"],
+    ["tests/certified_well_founded_recursion.ml", "Mutual.left", "well_founded"],
+    ["tests/certified_well_founded_recursion.ml", "Overlapping_names.decode", "well_founded"]
+  ],
+  "termination_certificates": [
+    [
+      "tests/certified_well_founded_recursion.ml",
+      "Through_view.length",
+      "Datatypes.length _rocq_state",
+      "unfold ltof; unfold _rocq_measure; cbn beta iota zeta; destruct _rocq_state as [|head rest]; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia"
+    ],
+    [
+      "tests/certified_well_founded_recursion.ml",
+      "Mutual.left",
+      "match _rocq_call with | inl values => Datatypes.length values | inr values => Datatypes.length values end",
+      "inversion _rocq_call_eq; subst; unfold ltof; unfold _rocq_measure; cbn beta iota zeta in *; destruct _rocq_state; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia"
+    ],
+    [
+      "tests/certified_well_founded_recursion.ml",
+      "Overlapping_names.decode",
+      "match _rocq_call with | inl values => Datatypes.length values | inr values => Datatypes.length values end",
+      "inversion _rocq_call_eq; subst; unfold ltof; unfold _rocq_measure; cbn beta iota zeta in *; destruct _rocq_state; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia"
+    ]
+  ]
+}

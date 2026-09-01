@@ -20,6 +20,22 @@ module Second_bool = Second (struct
   type t = bool
 end)
 
+module Value_consumer (Value : sig
+  val value : int
+end) =
+struct
+  let result = Value.value
+end
+
+module Value_source = struct
+  let value = 42
+end
+
+module Opened_value = Value_consumer (struct
+  open Value_source
+  let value = value
+end)
+
 module Interface (H : sig
   type t
 end) =

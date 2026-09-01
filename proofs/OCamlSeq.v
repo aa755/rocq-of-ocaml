@@ -455,3 +455,17 @@ Definition product {A B : Set} (left : t A) (right : t B) : t (A * B) :=
 (** A finite replacement for [take count (ints start)]. *)
 Definition range `{Unreachable (t int)} (count start : int) : t int :=
   init count (fun index => Z.add start index).
+
+(** A finite replacement for [take count (iterate step start)]. *)
+Fixpoint iterate_take_nat {A : Set}
+    (count : nat) (step : A -> A) (current : A) : t A :=
+  match count with
+  | O => Empty
+  | S count => More current (iterate_take_nat count step (step current))
+  end.
+
+Definition iterate_take {A : Set} `{Unreachable (t A)}
+    (count : int) (step : A -> A) (start : A) : t A :=
+  if RocqOfOCaml.Basics.Stdlib.lt count 0
+  then RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.take"
+  else iterate_take_nat (Z.to_nat count) step start.

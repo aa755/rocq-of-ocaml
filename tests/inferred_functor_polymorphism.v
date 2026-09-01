@@ -13,13 +13,13 @@ Module Make.
   Class FArgs := {
     X : Input;
   }.
-
+  
   Definition identity `{_fargs : FArgs} {A : Set} (x_value : A) : A := x_value.
-
+  
   Definition pair_value `{_fargs : FArgs} {A B : Set}
     (x_value : A) (y_value : B) : int * A * B :=
     (X.(Input.token), x_value, y_value).
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       identity : forall {A : Set} , A -> A;
@@ -28,7 +28,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
     ((@Make_result.Build_signature _fargs (fun _ => identity)

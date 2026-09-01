@@ -1,0 +1,10 @@
+{
+  "module_overrides": [
+    [
+      "Provider.ml",
+      "Counter",
+      "TestProject.Provider.Counter",
+      "RocqOfOCaml.ModuleOverrideModel"
+    ]
+  ]
+}

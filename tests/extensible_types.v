@@ -35,10 +35,10 @@ End Bar.
 Definition Bar := Bar.record.
 
 Definition match_ex
-  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Re}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (string * bool)}
   `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int}
-  `{_rocq_assumption_2 : RocqOfOCaml.Basics.Unreachable (string * bool)}
-  (x_value : ex) : int :=
+  `{_rocq_assumption_2 : RocqOfOCaml.Basics.Unreachable Re} (x_value : ex)
+  : int :=
   match x_value with
   | Build_extensible tag _ payload =>
     if String.eqb tag "Empty" then

@@ -36,37 +36,32 @@ Module Make.
     M : SIG (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   (** Inclusion of the module [M] *)
   Definition t `{_fargs : FArgs} (a : Set) := M.(SIG_MONAD.t) a.
-
+  
   Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
     M.(SIG_MONAD._return).
-
+  
   Definition op_gtgteq `{_fargs : FArgs} {a b : Set} : t a -> (a -> t b) -> t b
     := M.(SIG_MONAD.op_gtgteq).
-
+  
   Definition op_letdollar `{_fargs : FArgs} {A B : Set}
     (x_value : M.(SIG_MONAD.t) A) (f_value : A -> M.(SIG_MONAD.t) B)
     : M.(SIG_MONAD.t) B :=
-    let opened_module_303 := M in
-    (opened_module_303.(SIG_MONAD.op_gtgteq) (b := B) (a := A)) x_value f_value.
-
+    (M.(SIG_MONAD.op_gtgteq) (b := B) (a := A)) x_value f_value.
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
-      t := fun (a : Set) => M.(SIG_MONAD.t) a;
-      _return : forall {a : Set} , a -> M.(SIG_MONAD.t) a;
-      op_gtgteq :
-        forall {a b : Set} ,
-          M.(SIG_MONAD.t) a -> (a -> M.(SIG_MONAD.t) b) -> M.(SIG_MONAD.t) b;
-      op_letdollar :
-        forall {A B : Set} ,
-          M.(SIG_MONAD.t) A -> (A -> M.(SIG_MONAD.t) B) -> M.(SIG_MONAD.t) B;
+      t := fun (a : Set) => t a;
+      _return : forall {a : Set} , a -> t a;
+      op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
+      op_letdollar : forall {A B : Set} , t A -> (A -> t B) -> t B;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
     ((@Make_result.Build_signature M_t _fargs (fun _ => _return)
@@ -83,12 +78,12 @@ Arguments Make_Monad : default implicits.
 Module Identity.
   Module Impl.
     Definition t (a : Set) : Set := a.
-
+    
     Definition _return {A : Set} (x_value : A) : A := x_value.
-
+    
     Definition op_gtgteq {A B : Set} (x_value : A) (f_value : A -> B) : B :=
       f_value x_value.
-
+    
     (* Impl *)
     Definition module :SIG_MONAD (t := fun (a : Set) => a) :=
       {|
@@ -97,27 +92,27 @@ Module Identity.
       |}.
   End Impl.
   Definition Impl := Impl.module.
-
+  
   (** Inclusion of the module [Impl] *)
-
-
+  
+  
   Definition Make_Monad_include_fargs := Make_Monad.Build_FArgs Impl.
-
+  
   Definition Make_Monad_include :
     Make_Monad.Make_result (_fargs := Make_Monad_include_fargs) :=
-    Make_Monad Impl.
-
+    (Make_Monad.functor (_fargs := (Make_Monad_include_fargs ))).
+  
   (** Inclusion of the module [Make_Monad_include] *)
-  Definition t (a : Set) := Make_Monad_include.(Make.Make_result.t) a.
-
+  Definition t (a : Set) := Make_Monad_include.(Make_Monad.Make_result.t) a.
+  
   Definition _return {a : Set} : a -> t a :=
-    Make_Monad_include.(Make.Make_result._return).
-
+    Make_Monad_include.(Make_Monad.Make_result._return).
+  
   Definition op_gtgteq {a b : Set} : t a -> (a -> t b) -> t b :=
-    Make_Monad_include.(Make.Make_result.op_gtgteq).
-
+    Make_Monad_include.(Make_Monad.Make_result.op_gtgteq).
+  
   Definition op_letdollar {A B : Set} : t A -> (A -> t B) -> t B :=
-    Make_Monad_include.(Make.Make_result.op_letdollar).
+    Make_Monad_include.(Make_Monad.Make_result.op_letdollar).
 End Identity.
 
 Module State_T_signature.
@@ -133,9 +128,9 @@ Module State.
     T : State_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition state `{_fargs : FArgs} : Set := T.(State_T_signature.t).
-
+  
   Module SIG.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
       t := t;
@@ -147,87 +142,79 @@ Module State.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _.
   Arguments SIG {_ _ _}.
-
+  
   Module Make.
     Class FArgs `{_fargs : FArgs} {S_t : Set -> Set} := {
       S : SIG (t := S_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-
+    
     (** Inclusion of the module [S] *)
     Definition get `{_fargs : FArgs} : S.(SIG.t) state := S.(SIG.get).
-
+    
     Definition put `{_fargs : FArgs} : state -> S.(SIG.t) unit := S.(SIG.put).
-
+    
     Definition Make_Monad_include_fargs `{_fargs : FArgs} :=
       Make_Monad.Build_FArgs
         ({|
           SIG_MONAD._return _ := S.(SIG._return);
           SIG_MONAD.op_gtgteq _ _ := S.(SIG.op_gtgteq)
         |} : SIG_MONAD (t := S.(SIG.t))).
-
+    
     Definition Make_Monad_include `{_fargs : FArgs} :
       Make_Monad.Make_result (_fargs := Make_Monad_include_fargs) :=
-      Make_Monad
-        ({|
-          SIG_MONAD._return _ := S.(SIG._return);
-          SIG_MONAD.op_gtgteq _ _ := S.(SIG.op_gtgteq)
-        |} : SIG_MONAD (t := S.(SIG.t))).
-
+      (Make_Monad.functor (_fargs := (Make_Monad_include_fargs ))).
+    
     (** Inclusion of the module [Make_Monad_include] *)
     Definition t `{_fargs : FArgs} (a : Set) :=
-      Make_Monad_include.(Make.Make_result.t) a.
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result.t) a.
+    
     Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
-      Make_Monad_include.(Make.Make_result._return).
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result._return).
+    
     Definition op_gtgteq `{_fargs : FArgs} {a b : Set} :
       t a -> (a -> t b) -> t b :=
-      Make_Monad_include.(Make.Make_result.op_gtgteq).
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result.op_gtgteq).
+    
     Definition op_letdollar `{_fargs : FArgs} {A B : Set} :
       t A -> (A -> t B) -> t B :=
-      Make_Monad_include.(Make.Make_result.op_letdollar).
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result.op_letdollar).
+    
     Definition update `{_fargs : FArgs} (f_value : state -> state) : t unit :=
       op_gtgteq get (fun (state : state) => put (f_value state)).
-
+    
     Definition op_coloneq `{_fargs : FArgs} {a : Set}
-      (lens : Lens.t state a) (value : a) : S.(SIG.t) unit :=
+      (lens : Lens.t state a) (value : a)
+      : (S (FArgs := _fargs)).(SIG.t) unit :=
       op_letdollar get (fun state => put (lens.(Lens.t.set) value state)).
-
+    
     Definition op_exclamation `{_fargs : FArgs} {a : Set}
       (lens : Lens.t state a) : t a :=
       op_letdollar get (fun state => _return (lens.(Lens.t.get) state)).
-
+    
     Definition update_field `{_fargs : FArgs} {a : Set}
       (lens : Lens.t state a) (f_value : a -> a) : t unit :=
       op_letdollar (op_exclamation lens)
         (fun value => op_coloneq lens (f_value value)).
-
+    
     Module Make_result.
       Record signature `{_fargs : FArgs} : Type := {
-        get : S.(SIG.t) T.(State_T_signature.t);
-        put : T.(State_T_signature.t) -> S.(SIG.t) unit;
+        get : S.(SIG.t) state;
+        put : state -> S.(SIG.t) unit;
         t := fun (a : Set) => S.(SIG.t) a;
         _return : forall {a : Set} , a -> t a;
         op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
         op_letdollar :
           forall {A B : Set} , S.(SIG.t) A -> (A -> S.(SIG.t) B) -> S.(SIG.t) B;
-        update : (T.(State_T_signature.t) -> T.(State_T_signature.t)) -> t unit;
-        op_coloneq :
-          forall {a : Set} ,
-            Lens.t T.(State_T_signature.t) a -> a -> S.(SIG.t) unit;
-        op_exclamation :
-          forall {a : Set} , Lens.t T.(State_T_signature.t) a -> t a;
-        update_field :
-          forall {a : Set} ,
-            Lens.t T.(State_T_signature.t) a -> (a -> a) -> t unit;
+        update : (state -> state) -> t unit;
+        op_coloneq : forall {a : Set} , Lens.t state a -> a -> S.(SIG.t) unit;
+        op_exclamation : forall {a : Set} , Lens.t state a -> t a;
+        update_field : forall {a : Set} , Lens.t state a -> (a -> a) -> t unit;
       }.
     End Make_result.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _ _ _.
     Arguments Make_result {_ _ _ _}.
-
+    
     (* Make *)
     Definition functor `{_fargs : FArgs} :@Make_result _ _ S_t _fargs :=
       ((@Make_result.Build_signature _ _ S_t _fargs get put (fun _ => _return)
@@ -237,17 +224,17 @@ Module State.
   End Make.
   Definition Make `{_fargs : FArgs} {S_t : Set -> Set} (S : SIG (t := S_t)) :=
     @Make.functor _ _ S_t (Make.Build_FArgs S).
-
+  
   Module State_result.
     Record signature `{_fargs : FArgs} : Type := {
       state := T.(State_T_signature.t);
-
-
+      
+    
     }.
   End State_result.
   Definition State_result `{_fargs : FArgs} := @State_result.signature _ _.
   Arguments State_result {_ _}.
-
+  
   (* State *)
   Definition functor `{_fargs : FArgs} :@State_result T_t _fargs :=
     ((@State_result.Build_signature T_t _fargs) : @State_result T_t _fargs).
@@ -260,9 +247,9 @@ Module Result.
     T : State_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition _error `{_fargs : FArgs} : Set := T.(State_T_signature.t).
-
+  
   Module SIG.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
       t := t;
@@ -273,50 +260,46 @@ Module Result.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _.
   Arguments SIG {_ _ _}.
-
+  
   Module Make.
     Class FArgs `{_fargs : FArgs} {S_t : Set -> Set} := {
       S : SIG (t := S_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-
+    
     (** Inclusion of the module [S] *)
     Definition fail `{_fargs : FArgs} {a : Set} : _error -> S.(SIG.t) a :=
       S.(SIG.fail).
-
+    
     Definition Make_Monad_include_fargs `{_fargs : FArgs} :=
       Make_Monad.Build_FArgs
         ({|
           SIG_MONAD._return _ := S.(SIG._return);
           SIG_MONAD.op_gtgteq _ _ := S.(SIG.op_gtgteq)
         |} : SIG_MONAD (t := S.(SIG.t))).
-
+    
     Definition Make_Monad_include `{_fargs : FArgs} :
       Make_Monad.Make_result (_fargs := Make_Monad_include_fargs) :=
-      Make_Monad
-        ({|
-          SIG_MONAD._return _ := S.(SIG._return);
-          SIG_MONAD.op_gtgteq _ _ := S.(SIG.op_gtgteq)
-        |} : SIG_MONAD (t := S.(SIG.t))).
-
+      (Make_Monad.functor (_fargs := (Make_Monad_include_fargs ))).
+    
     (** Inclusion of the module [Make_Monad_include] *)
     Definition t `{_fargs : FArgs} (a : Set) :=
-      Make_Monad_include.(Make_Monad.Make_result.t) a.
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result.t) a.
+    
     Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
-      Make_Monad_include.(Make_Monad.Make_result._return).
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result._return).
+    
     Definition op_gtgteq `{_fargs : FArgs} {a b : Set} :
       t a -> (a -> t b) -> t b :=
-      Make_Monad_include.(Make_Monad.Make_result.op_gtgteq).
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result.op_gtgteq).
+    
     Definition op_letdollar `{_fargs : FArgs} {A B : Set} :
       t A -> (A -> t B) -> t B :=
-      Make_Monad_include.(Make_Monad.Make_result.op_letdollar).
-
+      (Make_Monad_include (_fargs := _fargs)).(Make_Monad.Make_result.op_letdollar).
+    
     Module Make_result.
       Record signature `{_fargs : FArgs} : Type := {
-        fail : forall {a : Set} , T.(State_T_signature.t) -> S.(SIG.t) a;
+        fail : forall {a : Set} , _error -> S.(SIG.t) a;
         t := fun (a : Set) => S.(SIG.t) a;
         _return : forall {a : Set} , a -> t a;
         op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
@@ -326,7 +309,7 @@ Module Result.
     End Make_result.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _ _ _.
     Arguments Make_result {_ _ _ _}.
-
+    
     (* Make *)
     Definition functor `{_fargs : FArgs} :@Make_result _ _ S_t _fargs :=
       ((@Make_result.Build_signature _ _ S_t _fargs (fun _ => fail)
@@ -335,17 +318,17 @@ Module Result.
   End Make.
   Definition Make `{_fargs : FArgs} {S_t : Set -> Set} (S : SIG (t := S_t)) :=
     @Make.functor _ _ S_t (Make.Build_FArgs S).
-
+  
   Module Result_result.
     Record signature `{_fargs : FArgs} : Type := {
       _error := T.(State_T_signature.t);
-
-
+      
+    
     }.
   End Result_result.
   Definition Result_result `{_fargs : FArgs} := @Result_result.signature _ _.
   Arguments Result_result {_ _}.
-
+  
   (* Result *)
   Definition functor `{_fargs : FArgs} :@Result_result T_t _fargs :=
     ((@Result_result.Build_signature T_t _fargs) : @Result_result T_t _fargs).
@@ -367,33 +350,27 @@ Module Result_state.
     T : Result_state_T_signature (state := T_state) (_error := T__error);
   }.
   Arguments Build_FArgs {_ _}.
-
+  
   Definition State_fargs `{_fargs : FArgs} :=
     State.Build_FArgs
       (let t : Set := T.(Result_state_T_signature.state) in
       ((ltac:(constructor) : State_T_signature (t := t)) :
         State_T_signature (t := t))).
-
+  
   Definition State `{_fargs : FArgs} :
-    State.State_result (_fargs := State_fargs) :=
-    State
-      (let t : Set := T.(Result_state_T_signature.state) in
-      ((ltac:(constructor) : State_T_signature (t := t)) :
-        State_T_signature (t := t))).
-
+    State.State_result (_fargs := State_fargs) := (State.functor
+    (_fargs := (State_fargs ))).
+  
   Definition Result_fargs `{_fargs : FArgs} :=
     Result.Build_FArgs
       (let t : Set := T.(Result_state_T_signature._error) in
       ((ltac:(constructor) : State_T_signature (t := t)) :
         State_T_signature (t := t))).
-
+  
   Definition Result `{_fargs : FArgs} :
-    Result.Result_result (_fargs := Result_fargs) :=
-    Result
-      (let t : Set := T.(Result_state_T_signature._error) in
-      ((ltac:(constructor) : State_T_signature (t := t)) :
-        State_T_signature (t := t))).
-
+    Result.Result_result (_fargs := Result_fargs) := (Result.functor
+    (_fargs := (Result_fargs ))).
+  
   Module SIG.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
       t := t;
@@ -406,34 +383,30 @@ Module Result_state.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _ _.
   Arguments SIG {_ _ _ _}.
-
+  
   Module Make.
     Class FArgs `{_fargs : FArgs} {S_t : Set -> Set} := {
       S : SIG (t := S_t);
     }.
     Arguments Build_FArgs {_ _ _ _}.
-
+    
     (** Inclusion of the module [S] *)
-
-
+    
+    
     Definition Make_Monad_include_fargs `{_fargs : FArgs} :=
       Make_Monad.Build_FArgs
         ({|
           SIG_MONAD._return _ := S.(SIG._return);
           SIG_MONAD.op_gtgteq _ _ := S.(SIG.op_gtgteq)
         |} : SIG_MONAD (t := S.(SIG.t))).
-
+    
     Definition Make_Monad_include `{_fargs : FArgs} :
       Make_Monad.Make_result (_fargs := Make_Monad_include_fargs) :=
-      Make_Monad
-        ({|
-          SIG_MONAD._return _ := S.(SIG._return);
-          SIG_MONAD.op_gtgteq _ _ := S.(SIG.op_gtgteq)
-        |} : SIG_MONAD (t := S.(SIG.t))).
-
+      (Make_Monad.functor (_fargs := (Make_Monad_include_fargs ))).
+    
     (** Inclusion of the module [Make_Monad_include] *)
-
-
+    
+    
     Definition State_Make_include_fargs `{_fargs : FArgs} :=
       (State.Make.Build_FArgs (_fargs := State_fargs))
         ({|
@@ -442,46 +415,40 @@ Module Result_state.
           State.SIG.get := S.(SIG.get);
           State.SIG.put := S.(SIG.put)
         |} : State.SIG (t := S.(SIG.t))).
-
+    
     Definition State_Make_include `{_fargs : FArgs} :
       State.Make.Make_result (_fargs := State_Make_include_fargs) :=
-      (State.Make (_fargs := State_fargs))
-        ({|
-          State.SIG._return _ := S.(SIG._return);
-          State.SIG.op_gtgteq _ _ := S.(SIG.op_gtgteq);
-          State.SIG.get := S.(SIG.get);
-          State.SIG.put := S.(SIG.put)
-        |} : State.SIG (t := S.(SIG.t))).
-
+      (State.Make.functor (_fargs := (State_Make_include_fargs ))).
+    
     (** Inclusion of the module [State_Make_include] *)
     Definition get `{_fargs : FArgs} :
-      S.(SIG.t) T.(Result_state_T_signature.state) :=
-      State_Make_include.(State.Make.Make_result.get).
-
+      (S (FArgs := _fargs)).(SIG.t) T.(Result_state_T_signature.state) :=
+      (State_Make_include (_fargs := _fargs)).(State.Make.Make_result.get).
+    
     Definition put `{_fargs : FArgs} :
-      T.(Result_state_T_signature.state) -> S.(SIG.t) unit :=
-      State_Make_include.(State.Make.Make_result.put).
-
+      T.(Result_state_T_signature.state) -> (S (FArgs := _fargs)).(SIG.t) unit
+      := (State_Make_include (_fargs := _fargs)).(State.Make.Make_result.put).
+    
     Definition update `{_fargs : FArgs} :
       (T.(Result_state_T_signature.state) -> T.(Result_state_T_signature.state))
       -> State_Make_include.(State.Make.Make_result.t) unit :=
-      State_Make_include.(State.Make.Make_result.update).
-
+      (State_Make_include (_fargs := _fargs)).(State.Make.Make_result.update).
+    
     Definition op_coloneq `{_fargs : FArgs} {a : Set} :
       Lens.t T.(Result_state_T_signature.state) a -> a ->
       State_Make_include.(State.Make.Make_result.t) unit :=
-      State_Make_include.(State.Make.Make_result.op_coloneq).
-
+      (State_Make_include (_fargs := _fargs)).(State.Make.Make_result.op_coloneq).
+    
     Definition op_exclamation `{_fargs : FArgs} {a : Set} :
       Lens.t T.(Result_state_T_signature.state) a ->
       State_Make_include.(State.Make.Make_result.t) a :=
-      State_Make_include.(State.Make.Make_result.op_exclamation).
-
+      (State_Make_include (_fargs := _fargs)).(State.Make.Make_result.op_exclamation).
+    
     Definition update_field `{_fargs : FArgs} {a : Set} :
       Lens.t T.(Result_state_T_signature.state) a -> (a -> a) ->
       State_Make_include.(State.Make.Make_result.t) unit :=
-      State_Make_include.(State.Make.Make_result.update_field).
-
+      (State_Make_include (_fargs := _fargs)).(State.Make.Make_result.update_field).
+    
     Definition Result_Make_include_fargs `{_fargs : FArgs} :=
       (Result.Make.Build_FArgs (_fargs := Result_fargs))
         ({|
@@ -489,35 +456,30 @@ Module Result_state.
           Result.SIG.op_gtgteq _ _ := S.(SIG.op_gtgteq);
           Result.SIG.fail _ := S.(SIG.fail)
         |} : Result.SIG (t := S.(SIG.t))).
-
+    
     Definition Result_Make_include `{_fargs : FArgs} :
       Result.Make.Make_result (_fargs := Result_Make_include_fargs) :=
-      (Result.Make (_fargs := Result_fargs))
-        ({|
-          Result.SIG._return _ := S.(SIG._return);
-          Result.SIG.op_gtgteq _ _ := S.(SIG.op_gtgteq);
-          Result.SIG.fail _ := S.(SIG.fail)
-        |} : Result.SIG (t := S.(SIG.t))).
-
+      (Result.Make.functor (_fargs := (Result_Make_include_fargs ))).
+    
     (** Inclusion of the module [Result_Make_include] *)
     Definition fail `{_fargs : FArgs} {a : Set} :
-      T.(Result_state_T_signature._error) -> S.(SIG.t) a :=
-      Result_Make_include.(Result.Make.Make_result.fail).
-
+      T.(Result_state_T_signature._error) -> (S (FArgs := _fargs)).(SIG.t) a :=
+      (Result_Make_include (_fargs := _fargs)).(Result.Make.Make_result.fail).
+    
     Definition t `{_fargs : FArgs} (a : Set) :=
-      Result_Make_include.(Result.Make.Make_result.t) a.
-
+      (Result_Make_include (_fargs := _fargs)).(Result.Make.Make_result.t) a.
+    
     Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
-      Result_Make_include.(Result.Make.Make_result._return).
-
+      (Result_Make_include (_fargs := _fargs)).(Result.Make.Make_result._return).
+    
     Definition op_gtgteq `{_fargs : FArgs} {a b : Set} :
       t a -> (a -> t b) -> t b :=
-      Result_Make_include.(Result.Make.Make_result.op_gtgteq).
-
+      (Result_Make_include (_fargs := _fargs)).(Result.Make.Make_result.op_gtgteq).
+    
     Definition op_letdollar `{_fargs : FArgs} {A B : Set} :
       t A -> (A -> t B) -> t B :=
-      Result_Make_include.(Result.Make.Make_result.op_letdollar).
-
+      (Result_Make_include (_fargs := _fargs)).(Result.Make.Make_result.op_letdollar).
+    
     Module Make_result.
       Record signature `{_fargs : FArgs} : Type := {
         get : S.(SIG.t) T.(Result_state_T_signature.state);
@@ -547,7 +509,7 @@ Module Result_state.
     Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _ _ _
       _.
     Arguments Make_result {_ _ _ _ _}.
-
+    
     (* Make *)
     Definition functor `{_fargs : FArgs} :@Make_result _ _ _ S_t _fargs :=
       ((@Make_result.Build_signature _ _ _ S_t _fargs get put update
@@ -557,33 +519,33 @@ Module Result_state.
   End Make.
   Definition Make `{_fargs : FArgs} {S_t : Set -> Set} (S : SIG (t := S_t)) :=
     @Make.functor _ _ _ S_t (Make.Build_FArgs S).
-
+  
   Module Trans.
     Class FArgs `{_fargs : FArgs} {Inner_t : Set -> Set} := {
       Inner_parameter : SIG_MONAD (t := Inner_t);
     }.
     Arguments Build_FArgs {_ _ _ _}.
-
+    
     Definition Inner_fargs `{_fargs : FArgs} :=
-      Make_Monad.Build_FArgs Inner_parameter.
-
+      Make_Monad.Build_FArgs (Inner_parameter (FArgs := _fargs)).
+    
     Definition Inner `{_fargs : FArgs} :
-      Make_Monad.Make_result (_fargs := Inner_fargs) :=
-      Make_Monad Inner_parameter.
-
+      Make_Monad.Make_result (_fargs := Inner_fargs) := (Make_Monad.functor
+      (_fargs := (Inner_fargs ))).
+    
     Definition Make_include_fargs `{_fargs : FArgs} :=
       Make.Build_FArgs
         (let t (a : Set) : Set :=
           T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
+          (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
             (sum a T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state)) in
         let _return {a : Set}
           (value : a) (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
+          : (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
             (sum a T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state)) :=
-          (Inner.(Make_Monad.Make_result._return)
+          ((Inner (_fargs := _fargs)).(Make_Monad.Make_result._return)
             (a :=
               sum a T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
             (((inl value) : sum a T.(Result_state_T_signature._error)), state)
@@ -591,17 +553,16 @@ Module Result_state.
         let op_gtgteq {a b : Set}
           (computation : t a) (next : a -> t b)
           (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
+          : (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
             (sum b T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state)) :=
-          let opened_module_2246 := Inner in
-          opened_module_2246.(Make_Monad.Make_result.op_letdollar)
+          (Inner (_fargs := _fargs)).(Make_Monad.Make_result.op_letdollar)
             (computation state)
             (fun function_parameter =>
               let '(result_value, state) := function_parameter in
               match result_value with
               | inr _error =>
-                (opened_module_2246.(Make_Monad.Make_result._return)
+                ((Inner (_fargs := _fargs)).(Make_Monad.Make_result._return)
                   (a :=
                     sum b T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
                   (((inr _error) : sum b T.(Result_state_T_signature._error)),
@@ -609,11 +570,11 @@ Module Result_state.
               | inl value => next value state
               end) in
         let get (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
+          : (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
             (sum T.(Result_state_T_signature.state)
               T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state)) :=
-          (Inner.(Make_Monad.Make_result._return)
+          ((Inner (_fargs := _fargs)).(Make_Monad.Make_result._return)
             (a :=
               sum T.(Result_state_T_signature.state) T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
             (((inl state) :
@@ -622,11 +583,11 @@ Module Result_state.
         let put
           (state : T.(Result_state_T_signature.state))
           (function_parameter : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
+          : (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
             (sum unit T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state)) :=
           let '_ := function_parameter in
-          (Inner.(Make_Monad.Make_result._return)
+          ((Inner (_fargs := _fargs)).(Make_Monad.Make_result._return)
             (a :=
               sum unit T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
             (((inl tt) : sum unit T.(Result_state_T_signature._error)), state)
@@ -634,10 +595,10 @@ Module Result_state.
         let fail {a : Set}
           (_error : T.(Result_state_T_signature._error))
           (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
+          : (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
             (sum a T.(Result_state_T_signature._error) *
               T.(Result_state_T_signature.state)) :=
-          (Inner.(Make_Monad.Make_result._return)
+          ((Inner (_fargs := _fargs)).(Make_Monad.Make_result._return)
             (a :=
               sum a T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
             (((inr _error) : sum a T.(Result_state_T_signature._error)), state)
@@ -649,168 +610,93 @@ Module Result_state.
           SIG.put := put;
           SIG.fail _ := fail
         |} : SIG (t := t))).
-
+    
     Definition Make_include `{_fargs : FArgs} :
-      Make.Make_result (_fargs := Make_include_fargs) :=
-      Make
-        (let t (a : Set) : Set :=
-          T.(Result_state_T_signature.state) ->
-          Inner_parameter.(SIG_MONAD.t)
-            (sum a T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state)) in
-        let _return {a : Set}
-          (value : a) (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
-            (sum a T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state)) :=
-          (Inner.(Make_Monad.Make_result._return)
-            (a :=
-              sum a T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
-            (((inl value) : sum a T.(Result_state_T_signature._error)), state)
-          in
-        let op_gtgteq {a b : Set}
-          (computation : t a) (next : a -> t b)
-          (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
-            (sum b T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state)) :=
-          let opened_module_2246 := Inner in
-          opened_module_2246.(Make_Monad.Make_result.op_letdollar)
-            (computation state)
-            (fun function_parameter =>
-              let '(result_value, state) := function_parameter in
-              match result_value with
-              | inr _error =>
-                (opened_module_2246.(Make_Monad.Make_result._return)
-                  (a :=
-                    sum b T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
-                  (((inr _error) : sum b T.(Result_state_T_signature._error)),
-                    state)
-              | inl value => next value state
-              end) in
-        let get (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
-            (sum T.(Result_state_T_signature.state)
-              T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state)) :=
-          (Inner.(Make_Monad.Make_result._return)
-            (a :=
-              sum T.(Result_state_T_signature.state) T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
-            (((inl state) :
-              sum T.(Result_state_T_signature.state)
-                T.(Result_state_T_signature._error)), state) in
-        let put
-          (state : T.(Result_state_T_signature.state))
-          (function_parameter : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
-            (sum unit T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state)) :=
-          let '_ := function_parameter in
-          (Inner.(Make_Monad.Make_result._return)
-            (a :=
-              sum unit T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
-            (((inl tt) : sum unit T.(Result_state_T_signature._error)), state)
-          in
-        let fail {a : Set}
-          (_error : T.(Result_state_T_signature._error))
-          (state : T.(Result_state_T_signature.state))
-          : Inner_parameter.(SIG_MONAD.t)
-            (sum a T.(Result_state_T_signature._error) *
-              T.(Result_state_T_signature.state)) :=
-          (Inner.(Make_Monad.Make_result._return)
-            (a :=
-              sum a T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state)))
-            (((inr _error) : sum a T.(Result_state_T_signature._error)), state)
-          in
-        ({|
-          SIG._return _ := _return;
-          SIG.op_gtgteq _ _ := op_gtgteq;
-          SIG.get := get;
-          SIG.put := put;
-          SIG.fail _ := fail
-        |} : SIG (t := t))).
-
+      Make.Make_result (_fargs := Make_include_fargs) := (Make.functor
+      (_fargs := (Make_include_fargs ))).
+    
     (** Inclusion of the module [Make_include] *)
     Definition get `{_fargs : FArgs} :
       T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum T.(Result_state_T_signature.state)
           T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.get).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.get).
+    
     Definition put `{_fargs : FArgs} :
       T.(Result_state_T_signature.state) ->
       T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum unit T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.put).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.put).
+    
     Definition update `{_fargs : FArgs} :
       (T.(Result_state_T_signature.state) -> T.(Result_state_T_signature.state))
       -> T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum unit T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.update).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.update).
+    
     Definition op_coloneq `{_fargs : FArgs} {a : Set} :
       Lens.t T.(Result_state_T_signature.state) a -> a ->
       T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum unit T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.op_coloneq).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.op_coloneq).
+    
     Definition op_exclamation `{_fargs : FArgs} {a : Set} :
       Lens.t T.(Result_state_T_signature.state) a ->
       T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum a T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.op_exclamation).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.op_exclamation).
+    
     Definition update_field `{_fargs : FArgs} {a : Set} :
       Lens.t T.(Result_state_T_signature.state) a -> (a -> a) ->
       T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum unit T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.update_field).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.update_field).
+    
     Definition fail `{_fargs : FArgs} {a : Set} :
       T.(Result_state_T_signature._error) ->
       T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum a T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.fail).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.fail).
+    
     Definition t `{_fargs : FArgs} (a : Set) :=
-      Make_include.(Make.Make_result.t) a.
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.t) a.
+    
     Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
-      Make_include.(Make.Make_result._return).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result._return).
+    
     Definition op_gtgteq `{_fargs : FArgs} {a b : Set} :
-      t a -> (a -> t b) -> t b := Make_include.(Make.Make_result.op_gtgteq).
-
+      t a -> (a -> t b) -> t b :=
+      (Make_include (_fargs := _fargs)).(Make.Make_result.op_gtgteq).
+    
     Definition op_letdollar `{_fargs : FArgs} {A B : Set} :
       (T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum A T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state))) ->
       (A -> T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum B T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state))) ->
       T.(Result_state_T_signature.state) ->
-      Inner_parameter.(SIG_MONAD.t)
+      (Inner_parameter (FArgs := _fargs)).(SIG_MONAD.t)
         (sum B T.(Result_state_T_signature._error) *
           T.(Result_state_T_signature.state)) :=
-      Make_include.(Make.Make_result.op_letdollar).
-
+      (Make_include (_fargs := _fargs)).(Make.Make_result.op_letdollar).
+    
     Module Trans_result.
       Record signature `{_fargs : FArgs} : Type := {
         Inner : Make_Monad.Make_result (_fargs := Inner_fargs);
@@ -867,26 +753,8 @@ Module Result_state.
             Inner_parameter.(SIG_MONAD.t)
               (sum a T.(Result_state_T_signature._error) *
                 T.(Result_state_T_signature.state));
-        _return :
-          forall {a : Set} ,
-            a -> T.(Result_state_T_signature.state) ->
-            Inner_parameter.(SIG_MONAD.t)
-              (sum a T.(Result_state_T_signature._error) *
-                T.(Result_state_T_signature.state));
-        op_gtgteq :
-          forall {a b : Set} ,
-            (T.(Result_state_T_signature.state) ->
-            Inner_parameter.(SIG_MONAD.t)
-              (sum a T.(Result_state_T_signature._error) *
-                T.(Result_state_T_signature.state))) ->
-            (a -> T.(Result_state_T_signature.state) ->
-            Inner_parameter.(SIG_MONAD.t)
-              (sum b T.(Result_state_T_signature._error) *
-                T.(Result_state_T_signature.state))) ->
-            T.(Result_state_T_signature.state) ->
-            Inner_parameter.(SIG_MONAD.t)
-              (sum b T.(Result_state_T_signature._error) *
-                T.(Result_state_T_signature.state));
+        _return : forall {a : Set} , a -> t a;
+        op_gtgteq : forall {a b : Set} , t a -> (a -> t b) -> t b;
         op_letdollar :
           forall {A B : Set} ,
             (T.(Result_state_T_signature.state) ->
@@ -906,7 +774,7 @@ Module Result_state.
     Definition Trans_result `{_fargs : FArgs} := @Trans_result.signature _ _ _ _
       _.
     Arguments Trans_result {_ _ _ _ _}.
-
+    
     (* Trans *)
     Definition functor `{_fargs : FArgs} :@Trans_result _ _ _ Inner_t _fargs :=
       ((@Trans_result.Build_signature _ _ _ Inner_t _fargs Inner get put update
@@ -917,72 +785,68 @@ Module Result_state.
   Definition Trans `{_fargs : FArgs} {Inner_t : Set -> Set}
     (Inner_parameter : SIG_MONAD (t := Inner_t)) :=
     @Trans.functor _ _ _ Inner_t (Trans.Build_FArgs Inner_parameter).
-
+  
   Definition Trans_include_fargs `{_fargs : FArgs} :=
     Trans.Build_FArgs
       ({|
         SIG_MONAD._return _ := Identity._return;
         SIG_MONAD.op_gtgteq _ _ := Identity.op_gtgteq
       |} : SIG_MONAD (t := Identity.t)).
-
+  
   Definition Trans_include `{_fargs : FArgs} :
-    Trans.Trans_result (_fargs := Trans_include_fargs) :=
-    Trans
-      ({|
-        SIG_MONAD._return _ := Identity._return;
-        SIG_MONAD.op_gtgteq _ _ := Identity.op_gtgteq
-      |} : SIG_MONAD (t := Identity.t)).
-
+    Trans.Trans_result (_fargs := Trans_include_fargs) := (Trans.functor
+    (_fargs := (Trans_include_fargs ))).
+  
   (** Inclusion of the module [Trans_include] *)
   Module Inner.
     Definition t `{_fargs : FArgs} (a : Set) :=
       Trans_include.(Trans.Trans_result.Inner).(Make_Monad.Make_result.t) a.
-
+    
     Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
       Trans_include.(Trans.Trans_result.Inner).(Make_Monad.Make_result._return).
-
+    
     Definition op_gtgteq `{_fargs : FArgs} {a b : Set} :
       t a -> (a -> t b) -> t b :=
       Trans_include.(Trans.Trans_result.Inner).(Make_Monad.Make_result.op_gtgteq).
-
+    
     Definition op_letdollar `{_fargs : FArgs} {A B : Set} :
       t A -> (A -> t B) -> t B :=
       Trans_include.(Trans.Trans_result.Inner).(Make_Monad.Make_result.op_letdollar).
   End Inner.
-
+  
   Definition Inner `{_fargs : FArgs} :=
-    Trans_include.(Trans.Trans_result.Inner).
-
+    (Trans_include (_fargs := _fargs)).(Trans.Trans_result.Inner).
+  
   Definition get `{_fargs : FArgs} :
     T.(Result_state_T_signature.state) ->
     Inner.t
       (sum T.(Result_state_T_signature.state)
         T.(Result_state_T_signature._error) * T.(Result_state_T_signature.state))
-    := Trans_include.(Trans.Trans_result.get).
-
+    := (Trans_include (_fargs := _fargs)).(Trans.Trans_result.get).
+  
   Definition put `{_fargs : FArgs} :
     T.(Result_state_T_signature.state) -> T.(Result_state_T_signature.state) ->
     Inner.t
       (sum unit T.(Result_state_T_signature._error) *
         T.(Result_state_T_signature.state)) :=
-    Trans_include.(Trans.Trans_result.put).
-
+    (Trans_include (_fargs := _fargs)).(Trans.Trans_result.put).
+  
   Definition fail `{_fargs : FArgs} {a : Set} :
     T.(Result_state_T_signature._error) -> T.(Result_state_T_signature.state) ->
     Inner.t
       (sum a T.(Result_state_T_signature._error) *
         T.(Result_state_T_signature.state)) :=
-    Trans_include.(Trans.Trans_result.fail).
-
+    (Trans_include (_fargs := _fargs)).(Trans.Trans_result.fail).
+  
   Definition t `{_fargs : FArgs} (a : Set) :=
-    Trans_include.(Trans.Trans_result.t) a.
-
+    (Trans_include (_fargs := _fargs)).(Trans.Trans_result.t) a.
+  
   Definition _return `{_fargs : FArgs} {a : Set} : a -> t a :=
-    Trans_include.(Trans.Trans_result._return).
-
+    (Trans_include (_fargs := _fargs)).(Trans.Trans_result._return).
+  
   Definition op_gtgteq `{_fargs : FArgs} {a b : Set} : t a -> (a -> t b) -> t b
-    := Trans_include.(Trans.Trans_result.op_gtgteq).
-
+    := (Trans_include (_fargs := _fargs)).(Trans.Trans_result.op_gtgteq).
+  
   Definition op_letdollar `{_fargs : FArgs} {A B : Set} :
     (T.(Result_state_T_signature.state) ->
     Inner.t
@@ -996,8 +860,8 @@ Module Result_state.
     Inner.t
       (sum B T.(Result_state_T_signature._error) *
         T.(Result_state_T_signature.state)) :=
-    Trans_include.(Trans.Trans_result.op_letdollar).
-
+    (Trans_include (_fargs := _fargs)).(Trans.Trans_result.op_letdollar).
+  
   Definition update `{_fargs : FArgs}
     (f_value :
       T.(Result_state_T_signature.state) -> T.(Result_state_T_signature.state))
@@ -1006,7 +870,7 @@ Module Result_state.
       (sum unit T.(Result_state_T_signature._error) *
         T.(Result_state_T_signature.state)) :=
     (((inl tt) : sum unit T.(Result_state_T_signature._error)), (f_value state)).
-
+  
   Definition op_exclamation `{_fargs : FArgs} {a : Set}
     (lens : Lens.t T.(Result_state_T_signature.state) a)
     (state : T.(Result_state_T_signature.state))
@@ -1015,7 +879,7 @@ Module Result_state.
         T.(Result_state_T_signature.state)) :=
     (((inl (lens.(Lens.t.get) state)) :
       sum a T.(Result_state_T_signature._error)), state).
-
+  
   Definition op_coloneq `{_fargs : FArgs} {a : Set}
     (lens : Lens.t T.(Result_state_T_signature.state) a) (value : a)
     (state : T.(Result_state_T_signature.state))
@@ -1024,7 +888,7 @@ Module Result_state.
         T.(Result_state_T_signature.state)) :=
     (((inl tt) : sum unit T.(Result_state_T_signature._error)),
       (lens.(Lens.t.set) value state)).
-
+  
   Definition update_field `{_fargs : FArgs} {a : Set}
     (lens : Lens.t T.(Result_state_T_signature.state) a) (f_value : a -> a)
     (state : T.(Result_state_T_signature.state))
@@ -1033,19 +897,20 @@ Module Result_state.
         T.(Result_state_T_signature.state)) :=
     (((inl tt) : sum unit T.(Result_state_T_signature._error)),
       (lens.(Lens.t.set) (f_value (lens.(Lens.t.get) state)) state)).
-
+  
   Module Result_state_result.
     Record signature `{_fargs : FArgs} : Type := {
       State : State.State_result (_fargs := State_fargs);
       Result : Result.Result_result (_fargs := Result_fargs);
-
-
-
+      
+      
+      
       Inner_t := fun (a : Set) => Identity.t a;
       Inner_return : forall {a : Set} , a -> Inner_t a;
       op_Inner_gtgteq :
         forall {a b : Set} , Inner_t a -> (a -> Inner_t b) -> Inner_t b;
-      op_Inner_letdollar : forall {A B : Set} , A -> (A -> B) -> B;
+      op_Inner_letdollar :
+        forall {A B : Set} , Identity.t A -> (A -> Identity.t B) -> Identity.t B;
       get :
         T.(Result_state_T_signature.state) ->
         Inner_t
@@ -1103,7 +968,7 @@ Module Result_state.
   Definition Result_state_result `{_fargs : FArgs} :=
     @Result_state_result.signature _ _ _.
   Arguments Result_state_result {_ _ _}.
-
+  
   (* Result_state *)
   Definition functor `{_fargs : FArgs}
     :@Result_state_result T_state T__error _fargs :=

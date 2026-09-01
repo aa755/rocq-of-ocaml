@@ -4,6 +4,7 @@
 Basics.v
 Partial.v
 RocqOfOCaml.v
+ModuleOverrideModel.v
 Libraries.v
 List.v
 Lens.v
@@ -33,3 +34,7 @@ OCamlString.v
 OCamlYojson.v
 Settings.v
 Tags.v
+Termination/Common.v
+Termination/IncreasingIndex.v
+Termination/BinaryExponentiation.v
+Unreachable/ArrayBounds.v

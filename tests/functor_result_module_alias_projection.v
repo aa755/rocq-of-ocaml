@@ -24,11 +24,11 @@ Module State.
   Class FArgs := {
     Param : PARAM;
   }.
-
+  
   Module Inner.
     Definition _return `{_fargs : FArgs} : int := Param.(PARAM.value).
   End Inner.
-
+  
   Module State_result.
     Record signature `{_fargs : FArgs} : Type := {
       Inner_return : int;
@@ -36,7 +36,7 @@ Module State.
   End State_result.
   Definition State_result `{_fargs : FArgs} := @State_result.signature _.
   Arguments State_result {_}.
-
+  
   (* State *)
   Definition functor `{_fargs : FArgs} :@State_result _fargs :=
     ((@State_result.Build_signature _fargs Inner._return) : @State_result _fargs).
@@ -47,12 +47,12 @@ Module Inner.
   Class FArgs := {
     Param : PARAM;
   }.
-
+  
   Module Address := GlobalAddress.
-
+  
   Module StorageKey.
     Definition t `{_fargs : FArgs} : Set := int.
-
+    
     Definition _Set `{_fargs : FArgs} :=
       RocqOfOCaml.OCamlSet.Make
         ({|
@@ -60,19 +60,19 @@ Module Inner.
             RocqOfOCaml.OCamlInt.compare
         |} : RocqOfOCaml.OCamlMap.OrderedType (t := RocqOfOCaml.OCamlInt.t)).
   End StorageKey.
-
+  
   Definition accessed_keys `{_fargs : FArgs}
     : StorageKey._Set.(RocqOfOCaml.OCamlSet.S.t) :=
     StorageKey._Set.(RocqOfOCaml.OCamlSet.S.empty).
-
+  
   Definition M_fargs `{_fargs : FArgs} := State.Build_FArgs Param.
-
+  
   Definition M `{_fargs : FArgs} : State.State_result (_fargs := M_fargs) :=
-    State Param.
-
+    (State.functor (_fargs := (M_fargs ))).
+  
   Module Nested.
     Definition value `{_fargs : FArgs} : int := Param.(PARAM.value).
-
+    
     (* Nested *)
     Definition module `{_fargs : FArgs} :PARAM :=
       {|
@@ -80,24 +80,34 @@ Module Inner.
       |}.
   End Nested.
   Definition Nested `{_fargs : FArgs} := Nested.module.
-
+  
   Module Inner_result.
     Record signature `{_fargs : FArgs} {StorageKey_Set_t : Set} : Type := {
       Address_create2_params := GlobalAddress.create2_params;
+      Address_create2_params__rocq_record_make : int -> Address_create2_params;
+      Address_create2_params__rocq_record_get_salt :
+        Address_create2_params -> int;
       StorageKey_t := int;
       StorageKey_Set :
         RocqOfOCaml.OCamlSet.S (elt := int) (t := StorageKey_Set_t);
       accessed_keys : StorageKey_Set_t;
       M : State.State_result (_fargs := M_fargs);
       Nested : PARAM;
+      StorageKey_Set_t := StorageKey_Set_t;
     }.
   End Inner_result.
   Definition Inner_result `{_fargs : FArgs} := @Inner_result.signature _.
   Arguments Inner_result {_ _}.
-
+  
   (* Inner *)
   Definition functor `{_fargs : FArgs} :Inner_result (StorageKey_Set_t := _) :=
     {|
+      Inner_result.Address_create2_params__rocq_record_make :=
+        fun _rocq_record_field_salt =>
+          {| GlobalAddress.create2_params.salt := _rocq_record_field_salt; |};
+      Inner_result.Address_create2_params__rocq_record_get_salt :=
+        fun _rocq_record_value =>
+          _rocq_record_value.(GlobalAddress.create2_params.salt);
       Inner_result.StorageKey_Set := StorageKey._Set;
       Inner_result.accessed_keys := accessed_keys;
       Inner_result.M := M;
@@ -110,22 +120,23 @@ Module Outer.
   Class FArgs := {
     Param : PARAM;
   }.
-
+  
   Definition Host_fargs `{_fargs : FArgs} := Inner.Build_FArgs Param.
-
+  
   Definition Host `{_fargs : FArgs} : Inner.Inner_result (_fargs := Host_fargs)
-    := Inner Param.
-
+    := (Inner.functor (_fargs := (Host_fargs ))).
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} {Host_StorageKey_Set_t : Set} : Type := {
       Host :
         Inner.Inner_result (_fargs := Host_fargs)
           (StorageKey_Set_t := Host_StorageKey_Set_t);
+      Host_StorageKey_Set_t := Host_StorageKey_Set_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs}
     :Outer_result (Host_StorageKey_Set_t := _) :=
@@ -139,190 +150,191 @@ Module Reexport.
   Class FArgs := {
     Param : PARAM;
   }.
-
+  
   Definition Instantiation_fargs `{_fargs : FArgs} := Outer.Build_FArgs Param.
-
+  
   Definition Instantiation `{_fargs : FArgs} :
-    Outer.Outer_result (_fargs := Instantiation_fargs) := Outer Param.
-
+    Outer.Outer_result (_fargs := Instantiation_fargs) := (Outer.functor
+    (_fargs := (Instantiation_fargs ))).
+  
   Module Host.
     Module Address.
       Definition create2_params := GlobalAddress.create2_params.
     End Address.
-
+    
     Module StorageKey.
       Definition t := int.
-
+      
       Module _Set.
         Definition elt `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.elt).
-
+        
         Definition t `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.t).
-
+        
         Definition empty `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.empty).
-
+        
         Definition add `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.add).
-
+        
         Definition singleton `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.singleton).
-
+        
         Definition remove `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.remove).
-
+        
         Definition union `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.union).
-
+        
         Definition inter `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.inter).
-
+        
         Definition disjoint `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.disjoint).
-
+        
         Definition diff `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.diff).
-
+        
         Definition cardinal `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.cardinal).
-
+        
         Definition elements `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.elements).
-
+        
         Definition min_elt `{_fargs : FArgs}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.min_elt).
-
+        
         Definition min_elt_opt `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.min_elt_opt).
-
+        
         Definition max_elt `{_fargs : FArgs}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.max_elt).
-
+        
         Definition max_elt_opt `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.max_elt_opt).
-
+        
         Definition choose `{_fargs : FArgs}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.choose).
-
+        
         Definition choose_opt `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.choose_opt).
-
+        
         Definition find `{_fargs : FArgs}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find).
-
+        
         Definition find_opt `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_opt).
-
+        
         Definition find_first `{_fargs : FArgs}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_first).
-
+        
         Definition find_first_opt `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_first_opt).
-
+        
         Definition find_last `{_fargs : FArgs}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_last).
-
+        
         Definition find_last_opt `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_last_opt).
-
+        
         Definition iter `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.iter).
-
+        
         Definition fold `{_fargs : FArgs} {acc : Set} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.fold)
             (acc := acc).
-
+        
         Definition map `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.map).
-
+        
         Definition filter `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.filter).
-
+        
         Definition filter_map `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.filter_map).
-
+        
         Definition partition `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.partition).
-
+        
         Definition split `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.split).
-
+        
         Definition is_empty `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.is_empty).
-
+        
         Definition mem `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.mem).
-
+        
         Definition equal `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.equal).
-
+        
         Definition compare `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.compare).
-
+        
         Definition subset `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.subset).
-
+        
         Definition for_all `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.for_all).
-
+        
         Definition _exists `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S._exists).
-
+        
         Definition to_list `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_list).
-
+        
         Definition of_list `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.of_list).
-
+        
         Definition to_seq_from `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_seq_from).
-
+        
         Definition to_seq `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_seq).
-
+        
         Definition to_rev_seq `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_rev_seq).
-
+        
         Definition add_seq `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.add_seq).
-
+        
         Definition of_seq `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.of_seq).
       End _Set.
-
+      
       Definition _Set `{_fargs : FArgs} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).
     End StorageKey.
-
-    Definition accessed_keys `{_fargs : FArgs} :=
+    
+    Definition accessed_keys `{_fargs : FArgs} : StorageKey._Set.t :=
       Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.accessed_keys).
-
+    
     Module M.
       Module Inner.
         Definition _return `{_fargs : FArgs} :=
           Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.M).(State.State_result.Inner_return).
       End Inner.
     End M.
-
+    
     Definition M `{_fargs : FArgs} :=
       Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.M).
-
+    
     Module Nested.
       Definition value `{_fargs : FArgs} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.Nested).(PARAM.value).
     End Nested.
-
+    
     Definition Nested `{_fargs : FArgs} :=
       Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.Nested).
   End Host.
-
+  
   Module Reexport_result.
     Record signature `{_fargs : FArgs}
       {Instantiation_Host_StorageKey_Set_t : Set} : Type := {
@@ -330,6 +342,10 @@ Module Reexport.
         Outer.Outer_result (_fargs := Instantiation_fargs)
           (Host_StorageKey_Set_t := Instantiation_Host_StorageKey_Set_t);
       Host_Address_create2_params := GlobalAddress.create2_params;
+      Host_Address_create2_params__rocq_record_make :
+        int -> Host_Address_create2_params;
+      Host_Address_create2_params__rocq_record_get_salt :
+        Host_Address_create2_params -> int;
       Host_StorageKey_t := int;
       Host_StorageKey_Set_t := Instantiation_Host_StorageKey_Set_t;
       Host_StorageKey_Set :
@@ -338,16 +354,24 @@ Module Reexport.
       Host_accessed_keys : Instantiation_Host_StorageKey_Set_t;
       Host_M_Inner_return : int;
       Host_Nested : PARAM;
+      Instantiation_Host_StorageKey_Set_t :=
+        Instantiation_Host_StorageKey_Set_t;
     }.
   End Reexport_result.
   Definition Reexport_result `{_fargs : FArgs} := @Reexport_result.signature _.
   Arguments Reexport_result {_ _}.
-
+  
   (* Reexport *)
   Definition functor `{_fargs : FArgs}
     :Reexport_result (Instantiation_Host_StorageKey_Set_t := _) :=
     {|
       Reexport_result.Instantiation := Instantiation;
+      Reexport_result.Host_Address_create2_params__rocq_record_make :=
+        fun _rocq_record_field_salt =>
+          {| GlobalAddress.create2_params.salt := _rocq_record_field_salt; |};
+      Reexport_result.Host_Address_create2_params__rocq_record_get_salt :=
+        fun _rocq_record_value =>
+          _rocq_record_value.(GlobalAddress.create2_params.salt);
       Reexport_result.Host_StorageKey_Set := Host.StorageKey._Set;
       Reexport_result.Host_accessed_keys := Host.accessed_keys;
       Reexport_result.Host_M_Inner_return := Host.M.Inner._return;
@@ -359,7 +383,7 @@ Definition Reexport (Param : PARAM) :=
 
 Module Param.
   Definition value : int := 42.
-
+  
   (* Param *)
   Definition module :PARAM :=
     {|
@@ -371,7 +395,7 @@ Definition Param := Param.module.
 Definition Instantiation_fargs := Outer.Build_FArgs Param.
 
 Definition Instantiation : Outer.Outer_result (_fargs := Instantiation_fargs) :=
-  Outer Param.
+  (Outer.functor (_fargs := (Instantiation_fargs ))).
 
 Definition direct_result : int :=
   Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.Nested).(PARAM.value).
@@ -380,181 +404,180 @@ Module Host.
   Module Address.
     Definition create2_params := GlobalAddress.create2_params.
   End Address.
-
+  
   Module StorageKey.
     Definition t := int.
-
+    
     Module _Set.
       Definition elt :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.elt).
-
+      
       Definition t :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.t).
-
+      
       Definition empty :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.empty).
-
+      
       Definition add :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.add).
-
+      
       Definition singleton :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.singleton).
-
+      
       Definition remove :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.remove).
-
+      
       Definition union :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.union).
-
+      
       Definition inter :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.inter).
-
+      
       Definition disjoint :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.disjoint).
-
+      
       Definition diff :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.diff).
-
+      
       Definition cardinal :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.cardinal).
-
+      
       Definition elements :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.elements).
-
+      
       Definition min_elt
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.min_elt).
-
+      
       Definition min_elt_opt :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.min_elt_opt).
-
+      
       Definition max_elt
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.max_elt).
-
+      
       Definition max_elt_opt :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.max_elt_opt).
-
+      
       Definition choose
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.choose).
-
+      
       Definition choose_opt :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.choose_opt).
-
+      
       Definition find `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt}
         :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find).
-
+      
       Definition find_opt :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_opt).
-
+      
       Definition find_first
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_first).
-
+      
       Definition find_first_opt :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_first_opt).
-
+      
       Definition find_last
         `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_last).
-
+      
       Definition find_last_opt :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.find_last_opt).
-
+      
       Definition iter :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.iter).
-
+      
       Definition fold {acc : Set} :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.fold)
           (acc := acc).
-
+      
       Definition map :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.map).
-
+      
       Definition filter :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.filter).
-
+      
       Definition filter_map :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.filter_map).
-
+      
       Definition partition :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.partition).
-
+      
       Definition split :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.split).
-
+      
       Definition is_empty :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.is_empty).
-
+      
       Definition mem :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.mem).
-
+      
       Definition equal :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.equal).
-
+      
       Definition compare :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.compare).
-
+      
       Definition subset :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.subset).
-
+      
       Definition for_all :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.for_all).
-
+      
       Definition _exists :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S._exists).
-
+      
       Definition to_list :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_list).
-
+      
       Definition of_list :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.of_list).
-
+      
       Definition to_seq_from :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_seq_from).
-
+      
       Definition to_seq :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_seq).
-
+      
       Definition to_rev_seq :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.to_rev_seq).
-
+      
       Definition add_seq :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.add_seq).
-
+      
       Definition of_seq :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).(RocqOfOCaml.OCamlSet.S.of_seq).
     End _Set.
-
+    
     Definition _Set :=
       Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.StorageKey_Set).
   End StorageKey.
-
+  
   Definition accessed_keys :=
     Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.accessed_keys).
-
+  
   Module M.
     Module Inner.
       Definition _return :=
         Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.M).(State.State_result.Inner_return).
     End Inner.
   End M.
-
+  
   Definition M :=
     Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.M).
-
+  
   Module Nested.
     Definition value :=
       Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.Nested).(PARAM.value).
   End Nested.
-
+  
   Definition Nested :=
     Instantiation.(Outer.Outer_result.Host).(Inner.Inner_result.Nested).
 End Host.
 
-Definition result_value : int := Host.Nested.(PARAM.value).
+Definition result_value : int := Host.Nested.value.
 
-Definition accessed_keys : Host.StorageKey._Set.(RocqOfOCaml.OCamlSet.S.t) :=
-  Host.accessed_keys.
+Definition accessed_keys : Host.StorageKey._Set.t := Host.accessed_keys.

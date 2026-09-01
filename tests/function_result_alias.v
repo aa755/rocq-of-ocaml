@@ -15,37 +15,31 @@ Module State.
     T : State_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition m `{_fargs : FArgs} (a : Set) : Set :=
     T.(State_T_signature.t) -> a * T.(State_T_signature.t).
-
+  
   Definition _return `{_fargs : FArgs} {a : Set}
     (value : a) (state : T.(State_T_signature.t))
     : a * T.(State_T_signature.t) := (value, state).
-
+  
   Definition map `{_fargs : FArgs} {a b : Set}
     (f_value : a -> b) (computation : m a) (state : T.(State_T_signature.t))
     : b * T.(State_T_signature.t) :=
     let '(value, state) := computation state in
     ((f_value value), state).
-
+  
   Module State_result.
     Record signature `{_fargs : FArgs} : Type := {
       m :=
         fun (a : Set) => T.(State_T_signature.t) -> a * T.(State_T_signature.t);
-      _return :
-        forall {a : Set} ,
-          a -> T.(State_T_signature.t) -> a * T.(State_T_signature.t);
-      map :
-        forall {a b : Set} ,
-          (a -> b) ->
-          (T.(State_T_signature.t) -> a * T.(State_T_signature.t)) ->
-          T.(State_T_signature.t) -> b * T.(State_T_signature.t);
+      _return : forall {a : Set} , a -> m a;
+      map : forall {a b : Set} , (a -> b) -> m a -> m b;
     }.
   End State_result.
   Definition State_result `{_fargs : FArgs} := @State_result.signature _ _.
   Arguments State_result {_ _}.
-
+  
   (* State *)
   Definition functor `{_fargs : FArgs} :@State_result T_t _fargs :=
     ((@State_result.Build_signature T_t _fargs (fun _ => _return)

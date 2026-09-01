@@ -18,3 +18,6 @@ end
 
 let identity (values : 'a Local.t) = values
 let bounded count start = Seq.take count (Seq.ints start)
+
+let bounded_iterate count step start =
+  Seq.take count (Seq.iterate step start)

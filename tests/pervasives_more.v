@@ -19,9 +19,9 @@ Definition b_neq2 : bool :=
 Definition generic_equal {A : Set} (x_value : A) (y_value : A) : bool :=
   RocqOfOCaml.Basics.Stdlib.polymorphic_equal x_value y_value.
 
-Definition b_lt : bool := RocqOfOCaml.Basics.Stdlib.lt 1 2.
+Definition b_lt : bool := Z.ltb 1 2.
 
-Definition b_gt : bool := RocqOfOCaml.Basics.Stdlib.gt 1 2.
+Definition b_gt : bool := Z.gtb 1 2.
 
 Definition b_le : bool := RocqOfOCaml.Basics.Stdlib.le true false.
 

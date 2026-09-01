@@ -25,20 +25,22 @@ Module Outer.
     X : Input (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition outer_value `{_fargs : FArgs} : X.(Input.t) := X.(Input.value).
-
+  
   Module F.
     Class FArgs `{_fargs : FArgs} {Y_t : Set} := {
       Y : Input (t := Y_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-
-    Definition t `{_fargs : FArgs} : Set := X.(Input.t) * Y.(Input.t).
-
-    Definition pair_value `{_fargs : FArgs} : X.(Input.t) * Y.(Input.t) :=
-      (X.(Input.value), Y.(Input.value)).
-
+    
+    Definition t `{_fargs : FArgs} : Set :=
+      X.(Input.t) * (Y (FArgs := _fargs)).(Input.t).
+    
+    Definition pair_value `{_fargs : FArgs}
+      : X.(Input.t) * (Y (FArgs := _fargs)).(Input.t) :=
+      (X.(Input.value), (Y (FArgs := _fargs)).(Input.value)).
+    
     (* F *)
     Definition functor `{_fargs : FArgs}
       :Output (t := X.(Input.t) * Y.(Input.t)) :=
@@ -48,16 +50,16 @@ Module Outer.
   End F.
   Definition F `{_fargs : FArgs} {Y_t : Set} (Y : Input (t := Y_t)) :=
     @F.functor _ _ Y_t (F.Build_FArgs Y).
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} : Type := {
       outer_value : X.(Input.t);
-
+    
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result X_t _fargs :=
     ((@Outer_result.Build_signature X_t _fargs outer_value) :

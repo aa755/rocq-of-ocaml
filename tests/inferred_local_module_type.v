@@ -16,7 +16,7 @@ Module Outer.
     X : Input (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Module Local.
     Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
       t := t;
@@ -25,36 +25,35 @@ Module Outer.
   End Local.
   Definition Local `{_fargs : FArgs} := @Local.signature _ _.
   Arguments Local {_ _ _}.
-
+  
   Module Make.
     Class FArgs `{_fargs : FArgs} {M_t : Set -> Set} := {
       M : Local (t := M_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-
+    
     (** Inclusion of the module [M] *)
     Definition t `{_fargs : FArgs} (a : Set) := M.(Local.t) a.
-
+    
     Definition inject `{_fargs : FArgs} {a : Set} : X.(Input.t) -> a -> t a :=
       M.(Local.inject).
-
+    
     (* Make *)
-    Definition functor `{_fargs : FArgs}
-      :Local (t := fun (a : Set) => M.(Local.t) a) :=
+    Definition functor `{_fargs : FArgs} :Local (t := fun (a : Set) => t a) :=
       {|
         Local.inject _ := inject
       |}.
   End Make.
   Definition Make `{_fargs : FArgs} {M_t : Set -> Set} (M : Local (t := M_t)) :=
     @Make.functor _ _ M_t (Make.Build_FArgs M).
-
+  
   Module Outer_result.
     Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result X_t _fargs :=
     ((@Outer_result.Build_signature X_t _fargs) : @Outer_result X_t _fargs).
@@ -76,10 +75,10 @@ Module Inline.
     T : Inline_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition result_value `{_fargs : FArgs} : T.(Inline_T_signature.t) :=
     T.(Inline_T_signature.other).
-
+  
   Module Inline_result.
     Record signature `{_fargs : FArgs} : Type := {
       result_value : T.(Inline_T_signature.t);
@@ -87,7 +86,7 @@ Module Inline.
   End Inline_result.
   Definition Inline_result `{_fargs : FArgs} := @Inline_result.signature _ _.
   Arguments Inline_result {_ _}.
-
+  
   (* Inline *)
   Definition functor `{_fargs : FArgs} :@Inline_result T_t _fargs :=
     ((@Inline_result.Build_signature T_t _fargs result_value) :

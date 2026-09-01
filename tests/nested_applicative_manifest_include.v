@@ -8,16 +8,16 @@ Module Base.
       Value : RocqOfOCaml.OCamlSet.OrderedType (t := Value_t);
     }.
     Arguments Build_FArgs {_}.
-
+    
     Inductive t `{_fargs : FArgs} (a : Set) : Set :=
     | Wrap : Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> a -> t a.
-
+    
     Arguments Wrap {_ _ _}.
-
+    
     Definition make `{_fargs : FArgs} {A : Set}
       (value : Value.(RocqOfOCaml.OCamlMap.OrderedType.t)) (payload : A)
       : t A := Wrap value payload.
-
+    
     Module Inner_result.
       Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
         t := t;
@@ -28,7 +28,7 @@ Module Base.
     End Inner_result.
     Definition Inner_result `{_fargs : FArgs} := @Inner_result.signature _ _.
     Arguments Inner_result {_ _ _}.
-
+    
     (* Inner *)
     Definition functor `{_fargs : FArgs} :Inner_result (t := _) :=
       {|
@@ -38,26 +38,27 @@ Module Base.
   Definition Inner {Value_t : Set}
     (Value : RocqOfOCaml.OCamlSet.OrderedType (t := Value_t)) :=
     @Inner.functor Value_t (Inner.Build_FArgs Value).
-
+  
   Module Wrapped.
     Class FArgs {Value_t : Set} := {
       Value : RocqOfOCaml.OCamlSet.OrderedType (t := Value_t);
     }.
     Arguments Build_FArgs {_}.
-
+    
     Definition Inner_include_fargs `{_fargs : FArgs} := Inner.Build_FArgs Value.
-
+    
     Definition Inner_include `{_fargs : FArgs} :
-      Inner.Inner_result (_fargs := Inner_include_fargs) := Inner Value.
-
+      Inner.Inner_result (_fargs := Inner_include_fargs) := (Inner.functor
+      (_fargs := (Inner_include_fargs ))).
+    
     (** Inclusion of the module [Inner_include] *)
     Definition t `{_fargs : FArgs} (a : Set) :=
-      Inner_include.(Inner.Inner_result.t) a.
-
+      (Inner_include (_fargs := _fargs)).(Inner.Inner_result.t) a.
+    
     Definition make `{_fargs : FArgs} {A : Set} :
       Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> t A :=
-      Inner_include.(Inner.Inner_result.make).
-
+      (Inner_include (_fargs := _fargs)).(Inner.Inner_result.make).
+    
     Module Wrapped_result.
       Record signature `{_fargs : FArgs} {t : Set -> Set} : Type := {
         t := t;
@@ -69,7 +70,7 @@ Module Base.
     Definition Wrapped_result `{_fargs : FArgs} := @Wrapped_result.signature _
       _.
     Arguments Wrapped_result {_ _ _}.
-
+    
     (* Wrapped *)
     Definition functor `{_fargs : FArgs} :Wrapped_result (t := _) :=
       {|
@@ -86,23 +87,23 @@ Module Outer.
     Value : RocqOfOCaml.OCamlSet.OrderedType (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Module Nested.
     Definition Base_Wrapped_include `{_fargs : FArgs} := Base.Wrapped Value.
-
+    
     (** Inclusion of the module [Base_Wrapped_include] *)
     Definition t `{_fargs : FArgs} (a : Set) :=
       Base_Wrapped_include.(Base.Wrapped.Wrapped_result.t) a.
-
+    
     Definition make `{_fargs : FArgs} {A : Set} :
       Value.(RocqOfOCaml.OCamlMap.OrderedType.t) -> A -> t A :=
       Base_Wrapped_include.(Base.Wrapped.Wrapped_result.make).
-
+    
     Definition duplicate `{_fargs : FArgs} {A : Set}
       (value : Value.(RocqOfOCaml.OCamlMap.OrderedType.t)) (payload : A)
       : t A * t A := ((make value payload), (make value payload)).
   End Nested.
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} {Nested_t : Set -> Set} : Type := {
       Nested_t := Nested_t;
@@ -117,7 +118,7 @@ Module Outer.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (Nested_t := _) :=
     {|

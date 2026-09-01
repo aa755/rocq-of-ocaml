@@ -28,36 +28,36 @@ Module Make_vm.
     Params : PARAMS;
     Host : HOST;
   }.
-
+  
   Definition address `{_fargs : FArgs} : Set := int.
-
+  
   Definition invalid_address `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable address}
     (function_parameter : unit) : address :=
     let '_ := function_parameter in
     let '_ := false in
     (@RocqOfOCaml.Basics.unreachable address _).
-
+  
   Definition execute `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable address}
     (function_parameter : unit) : address :=
     let '_ := function_parameter in
-    invalid_address tt.
-
+    (invalid_address (_rocq_assumption_0 := _rocq_assumption_0)) tt.
+  
   Module Make_vm_result.
     Record signature `{_fargs : FArgs} : Type := {
       address := int;
       invalid_address :
         forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int},
-          unit -> int;
+          unit -> address;
       execute :
         forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int},
-          unit -> int;
+          unit -> address;
     }.
   End Make_vm_result.
   Definition Make_vm_result `{_fargs : FArgs} := @Make_vm_result.signature _.
   Arguments Make_vm_result {_}.
-
+  
   (* Make_vm *)
   Definition functor `{_fargs : FArgs} :@Make_vm_result _fargs :=
     ((@Make_vm_result.Build_signature _fargs (fun _ => invalid_address)
@@ -70,10 +70,10 @@ Module Instantiate.
   Class FArgs := {
     Vm_parameter : forall (Host : HOST), VM;
   }.
-
+  
   Module Host.
     Definition initial `{_fargs : FArgs} : unit := tt.
-
+    
     (* Host *)
     Definition module `{_fargs : FArgs} :HOST :=
       {|
@@ -81,9 +81,9 @@ Module Instantiate.
       |}.
   End Host.
   Definition Host `{_fargs : FArgs} := Host.module.
-
+  
   Definition Vm `{_fargs : FArgs} := Vm_parameter Host.
-
+  
   Module Instantiate_result.
     Record signature `{_fargs : FArgs} : Type := {
       Host : HOST;
@@ -93,7 +93,7 @@ Module Instantiate.
   Definition Instantiate_result `{_fargs : FArgs} :=
     @Instantiate_result.signature _.
   Arguments Instantiate_result {_}.
-
+  
   (* Instantiate *)
   Definition functor `{_fargs : FArgs} :@Instantiate_result _fargs :=
     ((@Instantiate_result.Build_signature _fargs Host Vm) :
@@ -106,7 +106,7 @@ Module Apply.
   Class FArgs := {
     Params : PARAMS;
   }.
-
+  
   Definition Result_fargs `{_fargs : FArgs}
     `{_rocq_module_assumption_0 :
       RocqOfOCaml.Basics.Unreachable
@@ -120,22 +120,19 @@ Module Apply.
         {|
           VM.execute := module_coercion.(Make_vm.Make_vm_result.execute)
         |}).
-
+  
   Definition Result `{_fargs : FArgs}
     `{_rocq_module_assumption_0 :
       RocqOfOCaml.Basics.Unreachable
         (forall (Host : HOST),
         (Make_vm.address (_fargs := Make_vm.Build_FArgs Params Host)))} :
-    Instantiate.Instantiate_result (_fargs := Result_fargs) :=
-    Instantiate
-      (fun (Host : HOST) =>
-        let _rocq_local__rocq_module_assumption_0 :=
-          specialize_unreachable _rocq_module_assumption_0 Host in
-        let module_coercion := Make_vm Params Host in
-        {|
-          VM.execute := module_coercion.(Make_vm.Make_vm_result.execute)
-        |}).
-
+    Instantiate.Instantiate_result
+      (_fargs :=
+        (Result_fargs (_rocq_module_assumption_0 := _rocq_module_assumption_0)))
+    := (Instantiate.functor
+    (_fargs :=
+      (Result_fargs (_rocq_module_assumption_0 := _rocq_module_assumption_0)))).
+  
   Module Apply_result.
     Record signature `{_fargs : FArgs} : Type := {
       Result :
@@ -144,12 +141,14 @@ Module Apply.
             RocqOfOCaml.Basics.Unreachable
               (forall (Host : HOST),
               (Make_vm.address (_fargs := Make_vm.Build_FArgs Params Host)))},
-          Instantiate.Instantiate_result (_fargs := Result_fargs);
+          Instantiate.Instantiate_result
+            (_fargs :=
+              (Result_fargs (_rocq_module_assumption_0 := _rocq_assumption_0)));
     }.
   End Apply_result.
   Definition Apply_result `{_fargs : FArgs} := @Apply_result.signature _.
   Arguments Apply_result {_}.
-
+  
   (* Apply *)
   Definition functor `{_fargs : FArgs} :@Apply_result _fargs :=
     ((@Apply_result.Build_signature _fargs (fun _ => Result)) :

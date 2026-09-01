@@ -22,9 +22,9 @@ Arguments Binary {_}.
 
 Module Impl.
   Definition t (a : Set) : Set := a.
-
+  
   Definition _return {A : Set} (value : A) : A := value.
-
+  
   (* Impl *)
   Definition module :Unary (t := fun (a : Set) => a) :=
     {|

@@ -13,19 +13,19 @@ Module Fixed.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition t `{_fargs : FArgs} : Set := int.
-
+  
   Definition missing `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
     let '_ := false in
     (@RocqOfOCaml.Basics.unreachable int _).
-
+  
   Module Map.
     Definition t `{_fargs : FArgs} : Set := list int.
-
+    
     Definition empty `{_fargs : FArgs} : t := nil.
-
+    
     Module Map_signature.
       Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
@@ -34,7 +34,7 @@ Module Fixed.
     End Map_signature.
     Definition Map_signature `{_fargs : FArgs} := @Map_signature.signature _.
     Arguments Map_signature {_ _}.
-
+    
     (* Map *)
     Definition module `{_fargs : FArgs} :Map_signature (t := _) :=
       {|
@@ -42,22 +42,23 @@ Module Fixed.
       |}.
   End Map.
   Definition Map `{_fargs : FArgs} := Map.module.
-
+  
   Module Fixed_result.
     Record signature `{_fargs : FArgs} {Map_t : Set} : Type := {
       t := int;
       missing :
         forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}, int;
       Map : Fixed.Map.Map_signature (t := Map_t);
+      Map_t := Map_t;
     }.
   End Fixed_result.
   Definition Fixed_result `{_fargs : FArgs} := @Fixed_result.signature _.
   Arguments Fixed_result {_ _}.
-
+  
   (* Fixed *)
   Definition functor `{_fargs : FArgs} :Fixed_result (Map_t := _) :=
     {|
-      Fixed_result.missing _ := missing;
+      Fixed_result.missing := @missing _;
       Fixed_result.Map := Map
     |}.
 End Fixed.
@@ -66,7 +67,7 @@ Definition Fixed (Argument : ARGUMENT) :=
 
 Module DefaultArgument.
   Definition token : unit := tt.
-
+  
   (* DefaultArgument *)
   Definition module :ARGUMENT :=
     {|
@@ -89,7 +90,7 @@ Definition unwrap_int {A : Set}
 Module Local_failure.
   Inductive t : Set :=
   | Token : int -> t.
-
+  
   Definition unwrap {A : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}
     (function_parameter : option A) : A :=
@@ -128,7 +129,7 @@ Definition shadowed_unwrap {A : Set}
 Module Shadowing.
   Definition shadowed_unwrap {A : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} : option A -> A :=
-    shadowed_unwrap.
+    (shadowed_unwrap (_rocq_assumption_0 := _rocq_assumption_0)).
 End Shadowing.
 
 Definition find {A : Set}
@@ -152,22 +153,23 @@ End Recursive.
 Definition Applied_fargs := Fixed.Build_FArgs DefaultArgument.
 
 Definition Applied : Fixed.Fixed_result (_fargs := Applied_fargs) :=
-  Fixed DefaultArgument.
+  (Fixed.functor (_fargs := (Applied_fargs ))).
 
 Module Aliased.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition Direct_fargs `{_fargs : FArgs} := Fixed.Build_FArgs Argument.
-
+  
   Definition Direct `{_fargs : FArgs} :
-    Fixed.Fixed_result (_fargs := Direct_fargs) := Fixed Argument.
-
+    Fixed.Fixed_result (_fargs := Direct_fargs) := (Fixed.functor
+    (_fargs := (Direct_fargs ))).
+  
   Definition Alias_fargs `{_fargs : FArgs} := Direct_fargs.
-
-  Definition Alias `{_fargs : FArgs} := Direct.
-
+  
+  Definition Alias `{_fargs : FArgs} := (Direct (_fargs := _fargs)).
+  
   Module Aliased_result.
     Record signature `{_fargs : FArgs} {Direct_Map_t : Set} : Type := {
       Direct :
@@ -175,11 +177,12 @@ Module Aliased.
       Alias_Map_t := Direct_Map_t;
       Alias :
         Fixed.Fixed_result (_fargs := Alias_fargs) (Map_t := Direct_Map_t);
+      Direct_Map_t := Direct_Map_t;
     }.
   End Aliased_result.
   Definition Aliased_result `{_fargs : FArgs} := @Aliased_result.signature _.
   Arguments Aliased_result {_ _}.
-
+  
   (* Aliased *)
   Definition functor `{_fargs : FArgs} :Aliased_result (Direct_Map_t := _) :=
     {|
@@ -194,11 +197,11 @@ Module Base.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition t `{_fargs : FArgs} : Set := int.
-
+  
   Definition identity `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-
+  
   Module Base_result.
     Record signature `{_fargs : FArgs} : Type := {
       t := int;
@@ -207,7 +210,7 @@ Module Base.
   End Base_result.
   Definition Base_result `{_fargs : FArgs} := @Base_result.signature _.
   Arguments Base_result {_}.
-
+  
   (* Base *)
   Definition functor `{_fargs : FArgs} :@Base_result _fargs :=
     ((@Base_result.Build_signature _fargs (fun _ => identity)) :
@@ -220,25 +223,27 @@ Module Outer.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition Included_fargs `{_fargs : FArgs} := Base.Build_FArgs Argument.
-
+  
   Definition Included `{_fargs : FArgs} :
-    Base.Base_result (_fargs := Included_fargs) := Base Argument.
-
+    Base.Base_result (_fargs := Included_fargs) := (Base.functor
+    (_fargs := (Included_fargs ))).
+  
   Module Namespace.
     (** Inclusion of the module [Included] *)
     Definition t `{_fargs : FArgs} := Included.(Base.Base_result.t).
-
+    
     Definition identity `{_fargs : FArgs} {A : Set} : A -> A :=
       Included.(Base.Base_result.identity).
-
+    
     Definition Repr_fargs `{_fargs : FArgs} := Fixed.Build_FArgs Argument.
-
+    
     Definition Repr `{_fargs : FArgs} :
-      Fixed.Fixed_result (_fargs := Repr_fargs) := Fixed Argument.
+      Fixed.Fixed_result (_fargs := Repr_fargs) := (Fixed.functor
+      (_fargs := (Repr_fargs ))).
   End Namespace.
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} {Namespace_Repr_Map_t : Set} : Type := {
       Included : Base.Base_result (_fargs := Included_fargs);
@@ -247,11 +252,12 @@ Module Outer.
       Namespace_Repr :
         Fixed.Fixed_result (_fargs := Namespace.Repr_fargs)
           (Map_t := Namespace_Repr_Map_t);
+      Namespace_Repr_Map_t := Namespace_Repr_Map_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (Namespace_Repr_Map_t := _)
     :=
@@ -277,10 +283,10 @@ Module Anonymous.
     T : Anonymous_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition identity `{_fargs : FArgs} (value : T.(Anonymous_T_signature.t))
     : T.(Anonymous_T_signature.t) := value.
-
+  
   Module Anonymous_result.
     Record signature `{_fargs : FArgs} : Type := {
       identity : T.(Anonymous_T_signature.t) -> T.(Anonymous_T_signature.t);
@@ -289,7 +295,7 @@ Module Anonymous.
   Definition Anonymous_result `{_fargs : FArgs} := @Anonymous_result.signature _
     _.
   Arguments Anonymous_result {_ _}.
-
+  
   (* Anonymous *)
   Definition functor `{_fargs : FArgs} :@Anonymous_result T_t _fargs :=
     ((@Anonymous_result.Build_signature T_t _fargs identity) :
@@ -317,9 +323,9 @@ Module Consume.
     Producer : forall (Input : INPUT), OUTPUT;
     Input : INPUT;
   }.
-
+  
   Definition Result `{_fargs : FArgs} := Producer Input.
-
+  
   Module Consume_result.
     Record signature `{_fargs : FArgs} : Type := {
       Result : OUTPUT;
@@ -327,10 +333,48 @@ Module Consume.
   End Consume_result.
   Definition Consume_result `{_fargs : FArgs} := @Consume_result.signature _.
   Arguments Consume_result {_}.
-
+  
   (* Consume *)
   Definition functor `{_fargs : FArgs} :@Consume_result _fargs :=
     ((@Consume_result.Build_signature _fargs Result) : @Consume_result _fargs).
 End Consume.
 Definition Consume (Producer : forall (Input : INPUT), OUTPUT) (Input : INPUT)
   := @Consume.functor (Consume.Build_FArgs Producer Input).
+
+Module Nested.
+  Class FArgs := {
+    OuterArgument : ARGUMENT;
+  }.
+  
+  Module Child.
+    Class FArgs `{_fargs : FArgs} := {
+      InnerArgument : INPUT;
+    }.
+    Arguments Build_FArgs {_}.
+    
+    Definition value `{_fargs : FArgs} : int :=
+      let '_ := OuterArgument.(ARGUMENT.token) in
+      (InnerArgument (FArgs := _fargs)).(INPUT.value).
+    
+    (* Child *)
+    Definition functor `{_fargs : FArgs} :INPUT :=
+      {|
+        INPUT.value := value
+      |}.
+  End Child.
+  Definition Child `{_fargs : FArgs} (InnerArgument : INPUT) :=
+    @Child.functor _ (Child.Build_FArgs InnerArgument).
+  
+  Module Nested_result.
+    Inductive signature `{_fargs : FArgs} : Type :=
+    | Build_signature : signature.
+  End Nested_result.
+  Definition Nested_result `{_fargs : FArgs} := @Nested_result.signature _.
+  Arguments Nested_result {_}.
+  
+  (* Nested *)
+  Definition functor `{_fargs : FArgs} :@Nested_result _fargs :=
+    ((@Nested_result.Build_signature _fargs) : @Nested_result _fargs).
+End Nested.
+Definition Nested (OuterArgument : ARGUMENT) :=
+  @Nested.functor (Nested.Build_FArgs OuterArgument).

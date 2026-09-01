@@ -8,4 +8,6 @@ Definition op_pointdollarlparenrparen {A : Set}
 
 Definition get {A : Set}
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (values : list A)
-  (index : int) : A := op_pointdollarlparenrparen values index.
+  (index : int) : A :=
+  (op_pointdollarlparenrparen (_rocq_assumption_0 := _rocq_assumption_0)) values
+    index.

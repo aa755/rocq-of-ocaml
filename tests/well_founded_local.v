@@ -12,10 +12,8 @@ Program Definition count_selected (get : int -> ascii) (limit : int) : int :=
       (forall _rocq_next : int * int, ltof (int * int) _rocq_measure _rocq_next
         _rocq_state -> int) -> int) :=
     (fun _rocq_state _rocq_recurse =>
-      let index := fst _rocq_state in
-      let _rocq_state_tail_0 := snd _rocq_state in
-      let count := _rocq_state_tail_0 in
-      if RocqOfOCaml.Basics.Stdlib.ge index limit then
+      let '(index, count) := _rocq_state in
+      if Z.geb index limit then
         count
       else
         let selected := get index in

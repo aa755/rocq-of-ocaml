@@ -4,7 +4,7 @@ Require Import RocqOfOCaml.Settings.
 
 Module Source.
   Definition empty : string := "".
-
+  
   Module Map.
     Definition union {A : Set} (value : A) : A := value.
   End Map.

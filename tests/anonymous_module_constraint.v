@@ -7,10 +7,10 @@ Module Base.
 End Base.
 
 Module Wrapped.
-  Definition x_value : int := Base.x_value.
-
+  Definition x_value := Base.x_value.
+  
   Definition y_value : int := 2.
-
+  
   Module Wrapped_signature.
     Record signature : Type := {
       x_value : int;
@@ -18,7 +18,7 @@ Module Wrapped.
     }.
   End Wrapped_signature.
   Definition Wrapped_signature := Wrapped_signature.signature.
-
+  
   (* Wrapped *)
   Definition module :Wrapped_signature :=
     {|
@@ -29,15 +29,15 @@ End Wrapped.
 Definition Wrapped := Wrapped.module.
 
 (** Inclusion of the module [Wrapped] *)
-Definition x_value : int := Wrapped.(Wrapped.Wrapped_signature.x_value).
+Definition x_value := Wrapped.(Wrapped.Wrapped_signature.x_value).
 
-Definition y_value : int := Wrapped.(Wrapped.Wrapped_signature.y_value).
+Definition y_value := Wrapped.(Wrapped.Wrapped_signature.y_value).
 
 Module Hidden.
   Definition t : Set := string.
-
+  
   Definition make {A : Set} (value : A) : A := value.
-
+  
   Module Hidden_signature.
     Record signature : Type := {
       t := string;
@@ -45,7 +45,7 @@ Module Hidden.
     }.
   End Hidden_signature.
   Definition Hidden_signature := Hidden_signature.signature.
-
+  
   (* Hidden *)
   Definition module :Hidden_signature :=
     {|

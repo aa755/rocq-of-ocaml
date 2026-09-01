@@ -9,6 +9,7 @@ type content =
 
 type t = {
   content : content;
+  external_assumption_specs : Structure.qualified_assumption_call_specs;
   head_suffix : string;
   without_default_imports : bool;
   without_guard_checking : bool;
@@ -52,19 +53,33 @@ let of_typedtree
   | `Implementation structure ->
       Structure.of_structure structure >>= fun structure ->
       get_configuration >>= fun configuration ->
+      let metadata_structure =
+        if Configuration.has_module_override_declaration configuration then
+          Structure.propagate_assumption_calls ~configuration
+            ~external_specs:external_assumption_specs structure
+        else structure
+      in
+      let module_override_specs =
+        Structure.module_override_assumption_call_specs metadata_structure
+      in
+      let external_assumption_specs =
+        module_override_specs @ external_assumption_specs
+      in
       return
-        (Structure
-           (Structure.propagate_assumption_calls
-              ~configuration
-              ~external_specs:external_assumption_specs structure))
+        ( Structure
+            (Structure.propagate_assumption_calls
+               ~configuration ~external_specs:external_assumption_specs
+               structure),
+          external_assumption_specs )
   | `Interface signature ->
       SignatureAxioms.of_signature signature >>= fun signature ->
-      return (SignatureAxioms signature))
-  >>= fun content ->
+      return (SignatureAxioms signature, external_assumption_specs))
+  >>= fun (content, external_assumption_specs) ->
   get_configuration >>= fun configuration ->
   return
     {
       content;
+      external_assumption_specs;
       head_suffix = Configuration.get_head_suffix configuration;
       without_default_imports =
         Configuration.is_without_default_imports configuration;
@@ -79,6 +94,7 @@ let qualified_assumption_call_specs (prefix : string list) (ast : t) :
   match ast.content with
   | Structure definitions ->
       Structure.qualified_assumption_call_specs prefix definitions
+      @ Structure.module_override_assumption_call_specs definitions
   | SignatureAxioms _ -> []
 
 let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
@@ -139,5 +155,7 @@ let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
      | _ -> !^(ast.head_suffix) ^^ newline)
   ^^ (match ast.content with
      | SignatureAxioms signature -> SignatureAxioms.to_coq signature
-     | Structure structure -> Structure.to_coq None structure)
+     | Structure structure ->
+         Structure.to_coq
+           ~external_specs:ast.external_assumption_specs None structure)
   ^^ newline

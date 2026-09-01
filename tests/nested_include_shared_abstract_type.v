@@ -13,12 +13,12 @@ Module Make.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := int.
-
+    
     Definition make `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-
+    
     Module Impl_signature.
       Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
@@ -27,7 +27,7 @@ Module Make.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_ _}.
-
+    
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature (t := _) :=
       {|
@@ -35,27 +35,28 @@ Module Make.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-
+  
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-
+  
   Definition make `{_fargs : FArgs} : int -> t :=
     Impl.(Impl.Impl_signature.make).
-
+  
   Definition identity `{_fargs : FArgs} (value : Impl.(Impl.Impl_signature.t))
     : Impl.(Impl.Impl_signature.t) := value.
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} {Impl_t : Set} : Type := {
       Impl : Make.Impl.Impl_signature (t := Impl_t);
       t := Impl_t;
       make : int -> Impl_t;
       identity : Impl_t -> Impl_t;
+      Impl_t := Impl_t;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_ _}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :Make_result (Impl_t := _) :=
     {|
@@ -71,35 +72,35 @@ Module Outer.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition S_fargs `{_fargs : FArgs} := Make.Build_FArgs Argument.
-
+  
   Definition S `{_fargs : FArgs} : Make.Make_result (_fargs := S_fargs) :=
-    Make Argument.
-
+    (Make.functor (_fargs := (S_fargs ))).
+  
   Module Signed.
     (** Inclusion of the module [S] *)
     Module Impl.
       Definition t `{_fargs : FArgs} :=
         S.(Make.Make_result.Impl).(Make.Impl.Impl_signature.t).
-
+      
       Definition make `{_fargs : FArgs} : int -> t :=
         S.(Make.Make_result.Impl).(Make.Impl.Impl_signature.make).
     End Impl.
-
+    
     Definition Impl `{_fargs : FArgs} := S.(Make.Make_result.Impl).
-
+    
     Definition t `{_fargs : FArgs} := S.(Make.Make_result.t).
-
+    
     Definition make `{_fargs : FArgs} : int -> t := S.(Make.Make_result.make).
-
+    
     Definition identity `{_fargs : FArgs} : t -> t :=
       S.(Make.Make_result.identity).
-
+    
     Definition round_trip `{_fargs : FArgs} (value : int)
       : S.(Make.Make_result.t) := identity (make value).
   End Signed.
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} {S_Impl_t : Set} : Type := {
       S : Make.Make_result (_fargs := S_fargs) (Impl_t := S_Impl_t);
@@ -109,11 +110,12 @@ Module Outer.
       Signed_make : int -> S_Impl_t;
       Signed_identity : S_Impl_t -> S_Impl_t;
       Signed_round_trip : int -> S_Impl_t;
+      S_Impl_t := S_Impl_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (S_Impl_t := _) :=
     {|
@@ -129,7 +131,7 @@ Definition Outer (Argument : ARGUMENT) :=
 
 Module Argument.
   Definition token : unit := tt.
-
+  
   (* Argument *)
   Definition module :ARGUMENT :=
     {|
@@ -141,7 +143,7 @@ Definition Argument := Argument.module.
 Definition Result_fargs := Outer.Build_FArgs Argument.
 
 Definition Result : Outer.Outer_result (_fargs := Result_fargs) :=
-  Outer Argument.
+  (Outer.functor (_fargs := (Result_fargs ))).
 
 Definition make_through_alias
   : int -> Result.(Outer.Outer_result.Signed_Impl_t) :=

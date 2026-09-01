@@ -15,10 +15,10 @@ Module First.
     T : First_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition id `{_fargs : FArgs} (x_value : T.(First_T_signature.t))
     : T.(First_T_signature.t) := x_value.
-
+  
   Module First_result.
     Record signature `{_fargs : FArgs} : Type := {
       id : T.(First_T_signature.t) -> T.(First_T_signature.t);
@@ -26,7 +26,7 @@ Module First.
   End First_result.
   Definition First_result `{_fargs : FArgs} := @First_result.signature _ _.
   Arguments First_result {_ _}.
-
+  
   (* First *)
   Definition functor `{_fargs : FArgs} :@First_result T_t _fargs :=
     ((@First_result.Build_signature T_t _fargs id) : @First_result T_t _fargs).
@@ -39,10 +39,10 @@ Module Second.
     T : First_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition id `{_fargs : FArgs} (x_value : T.(First_T_signature.t))
     : T.(First_T_signature.t) := x_value.
-
+  
   Module Second_result.
     Record signature `{_fargs : FArgs} : Type := {
       id : T.(First_T_signature.t) -> T.(First_T_signature.t);
@@ -50,7 +50,7 @@ Module Second.
   End Second_result.
   Definition Second_result `{_fargs : FArgs} := @Second_result.signature _ _.
   Arguments Second_result {_ _}.
-
+  
   (* Second *)
   Definition functor `{_fargs : FArgs} :@Second_result T_t _fargs :=
     ((@Second_result.Build_signature T_t _fargs id) : @Second_result T_t _fargs).
@@ -65,10 +65,7 @@ Definition First_int_fargs :=
       First_T_signature (t := t))).
 
 Definition First_int : First.First_result (_fargs := First_int_fargs) :=
-  First
-    (let t : Set := int in
-    ((ltac:(constructor) : First_T_signature (t := t)) :
-      First_T_signature (t := t))).
+  (First.functor (_fargs := (First_int_fargs ))).
 
 Definition Second_bool_fargs :=
   Second.Build_FArgs
@@ -77,17 +74,62 @@ Definition Second_bool_fargs :=
       First_T_signature (t := t))).
 
 Definition Second_bool : Second.Second_result (_fargs := Second_bool_fargs) :=
-  Second
-    (let t : Set := bool in
-    ((ltac:(constructor) : First_T_signature (t := t)) :
-      First_T_signature (t := t))).
+  (Second.functor (_fargs := (Second_bool_fargs ))).
+
+Module Value_consumer_Value_signature.
+  Record signature : Type := {
+    value : int;
+  }.
+End Value_consumer_Value_signature.
+Definition Value_consumer_Value_signature :=
+  Value_consumer_Value_signature.signature.
+
+Module Value_consumer.
+  Class FArgs := {
+    Value : Value_consumer_Value_signature;
+  }.
+  
+  Definition result_value `{_fargs : FArgs} : int :=
+    Value.(Value_consumer_Value_signature.value).
+  
+  Module Value_consumer_result.
+    Record signature `{_fargs : FArgs} : Type := {
+      result_value : int;
+    }.
+  End Value_consumer_result.
+  Definition Value_consumer_result `{_fargs : FArgs} :=
+    @Value_consumer_result.signature _.
+  Arguments Value_consumer_result {_}.
+  
+  (* Value_consumer *)
+  Definition functor `{_fargs : FArgs} :@Value_consumer_result _fargs :=
+    ((@Value_consumer_result.Build_signature _fargs result_value) :
+      @Value_consumer_result _fargs).
+End Value_consumer.
+Definition Value_consumer (Value : Value_consumer_Value_signature) :=
+  @Value_consumer.functor (Value_consumer.Build_FArgs Value).
+
+Module Value_source.
+  Definition value : int := 42.
+End Value_source.
+
+Definition Opened_value_fargs :=
+  Value_consumer.Build_FArgs
+    (let value := Value_source.value in
+    ({|
+      Value_consumer_Value_signature.value := value
+    |} : Value_consumer_Value_signature)).
+
+Definition Opened_value :
+  Value_consumer.Value_consumer_result (_fargs := Opened_value_fargs) :=
+  (Value_consumer.functor (_fargs := (Opened_value_fargs ))).
 
 Module Interface.
   Class FArgs {H_t : Set} := {
     H : First_T_signature (t := H_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Module S.
     Record signature `{_fargs : FArgs} : Type := {
       get : H.(First_T_signature.t);
@@ -95,7 +137,7 @@ Module Interface.
   End S.
   Definition S `{_fargs : FArgs} := @S.signature _ _.
   Arguments S {_ _}.
-
+  
   Module Interface_result.
     Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
@@ -103,7 +145,7 @@ Module Interface.
   Definition Interface_result `{_fargs : FArgs} := @Interface_result.signature _
     _.
   Arguments Interface_result {_ _}.
-
+  
   (* Interface *)
   Definition functor `{_fargs : FArgs} :@Interface_result H_t _fargs :=
     ((@Interface_result.Build_signature H_t _fargs) :
@@ -126,9 +168,9 @@ Module Consumer.
     X : Interface.S (_fargs := Interface.Build_FArgs T);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Applied `{_fargs : FArgs} := F X.
-
+  
   Module Consumer_result.
     Record signature `{_fargs : FArgs} : Type := {
       Applied : RESULT;
@@ -137,7 +179,7 @@ Module Consumer.
   Definition Consumer_result `{_fargs : FArgs} := @Consumer_result.signature _
     _.
   Arguments Consumer_result {_ _}.
-
+  
   (* Consumer *)
   Definition functor `{_fargs : FArgs} :@Consumer_result T_t _fargs :=
     ((@Consumer_result.Build_signature T_t _fargs Applied) :

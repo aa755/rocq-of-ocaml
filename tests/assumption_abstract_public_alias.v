@@ -13,14 +13,14 @@ Module Make.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := int.
-
+    
     Definition optional `{_fargs : FArgs} {A : Set} : option (A -> A) :=
       let '_ := Argument.(ARGUMENT.token) in
       Some (fun (value : A) => value).
-
+    
     Module Impl_signature.
       Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
@@ -29,7 +29,7 @@ Module Make.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_ _}.
-
+    
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature (t := _) :=
       {|
@@ -37,23 +37,24 @@ Module Make.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-
+  
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-
+  
   Definition optional `{_fargs : FArgs} : option (int -> t) :=
     Impl.(Impl.Impl_signature.optional).
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} {Impl_t : Set} : Type := {
       Impl : Make.Impl.Impl_signature (t := Impl_t);
       t := Impl_t;
       optional : option (int -> Impl_t);
+      Impl_t := Impl_t;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_ _}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :Make_result (Impl_t := _) :=
     {|
@@ -68,36 +69,36 @@ Module Outer.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition S_fargs `{_fargs : FArgs} := Make.Build_FArgs Argument.
-
+  
   Definition S `{_fargs : FArgs} : Make.Make_result (_fargs := S_fargs) :=
-    Make Argument.
-
+    (Make.functor (_fargs := (S_fargs ))).
+  
   Module Public.
     (** Inclusion of the module [S] *)
     Module Impl.
       Definition t `{_fargs : FArgs} :=
         S.(Make.Make_result.Impl).(Make.Impl.Impl_signature.t).
-
+      
       Definition optional `{_fargs : FArgs} : option (int -> t) :=
         S.(Make.Make_result.Impl).(Make.Impl.Impl_signature.optional).
     End Impl.
-
+    
     Definition Impl `{_fargs : FArgs} := S.(Make.Make_result.Impl).
-
+    
     Definition t `{_fargs : FArgs} := S.(Make.Make_result.t).
-
+    
     Definition optional `{_fargs : FArgs} : option (int -> t) :=
       S.(Make.Make_result.optional).
-
+    
     Definition get `{_fargs : FArgs}
-      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (int -> t)}
-      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable t} : int ->
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t}
+      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (int -> t)} : int ->
       S.(Make.Make_result.t) :=
       RocqOfOCaml.OCamlOption.get S.(Make.Make_result.optional).
   End Public.
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} {S_Impl_t : Set} : Type := {
       S : Make.Make_result (_fargs := S_fargs) (Impl_t := S_Impl_t);
@@ -106,16 +107,15 @@ Module Outer.
       Public_t := S_Impl_t;
       Public_optional : option (int -> S_Impl_t);
       Public_get :
-        forall
-          `{_rocq_assumption_0 :
-            RocqOfOCaml.Basics.Unreachable (int -> S_Impl_t)}
-          `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable S_Impl_t},
-          int -> S_Impl_t;
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable S_Impl_t}
+          `{_rocq_assumption_1 :
+            RocqOfOCaml.Basics.Unreachable (int -> S_Impl_t)}, int -> S_Impl_t;
+      S_Impl_t := S_Impl_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (S_Impl_t := _) :=
     {|

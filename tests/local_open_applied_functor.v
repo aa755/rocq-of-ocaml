@@ -13,12 +13,12 @@ Module Operations.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Definition get `{_fargs : FArgs} : int := Argument.(ARGUMENT.value).
-
+  
   Definition op_letdollar `{_fargs : FArgs} {A B : Set}
     (value : A) (continuation : A -> B) : B := continuation value.
-
+  
   Module Operations_result.
     Record signature `{_fargs : FArgs} : Type := {
       get : int;
@@ -28,7 +28,7 @@ Module Operations.
   Definition Operations_result `{_fargs : FArgs} := @Operations_result.signature
     _.
   Arguments Operations_result {_}.
-
+  
   (* Operations *)
   Definition functor `{_fargs : FArgs} :@Operations_result _fargs :=
     ((@Operations_result.Build_signature _fargs get (fun _ _ => op_letdollar)) :
@@ -39,7 +39,7 @@ Definition Operations (Argument : ARGUMENT) :=
 
 Module Concrete.
   Definition value : int := 41.
-
+  
   (* Concrete *)
   Definition module :ARGUMENT :=
     {|

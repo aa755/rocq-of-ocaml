@@ -42,3 +42,12 @@ module Keyed (Key : KEY) = struct
       match entries with entry :: _ -> entry | [] -> assert false
   end
 end
+
+module Int_key = struct
+  type t = int
+end
+
+module Int_keyed = Keyed (Int_key)
+
+let first_string (entries : (int * string) list) =
+  Int_keyed.Map.min_binding entries

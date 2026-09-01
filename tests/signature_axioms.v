@@ -33,7 +33,7 @@ Definition point := point.record.
 
 Module M.
   Parameter t : Set.
-
+  
   Parameter v_value : t.
 End M.
 
@@ -48,7 +48,7 @@ Definition NestedSig := NestedSig.signature.
 
 Module FromTypeof.
   Parameter t : Set.
-
+  
   Parameter v_value : t.
 End FromTypeof.
 

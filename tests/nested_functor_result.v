@@ -16,19 +16,19 @@ Module Outer.
     Left : VALUE (t := Left_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition _left `{_fargs : FArgs} : Left.(VALUE.t) := Left.(VALUE.value).
-
+  
   Module Inner.
     Class FArgs `{_fargs : FArgs} {Right_t : Set} := {
       Right : VALUE (t := Right_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-
+    
     Definition pair_value `{_fargs : FArgs}
-      : Left.(VALUE.t) * Right.(VALUE.t) :=
-      (Left.(VALUE.value), Right.(VALUE.value)).
-
+      : Left.(VALUE.t) * (Right (FArgs := _fargs)).(VALUE.t) :=
+      (Left.(VALUE.value), (Right (FArgs := _fargs)).(VALUE.value)).
+    
     Module Inner_result.
       Record signature `{_fargs : FArgs} : Type := {
         pair_value : Left.(VALUE.t) * Right.(VALUE.t);
@@ -37,7 +37,7 @@ Module Outer.
     Definition Inner_result `{_fargs : FArgs} := @Inner_result.signature _ _ _
       _.
     Arguments Inner_result {_ _ _ _}.
-
+    
     (* Inner *)
     Definition functor `{_fargs : FArgs} :@Inner_result _ _ Right_t _fargs :=
       ((@Inner_result.Build_signature _ _ Right_t _fargs pair_value) :
@@ -46,16 +46,16 @@ Module Outer.
   Definition Inner `{_fargs : FArgs} {Right_t : Set}
     (Right : VALUE (t := Right_t)) :=
     @Inner.functor _ _ Right_t (Inner.Build_FArgs Right).
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} : Type := {
       _left : Left.(VALUE.t);
-
+    
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result Left_t _fargs :=
     ((@Outer_result.Build_signature Left_t _fargs _left) :
@@ -73,24 +73,20 @@ Definition Applied_int_fargs :=
     |} : VALUE (t := t))).
 
 Definition Applied_int : Outer.Outer_result (_fargs := Applied_int_fargs) :=
-  Outer
-    (let t : Set := int in
-    let value := 1 in
-    ({|
-      VALUE.value := value
-    |} : VALUE (t := t))).
+  (Outer.functor (_fargs := (Applied_int_fargs ))).
 
 Module Wrapper.
   Class FArgs {Left_t : Set} := {
     Left : VALUE (t := Left_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Applied_fargs `{_fargs : FArgs} := Outer.Build_FArgs Left.
-
+  
   Definition Applied `{_fargs : FArgs} :
-    Outer.Outer_result (_fargs := Applied_fargs) := Outer Left.
-
+    Outer.Outer_result (_fargs := Applied_fargs) := (Outer.functor
+    (_fargs := (Applied_fargs ))).
+  
   Module Wrapper_result.
     Record signature `{_fargs : FArgs} : Type := {
       Applied : Outer.Outer_result (_fargs := Applied_fargs);
@@ -98,7 +94,7 @@ Module Wrapper.
   End Wrapper_result.
   Definition Wrapper_result `{_fargs : FArgs} := @Wrapper_result.signature _ _.
   Arguments Wrapper_result {_ _}.
-
+  
   (* Wrapper *)
   Definition functor `{_fargs : FArgs} :@Wrapper_result Left_t _fargs :=
     ((@Wrapper_result.Build_signature Left_t _fargs Applied) :
@@ -112,12 +108,12 @@ Module Leaf.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition value `{_fargs : FArgs} : Value.(VALUE.t) := Value.(VALUE.value).
-
+  
   Definition duplicate `{_fargs : FArgs} : Value.(VALUE.t) :=
     Value.(VALUE.value).
-
+  
   Module Leaf_result.
     Record signature `{_fargs : FArgs} : Type := {
       value : Value.(VALUE.t);
@@ -126,7 +122,7 @@ Module Leaf.
   End Leaf_result.
   Definition Leaf_result `{_fargs : FArgs} := @Leaf_result.signature _ _.
   Arguments Leaf_result {_ _}.
-
+  
   (* Leaf *)
   Definition functor `{_fargs : FArgs} :@Leaf_result Value_t _fargs :=
     ((@Leaf_result.Build_signature Value_t _fargs value duplicate) :
@@ -140,12 +136,13 @@ Module Container.
     Left : VALUE (t := Left_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Applied_fargs `{_fargs : FArgs} := Leaf.Build_FArgs Left.
-
+  
   Definition Applied `{_fargs : FArgs} :
-    Leaf.Leaf_result (_fargs := Applied_fargs) := Leaf Left.
-
+    Leaf.Leaf_result (_fargs := Applied_fargs) := (Leaf.functor
+    (_fargs := (Applied_fargs ))).
+  
   Module Container_result.
     Record signature `{_fargs : FArgs} : Type := {
       Applied : Leaf.Leaf_result (_fargs := Applied_fargs);
@@ -154,7 +151,7 @@ Module Container.
   Definition Container_result `{_fargs : FArgs} := @Container_result.signature _
     _.
   Arguments Container_result {_ _}.
-
+  
   (* Container *)
   Definition functor `{_fargs : FArgs} :@Container_result Left_t _fargs :=
     ((@Container_result.Build_signature Left_t _fargs Applied) :
@@ -168,26 +165,26 @@ Module Included.
     Left : VALUE (t := Left_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Container_include_fargs `{_fargs : FArgs} :=
     Container.Build_FArgs Left.
-
+  
   Definition Container_include `{_fargs : FArgs} :
     Container.Container_result (_fargs := Container_include_fargs) :=
-    Container Left.
-
+    (Container.functor (_fargs := (Container_include_fargs ))).
+  
   (** Inclusion of the module [Container_include] *)
   Module Applied.
     Definition value `{_fargs : FArgs} : Left.(VALUE.t) :=
       Container_include.(Container.Container_result.Applied).(Leaf.Leaf_result.value).
-
+    
     Definition duplicate `{_fargs : FArgs} : Left.(VALUE.t) :=
       Container_include.(Container.Container_result.Applied).(Leaf.Leaf_result.duplicate).
   End Applied.
-
+  
   Definition Applied `{_fargs : FArgs} :=
-    Container_include.(Container.Container_result.Applied).
-
+    (Container_include (_fargs := _fargs)).(Container.Container_result.Applied).
+  
   Module Included_result.
     Record signature `{_fargs : FArgs} : Type := {
       Applied_value : Left.(VALUE.t);
@@ -197,7 +194,7 @@ Module Included.
   Definition Included_result `{_fargs : FArgs} := @Included_result.signature _
     _.
   Arguments Included_result {_ _}.
-
+  
   (* Included *)
   Definition functor `{_fargs : FArgs} :@Included_result Left_t _fargs :=
     ((@Included_result.Build_signature Left_t _fargs Applied.value
@@ -211,18 +208,20 @@ Module Abstract_holder.
     Left : VALUE (t := Left_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Module Sealed.
     Class FArgs `{_fargs : FArgs} {Right_t : Set} := {
       Right : VALUE (t := Right_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-
-    Definition t `{_fargs : FArgs} : Set := Left.(VALUE.t) * Right.(VALUE.t).
-
-    Definition value `{_fargs : FArgs} : Left.(VALUE.t) * Right.(VALUE.t) :=
-      (Left.(VALUE.value), Right.(VALUE.value)).
-
+    
+    Definition t `{_fargs : FArgs} : Set :=
+      Left.(VALUE.t) * (Right (FArgs := _fargs)).(VALUE.t).
+    
+    Definition value `{_fargs : FArgs}
+      : Left.(VALUE.t) * (Right (FArgs := _fargs)).(VALUE.t) :=
+      (Left.(VALUE.value), (Right (FArgs := _fargs)).(VALUE.value)).
+    
     (* Sealed *)
     Definition functor `{_fargs : FArgs} :VALUE (t := t) :=
       {|
@@ -232,7 +231,7 @@ Module Abstract_holder.
   Definition Sealed `{_fargs : FArgs} {Right_t : Set}
     (Right : VALUE (t := Right_t)) :=
     @Sealed.functor _ _ Right_t (Sealed.Build_FArgs Right).
-
+  
   Module Abstract_holder_result.
     Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
@@ -240,7 +239,7 @@ Module Abstract_holder.
   Definition Abstract_holder_result `{_fargs : FArgs} :=
     @Abstract_holder_result.signature _ _.
   Arguments Abstract_holder_result {_ _}.
-
+  
   (* Abstract_holder *)
   Definition functor `{_fargs : FArgs} :@Abstract_holder_result Left_t _fargs :=
     ((@Abstract_holder_result.Build_signature Left_t _fargs) :
@@ -254,25 +253,25 @@ Module Derived.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   (** Inclusion of the module [Value] *)
   Definition t `{_fargs : FArgs} := Value.(VALUE.t).
-
+  
   Definition value `{_fargs : FArgs} : t := Value.(VALUE.value).
-
+  
   Definition retained `{_fargs : FArgs} : list Value.(VALUE.t) :=
     Datatypes.cons value nil.
-
+  
   Module Derived_result.
     Record signature `{_fargs : FArgs} : Type := {
-      t := Value.(VALUE.t);
-      value : Value.(VALUE.t);
-      retained : list Value.(VALUE.t);
+      t := t;
+      value : t;
+      retained : list t;
     }.
   End Derived_result.
   Definition Derived_result `{_fargs : FArgs} := @Derived_result.signature _ _.
   Arguments Derived_result {_ _}.
-
+  
   (* Derived *)
   Definition functor `{_fargs : FArgs} :@Derived_result Value_t _fargs :=
     ((@Derived_result.Build_signature Value_t _fargs value retained) :
@@ -286,34 +285,35 @@ Module Shadowed_include.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Derived_include_fargs `{_fargs : FArgs} :=
     Derived.Build_FArgs Value.
-
+  
   Definition Derived_include `{_fargs : FArgs} :
-    Derived.Derived_result (_fargs := Derived_include_fargs) := Derived Value.
-
+    Derived.Derived_result (_fargs := Derived_include_fargs) := (Derived.functor
+    (_fargs := (Derived_include_fargs ))).
+  
   (** Inclusion of the module [Derived_include] *)
   Definition retained `{_fargs : FArgs} :
     list Derived_include.(Derived.Derived_result.t) :=
-    Derived_include.(Derived.Derived_result.retained).
-
+    (Derived_include (_fargs := _fargs)).(Derived.Derived_result.retained).
+  
   (** Inclusion of the module [Value] *)
   Definition t `{_fargs : FArgs} := Value.(VALUE.t).
-
+  
   Definition value `{_fargs : FArgs} : t := Value.(VALUE.value).
-
+  
   Module Shadowed_include_result.
     Record signature `{_fargs : FArgs} : Type := {
-      retained : list Value.(VALUE.t);
-      t := Value.(VALUE.t);
-      value : Value.(VALUE.t);
+      retained : list t;
+      t := t;
+      value : t;
     }.
   End Shadowed_include_result.
   Definition Shadowed_include_result `{_fargs : FArgs} :=
     @Shadowed_include_result.signature _ _.
   Arguments Shadowed_include_result {_ _}.
-
+  
   (* Shadowed_include *)
   Definition functor `{_fargs : FArgs} :@Shadowed_include_result Value_t _fargs
     :=
@@ -328,15 +328,16 @@ Module Applied_alias_result.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Local_fargs `{_fargs : FArgs} := Derived.Build_FArgs Value.
-
+  
   Definition Local `{_fargs : FArgs} :
-    Derived.Derived_result (_fargs := Local_fargs) := Derived Value.
-
+    Derived.Derived_result (_fargs := Local_fargs) := (Derived.functor
+    (_fargs := (Local_fargs ))).
+  
   Definition retained `{_fargs : FArgs} : list Value.(VALUE.t) :=
-    Local.(Derived.Derived_result.retained).
-
+    (Local (_fargs := _fargs)).(Derived.Derived_result.retained).
+  
   Module Applied_alias_result_result.
     Record signature `{_fargs : FArgs} : Type := {
       Local : Derived.Derived_result (_fargs := Local_fargs);
@@ -346,7 +347,7 @@ Module Applied_alias_result.
   Definition Applied_alias_result_result `{_fargs : FArgs} :=
     @Applied_alias_result_result.signature _ _.
   Arguments Applied_alias_result_result {_ _}.
-
+  
   (* Applied_alias_result *)
   Definition functor `{_fargs : FArgs}
     :@Applied_alias_result_result Value_t _fargs :=
@@ -370,21 +371,20 @@ Module Carrier.
     Value : Carrier_Value_signature (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition state `{_fargs : FArgs} : Set := Value.(Carrier_Value_signature.t).
-
+  
   Definition keep `{_fargs : FArgs} (x_value : state) : state := x_value.
-
+  
   Module Carrier_result.
     Record signature `{_fargs : FArgs} : Type := {
       state := Value.(Carrier_Value_signature.t);
-      keep :
-        Value.(Carrier_Value_signature.t) -> Value.(Carrier_Value_signature.t);
+      keep : state -> state;
     }.
   End Carrier_result.
   Definition Carrier_result `{_fargs : FArgs} := @Carrier_result.signature _ _.
   Arguments Carrier_result {_ _}.
-
+  
   (* Carrier *)
   Definition functor `{_fargs : FArgs} :@Carrier_result Value_t _fargs :=
     ((@Carrier_result.Build_signature Value_t _fargs keep) :
@@ -399,23 +399,21 @@ Module Anonymous_alias_result.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Local_fargs `{_fargs : FArgs} :=
     Carrier.Build_FArgs
       (let t : Set := Value.(VALUE.t) in
       ((ltac:(constructor) : Carrier_Value_signature (t := t)) :
         Carrier_Value_signature (t := t))).
-
+  
   Definition Local `{_fargs : FArgs} :
-    Carrier.Carrier_result (_fargs := Local_fargs) :=
-    Carrier
-      (let t : Set := Value.(VALUE.t) in
-      ((ltac:(constructor) : Carrier_Value_signature (t := t)) :
-        Carrier_Value_signature (t := t))).
-
+    Carrier.Carrier_result (_fargs := Local_fargs) := (Carrier.functor
+    (_fargs := (Local_fargs ))).
+  
   Definition keep `{_fargs : FArgs} (x_value : Value.(VALUE.t))
-    : Value.(VALUE.t) := Local.(Carrier.Carrier_result.keep) x_value.
-
+    : Value.(VALUE.t) :=
+    (Local (_fargs := _fargs)).(Carrier.Carrier_result.keep) x_value.
+  
   Module Anonymous_alias_result_result.
     Record signature `{_fargs : FArgs} : Type := {
       Local : Carrier.Carrier_result (_fargs := Local_fargs);
@@ -425,7 +423,7 @@ Module Anonymous_alias_result.
   Definition Anonymous_alias_result_result `{_fargs : FArgs} :=
     @Anonymous_alias_result_result.signature _ _.
   Arguments Anonymous_alias_result_result {_ _}.
-
+  
   (* Anonymous_alias_result *)
   Definition functor `{_fargs : FArgs}
     :@Anonymous_alias_result_result Value_t _fargs :=

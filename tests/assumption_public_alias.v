@@ -13,24 +13,24 @@ Module Make.
   Class FArgs := {
     A : ARGUMENT;
   }.
-
+  
   Definition t `{_fargs : FArgs} : Set := int.
-
+  
   Definition missing `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : t :=
     let '_ := false in
     (@RocqOfOCaml.Basics.unreachable t _).
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       t := int;
       missing :
-        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}, int;
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}, t;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
     ((@Make_result.Build_signature _fargs (fun _ => missing)) :
@@ -40,7 +40,7 @@ Definition Make (A : ARGUMENT) := @Make.functor (Make.Build_FArgs A).
 
 Module Argument.
   Definition token : unit := tt.
-
+  
   (* Argument *)
   Definition module :ARGUMENT :=
     {|
@@ -51,30 +51,32 @@ Definition Argument := Argument.module.
 
 Definition Private_fargs := Make.Build_FArgs Argument.
 
-Definition Private : Make.Make_result (_fargs := Private_fargs) :=
-  Make Argument.
+Definition Private : Make.Make_result (_fargs := Private_fargs) := (Make.functor
+  (_fargs := (Private_fargs ))).
 
 Module Public.
   (** Inclusion of the module [Private] *)
   Definition t := Private.(Make.Make_result.t).
-
-  Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} :
-    t := Private.(Make.Make_result.missing).
-
+  
+  Definition missing `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} :=
+    Private.(Make.Make_result.missing) (_rocq_assumption_0 :=
+      _rocq_assumption_0).
+  
   Definition use_again
-    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : int := missing.
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t} : int :=
+    (missing (_rocq_assumption_0 := _rocq_assumption_0)).
 End Public.
 
 Module Alias := Public.
 
 Definition through_public
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Public.t} : Alias.t :=
-  Alias.missing.
+  (Alias.missing (_rocq_assumption_0 := _rocq_assumption_0)).
 
 Definition through_public_call
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Public.t} : Alias.t :=
-  Alias.use_again.
+  (Alias.use_again (_rocq_assumption_0 := _rocq_assumption_0)).
 
 Definition through_alias
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Public.t} : Alias.t :=
-  Alias.missing.
+  (Alias.missing (_rocq_assumption_0 := _rocq_assumption_0)).

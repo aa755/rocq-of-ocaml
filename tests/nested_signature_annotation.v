@@ -15,7 +15,7 @@ Module Outer.
     T : Outer_T_signature (t := T_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Module SIG.
     Record signature `{_fargs : FArgs} : Type := {
       get : T.(Outer_T_signature.t);
@@ -23,15 +23,16 @@ Module Outer.
   End SIG.
   Definition SIG `{_fargs : FArgs} := @SIG.signature _ _.
   Arguments SIG {_ _}.
-
+  
   Module Copy.
     Class FArgs `{_fargs : FArgs} := {
       M : SIG;
     }.
     Arguments Build_FArgs {_ _}.
-
-    Definition get `{_fargs : FArgs} : T.(Outer_T_signature.t) := M.(SIG.get).
-
+    
+    Definition get `{_fargs : FArgs} : T.(Outer_T_signature.t) :=
+      (M (FArgs := _fargs)).(SIG.get).
+    
     (* Copy *)
     Definition functor `{_fargs : FArgs} :SIG :=
       {|
@@ -40,14 +41,14 @@ Module Outer.
   End Copy.
   Definition Copy `{_fargs : FArgs} (M : SIG) :=
     @Copy.functor _ _ (Copy.Build_FArgs M).
-
+  
   Module Outer_result.
     Inductive signature `{_fargs : FArgs} : Type :=
     | Build_signature : signature.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result T_t _fargs :=
     ((@Outer_result.Build_signature T_t _fargs) : @Outer_result T_t _fargs).

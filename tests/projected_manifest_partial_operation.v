@@ -16,18 +16,18 @@ Module Provider.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition t `{_fargs : FArgs} : Set := Value.(VALUE.t).
-
+  
   Definition optional `{_fargs : FArgs} : option Value.(VALUE.t) :=
     Value.(VALUE.optional).
-
+  
   Definition required `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
     (function_parameter : unit) : Value.(VALUE.t) :=
     let '_ := function_parameter in
     RocqOfOCaml.OCamlOption.get optional.
-
+  
   Module Provider_result.
     Record signature `{_fargs : FArgs} : Type := {
       t := Value.(VALUE.t);
@@ -41,7 +41,7 @@ Module Provider.
   Definition Provider_result `{_fargs : FArgs} := @Provider_result.signature _
     _.
   Arguments Provider_result {_ _}.
-
+  
   (* Provider *)
   Definition functor `{_fargs : FArgs} :@Provider_result Value_t _fargs :=
     ((@Provider_result.Build_signature Value_t _fargs optional
@@ -55,18 +55,19 @@ Module Consumer.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition P_fargs `{_fargs : FArgs} := Provider.Build_FArgs Value.
-
+  
   Definition P `{_fargs : FArgs} : Provider.Provider_result (_fargs := P_fargs)
-    := Provider Value.
-
+    := (Provider.functor (_fargs := (P_fargs ))).
+  
   Definition required `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
     (function_parameter : unit) : Value.(VALUE.t) :=
     let '_ := function_parameter in
-    P.(Provider.Provider_result.required) tt.
-
+    ((P (_fargs := _fargs)).(Provider.Provider_result.required)
+      (_rocq_assumption_0 := _rocq_assumption_0)) tt.
+  
   Module Consumer_result.
     Record signature `{_fargs : FArgs} : Type := {
       P : Provider.Provider_result (_fargs := P_fargs);
@@ -79,7 +80,7 @@ Module Consumer.
   Definition Consumer_result `{_fargs : FArgs} := @Consumer_result.signature _
     _.
   Arguments Consumer_result {_ _}.
-
+  
   (* Consumer *)
   Definition functor `{_fargs : FArgs} :@Consumer_result Value_t _fargs :=
     ((@Consumer_result.Build_signature Value_t _fargs P (fun _ => required)) :

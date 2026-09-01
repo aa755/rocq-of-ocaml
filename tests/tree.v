@@ -10,10 +10,10 @@ Fixpoint find (x_value : int) (t_value : tree) : bool :=
   match t_value with
   | Leaf => false
   | Node t1 x' t2 =>
-    if RocqOfOCaml.Basics.Stdlib.lt x_value x' then
+    if Z.ltb x_value x' then
       find x_value t1
     else
-      if RocqOfOCaml.Basics.Stdlib.lt x' x_value then
+      if Z.ltb x' x_value then
         find x_value t2
       else
         true

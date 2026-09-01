@@ -665,11 +665,83 @@ let specialize_matched_type ?(relaxed_constructors = false)
       in
       Some (specialize typ)
 
+let rec unqualified_constructor_names (typ : t) : Name.Set.t =
+  let names = unqualified_constructor_names in
+  match typ with
+  | Variable _ | Kind _ | String _ | Error _ -> Name.Set.empty
+  | Arrow (left, right) | Eq (left, right) ->
+      Name.Set.union (names left) (names right)
+  | Tuple types ->
+      List.fold_left
+        (fun result typ -> Name.Set.union result (names typ))
+        Name.Set.empty types
+  | Apply (path, arguments) ->
+      let result =
+        match path with
+        | MixedPath.PathName { PathName.path = []; base } ->
+            Name.Set.singleton base
+        | MixedPath.PathName _ | MixedPath.Access _ | MixedPath.AppliedAccess _
+          ->
+            Name.Set.empty
+      in
+      List.fold_left
+        (fun result (argument, _) -> Name.Set.union result (names argument))
+        result arguments
+  | Signature (_, parameters) ->
+      List.fold_left
+        (fun result (_, typ) ->
+          Option.fold ~none:result
+            ~some:(fun typ -> Name.Set.union result (names typ))
+            typ)
+        Name.Set.empty parameters
+  | InferModule typ -> names typ
+  | ForallModule (_, parameter, result) ->
+      Name.Set.union (names parameter) (names result)
+  | ExistTyps (_, body) | ForallTyps (_, body) | FunTyps (_, body) -> names body
+  | Let (_, value, body) -> Name.Set.union (names value) (names body)
+
+(** Alpha-rename quantified type variables that would capture an unqualified
+    constructor introduced by an alias rewrite. OCaml keeps type variables and
+    constructors in separate namespaces, while generated Gallina uses one
+    namespace for both. *)
+let avoid_constructor_capture (introduced : Name.Set.t)
+    (parameters : (Name.t * int) list) (body : t) : (Name.t * int) list * t =
+  let occupied =
+    List.fold_left
+      (fun names (name, _) -> Name.Set.add name names)
+      (Name.Set.union (typ_args_of_typ body) (unqualified_constructor_names body))
+      parameters
+  in
+  let fresh_name occupied original =
+    let base = Name.to_string original ^ "_type" in
+    let rec find index =
+      let candidate =
+        Name.of_string_raw
+          (if index = 0 then base else base ^ string_of_int index)
+      in
+      if Name.Set.mem candidate occupied then find (index + 1) else candidate
+    in
+    find 0
+  in
+  let parameters, body, _ =
+    List.fold_left
+      (fun (parameters, body, occupied) (name, arity) ->
+        if Name.Set.mem name introduced then
+          let replacement = fresh_name occupied name in
+          ( parameters @ [ (replacement, arity) ],
+            subst_variables [ (name, Variable replacement) ] body,
+            Name.Set.add replacement occupied )
+        else (parameters @ [ (name, arity) ], body, occupied))
+      ([], body, occupied) parameters
+  in
+  (parameters, body)
+
 (** Replace every subtype matching [pattern] with the correspondingly
     instantiated [replacement]. Configuration can assign a Gallina
     representation to an OCaml manifest type, while compiler signatures may
     contain either its constructor path or its already-expanded manifest. *)
 let rewrite_matching_subtypes (pattern : t) (replacement : t) (typ : t) : t =
+  let introduced = unqualified_constructor_names replacement in
   let rec rewrite typ =
     match match_variables pattern typ with
     | Some substitutions -> subst_variables substitutions replacement
@@ -694,9 +766,23 @@ let rewrite_matching_subtypes (pattern : t) (replacement : t) (typ : t) : t =
         | InferModule value -> InferModule (rewrite value)
         | ForallModule (name, parameter, result) ->
             ForallModule (name, rewrite parameter, rewrite result)
-        | ExistTyps (parameters, body) -> ExistTyps (parameters, rewrite body)
-        | ForallTyps (parameters, body) -> ForallTyps (parameters, rewrite body)
-        | FunTyps (parameters, body) -> FunTyps (parameters, rewrite body)
+        | ExistTyps (parameters, body) ->
+            let parameters, body =
+              avoid_constructor_capture introduced parameters body
+            in
+            ExistTyps (parameters, rewrite body)
+        | ForallTyps (parameters, body) ->
+            let parameters, body =
+              avoid_constructor_capture introduced parameters body
+            in
+            ForallTyps (parameters, rewrite body)
+        | FunTyps (parameters, body) ->
+            let parameters, body =
+              avoid_constructor_capture introduced
+                (List.map (fun name -> (name, 0)) parameters)
+                body
+            in
+            FunTyps (List.map fst parameters, rewrite body)
         | Let (name, value, body) -> Let (name, rewrite value, rewrite body))
   in
   rewrite typ
@@ -896,78 +982,152 @@ let drop_unused_forall_modules (typ : t) : t =
     in
     name_length > 0 && search 0
   in
-  let path_mentions_name name { PathName.path; base } =
-    List.exists (Name.equal name) (path @ [ base ])
+  let empty_mentions = (Name.Set.empty, []) in
+  let merge_mentions (left_names, left_texts) (right_names, right_texts) =
+    (Name.Set.union left_names right_names, left_texts @ right_texts)
   in
-  let mixed_path_mentions_name name = function
-    | MixedPath.PathName path -> path_mentions_name name path
+  let merge_all_mentions mentions =
+    List.fold_left merge_mentions empty_mentions mentions
+  in
+  let path_mentions { PathName.path; base } =
+    ( List.fold_left
+        (fun names name -> Name.Set.add name names)
+        Name.Set.empty (base :: path),
+      [] )
+  in
+  let mixed_path_mentions = function
+    | MixedPath.PathName path -> path_mentions path
     | MixedPath.Access (root, fields) ->
-        path_mentions_name name root
-        || List.exists (path_mentions_name name) fields
+        merge_all_mentions (List.map path_mentions (root :: fields))
     | MixedPath.AppliedAccess (root, applications, fields) ->
-        path_mentions_name name root
-        || List.exists (path_mentions_name name) fields
-        || List.exists
-             (fun (argument, value) ->
-               text_mentions_name argument name || text_mentions_name value name)
-             applications
+        let names =
+          merge_all_mentions (List.map path_mentions (root :: fields))
+        in
+        let application_texts =
+          applications
+          |> List.concat_map (fun (argument, value) -> [ argument; value ])
+        in
+        merge_mentions names (Name.Set.empty, application_texts)
   in
-  let rec mentions_name name = function
-    | Variable candidate -> Name.equal name candidate
-    | Kind _ | String _ -> false
-    | Error text -> text_mentions_name text name
-    | Arrow (left, right) | Eq (left, right) ->
-        mentions_name name left || mentions_name name right
-    | Tuple types -> List.exists (mentions_name name) types
-    | Apply (path, arguments) ->
-        mixed_path_mentions_name name path
-        || List.exists
-             (fun (argument, _) -> mentions_name name argument)
-             arguments
-    | Signature (path, parameters) ->
-        path_mentions_name name path
-        || List.exists
-             (fun (_, typ) ->
-               Option.fold ~none:false ~some:(mentions_name name) typ)
-             parameters
-    | InferModule typ
-    | ExistTyps (_, typ)
-    | ForallTyps (_, typ)
-    | FunTyps (_, typ) ->
-        mentions_name name typ
-    | ForallModule (_, parameter, result) | Let (_, parameter, result) ->
-        mentions_name name parameter || mentions_name name result
+  let mentions_name name (names, texts) =
+    Name.Set.mem name names
+    || List.exists (fun text -> text_mentions_name text name) texts
   in
   let rec drop = function
-    | (Variable _ | Kind _ | String _ | Error _) as typ -> typ
-    | Arrow (left, right) -> Arrow (drop left, drop right)
-    | Eq (left, right) -> Eq (drop left, drop right)
-    | Tuple types -> Tuple (List.map drop types)
-    | Apply (path, arguments) ->
-        Apply
-          ( path,
-            List.map (fun (argument, tag) -> (drop argument, tag)) arguments )
-    | Signature (path, parameters) ->
-        Signature
-          ( path,
-            List.map (fun (name, typ) -> (name, Option.map drop typ)) parameters
-          )
-    | InferModule typ -> InferModule (drop typ)
-    | ForallModule (name, parameter, result) ->
-        let parameter = drop parameter in
-        let result = drop result in
-        if mentions_name name result then ForallModule (name, parameter, result)
-        else result
-    | ExistTyps (parameters, body) -> ExistTyps (parameters, drop body)
-    | ForallTyps (parameters, body) -> ForallTyps (parameters, drop body)
-    | FunTyps (parameters, body) -> FunTyps (parameters, drop body)
-    | Let (name, value, body) -> Let (name, drop value, drop body)
+    | Variable name as typ -> (typ, (Name.Set.singleton name, []))
+    | (Kind _ | String _) as typ -> (typ, empty_mentions)
+    | Error text as typ -> (typ, (Name.Set.empty, [ text ]))
+    | (Arrow (left, right) as original) ->
+        let left', left_mentions = drop left in
+        let right', right_mentions = drop right in
+        let typ =
+          if left' == left && right' == right then original
+          else Arrow (left', right')
+        in
+        (typ, merge_mentions left_mentions right_mentions)
+    | (Eq (left, right) as original) ->
+        let left', left_mentions = drop left in
+        let right', right_mentions = drop right in
+        let typ =
+          if left' == left && right' == right then original
+          else Eq (left', right')
+        in
+        (typ, merge_mentions left_mentions right_mentions)
+    | (Tuple types as original) ->
+        let types', mentions = drop_list types in
+        ((if types' == types then original else Tuple types'), mentions)
+    | (Apply (path, arguments) as original) ->
+        let arguments', argument_mentions = drop_arguments arguments in
+        let typ =
+          if arguments' == arguments then original else Apply (path, arguments')
+        in
+        ( typ,
+          merge_mentions (mixed_path_mentions path) argument_mentions )
+    | (Signature (path, parameters) as original) ->
+        let parameters', parameter_mentions = drop_parameters parameters in
+        let typ =
+          if parameters' == parameters then original
+          else Signature (path, parameters')
+        in
+        (typ, merge_mentions (path_mentions path) parameter_mentions)
+    | (InferModule typ as original) ->
+        let typ', mentions = drop typ in
+        ((if typ' == typ then original else InferModule typ'), mentions)
+    | (ForallModule (name, parameter, result) as original) ->
+        let parameter', parameter_mentions = drop parameter in
+        let result', result_mentions = drop result in
+        if mentions_name name result_mentions then
+          let typ =
+            if parameter' == parameter && result' == result then original
+            else ForallModule (name, parameter', result')
+          in
+          (typ, merge_mentions parameter_mentions result_mentions)
+        else (result', result_mentions)
+    | (ExistTyps (parameters, body) as original) ->
+        let body', mentions = drop body in
+        ( (if body' == body then original else ExistTyps (parameters, body')),
+          mentions )
+    | (ForallTyps (parameters, body) as original) ->
+        let body', mentions = drop body in
+        ( (if body' == body then original else ForallTyps (parameters, body')),
+          mentions )
+    | (FunTyps (parameters, body) as original) ->
+        let body', mentions = drop body in
+        ( (if body' == body then original else FunTyps (parameters, body')),
+          mentions )
+    | (Let (name, value, body) as original) ->
+        let value', value_mentions = drop value in
+        let body', body_mentions = drop body in
+        let typ =
+          if value' == value && body' == body then original
+          else Let (name, value', body')
+        in
+        (typ, merge_mentions value_mentions body_mentions)
+  and drop_list = function
+    | [] -> ([], empty_mentions)
+    | (typ :: remaining as original) ->
+        let typ', typ_mentions = drop typ in
+        let remaining', remaining_mentions = drop_list remaining in
+        let types =
+          if typ' == typ && remaining' == remaining then original
+          else typ' :: remaining'
+        in
+        (types, merge_mentions typ_mentions remaining_mentions)
+  and drop_arguments = function
+    | [] -> ([], empty_mentions)
+    | ((argument, tag) :: remaining as original) ->
+        let argument', argument_mentions = drop argument in
+        let remaining', remaining_mentions = drop_arguments remaining in
+        let arguments =
+          if argument' == argument && remaining' == remaining then original
+          else (argument', tag) :: remaining'
+        in
+        (arguments, merge_mentions argument_mentions remaining_mentions)
+  and drop_parameters = function
+    | [] -> ([], empty_mentions)
+    | ((name, parameter) :: remaining as original) ->
+        let parameter', parameter_mentions =
+          match parameter with
+          | None -> (None, empty_mentions)
+          | Some typ ->
+              let typ', mentions = drop typ in
+              ((if typ' == typ then parameter else Some typ'), mentions)
+        in
+        let remaining', remaining_mentions = drop_parameters remaining in
+        let parameters =
+          if parameter' == parameter && remaining' == remaining then original
+          else (name, parameter') :: remaining'
+        in
+        (parameters, merge_mentions parameter_mentions remaining_mentions)
   in
-  drop typ
+  fst (drop typ)
 
-(** Replace selected unqualified type constructors with projected paths from an
-    instantiated module record. *)
-let project_type_names (project : Name.t -> MixedPath.t option) (typ : t) : t =
+(** Replace selected type constructors with projected paths from an instantiated
+    module record.  Callers normalizing dependent result signatures can disable
+    unqualified names so locally quantified variables cannot be captured by a
+    same-named flattened module field. *)
+let project_type_names ?(unqualified = true)
+    (project : Name.t -> MixedPath.t option) (typ : t) : t =
   let mixed_path_names = function
     | MixedPath.PathName { PathName.path; base } -> path @ [ base ]
     | MixedPath.Access ({ PathName.path; base }, fields)
@@ -990,13 +1150,14 @@ let project_type_names (project : Name.t -> MixedPath.t option) (typ : t) : t =
   in
   let rec rewrite typ =
     match typ with
-    | Variable name -> (
+    | Variable name when unqualified -> (
         match project name with Some path -> Apply (path, []) | None -> typ)
-    | Kind _ | String _ | Error _ -> typ
+    | Variable _ | Kind _ | String _ | Error _ -> typ
     | Arrow (left, right) -> Arrow (rewrite left, rewrite right)
     | Eq (left, right) -> Eq (rewrite left, rewrite right)
     | Tuple types -> Tuple (List.map rewrite types)
-    | Apply (MixedPath.PathName { PathName.path = []; base }, arguments) -> (
+    | Apply (MixedPath.PathName { PathName.path = []; base }, arguments)
+      when unqualified -> (
         let arguments =
           List.map (fun (argument, tag) -> (rewrite argument, tag)) arguments
         in
@@ -1018,6 +1179,38 @@ let project_type_names (project : Name.t -> MixedPath.t option) (typ : t) : t =
               (fun (name, typ) -> (name, Option.map rewrite typ))
               parameters )
     | InferModule typ -> InferModule (rewrite typ)
+    | ForallModule (name, parameter, result) ->
+        ForallModule (name, rewrite parameter, rewrite result)
+    | ExistTyps (parameters, body) -> ExistTyps (parameters, rewrite body)
+    | ForallTyps (parameters, body) -> ForallTyps (parameters, rewrite body)
+    | FunTyps (parameters, body) -> FunTyps (parameters, rewrite body)
+    | Let (name, value, body) -> Let (name, rewrite value, rewrite body)
+  in
+  rewrite typ
+
+(** Rewrite constructor paths throughout a type.  This is used when a type in
+    a dependent result signature refers to a sibling module field: after the
+    result is instantiated, the sibling must be projected through that result
+    value rather than through the functor implementation namespace. *)
+let project_mixed_paths (project : MixedPath.t -> MixedPath.t option) (typ : t) :
+    t =
+  let rec rewrite typ =
+    match typ with
+    | Variable _ | Kind _ | String _ | Error _ -> typ
+    | Arrow (left, right) -> Arrow (rewrite left, rewrite right)
+    | Eq (left, right) -> Eq (rewrite left, rewrite right)
+    | Tuple types -> Tuple (List.map rewrite types)
+    | Apply (path, arguments) ->
+        Apply
+          ( Option.value (project path) ~default:path,
+            List.map (fun (argument, tag) -> (rewrite argument, tag)) arguments )
+    | Signature (path, parameters) ->
+        Signature
+          ( path,
+            List.map
+              (fun (name, value) -> (name, Option.map rewrite value))
+              parameters )
+    | InferModule value -> InferModule (rewrite value)
     | ForallModule (name, parameter, result) ->
         ForallModule (name, rewrite parameter, rewrite result)
     | ExistTyps (parameters, body) -> ExistTyps (parameters, rewrite body)
@@ -1138,6 +1331,21 @@ let subst_path (source : Name.t list) (target : Name.t) (typ : t) : t =
     | MixedPath.AppliedAccess ({ path; base }, _, fields) ->
         path @ [ base ] @ List.map (fun field -> field.PathName.base) fields
   in
+  let is_single_projection (path : MixedPath.t) : bool =
+    let projection root fields =
+      match (source, fields) with
+      | [ source_root; source_field ], [ field ] ->
+          let root_names = root.PathName.path @ [ root.PathName.base ] in
+          names_are_equal root_names [ source_root ]
+          && Name.equal field.PathName.base source_field
+      | _ -> false
+    in
+    match path with
+    | MixedPath.Access (root, fields)
+    | MixedPath.AppliedAccess (root, _, fields) ->
+        projection root fields
+    | MixedPath.PathName _ -> false
+  in
   let rec subst (typ : t) : t =
     let subst_after_names (names : Name.t list) (typ : t) : t =
       let should_substitute =
@@ -1159,7 +1367,10 @@ let subst_path (source : Name.t list) (target : Name.t) (typ : t) : t =
     | Tuple typs -> Tuple (List.map subst typs)
     | Apply (constructor, typs) ->
         let constructor_with_subst =
-          if names_are_equal (mixed_path_names constructor) source then
+          if
+            names_are_equal (mixed_path_names constructor) source
+            || is_single_projection constructor
+          then
             MixedPath.PathName { path = []; base = target }
           else constructor
         in
@@ -1388,16 +1599,19 @@ let subst_path_prefix (source : Name.t list) (target : PathName.t) (typ : t) : t
         let path = List.rev names |> List.tl |> List.rev in
         { PathName.path; base }
   in
+  let rebase_root ({ PathName.path; base } as root) =
+    match drop_prefix source (path @ [ base ]) with
+    | Some remaining ->
+        path_name_of_names
+          (target.PathName.path @ (target.PathName.base :: remaining))
+    | None -> root
+  in
   let rebase_constructor = function
-    | MixedPath.PathName { PathName.path; base } as constructor -> (
-        match drop_prefix source (path @ [ base ]) with
-        | Some remaining ->
-            MixedPath.PathName
-              (path_name_of_names
-                 (target.PathName.path @ (target.PathName.base :: remaining)))
-        | None -> constructor)
-    | (MixedPath.Access _ | MixedPath.AppliedAccess _) as constructor ->
-        constructor
+    | MixedPath.PathName root -> MixedPath.PathName (rebase_root root)
+    | MixedPath.Access (root, fields) ->
+        MixedPath.Access (rebase_root root, fields)
+    | MixedPath.AppliedAccess (root, applications, fields) ->
+        MixedPath.AppliedAccess (rebase_root root, applications, fields)
   in
   let source_is_bound names =
     match source with
@@ -1597,6 +1811,83 @@ let references_mixed_path_root (name : Name.t) (typ : t) : bool =
   in
   references typ
 
+(** Whether a type mentions a constructor or projection rooted at an
+    unqualified Gallina name. Such a name may itself be a generated definition
+    with class parameters, so requirements over fully qualified provider types
+    must be introduced before requirements containing this type. *)
+let contains_local_mixed_path_root (typ : t) : bool =
+  let path_name_is_local { PathName.path; base } =
+    path = []
+    && not
+         (List.mem (Name.to_string base)
+            (Name.native_types @ Name.native_type_constructors))
+  in
+  let mixed_path_is_local = function
+    | MixedPath.PathName root -> path_name_is_local root
+    | MixedPath.Access _ | MixedPath.AppliedAccess _ ->
+        (* A projection can depend on class arguments of its module-record
+           root even when that root is qualified.  Put plain provider types in
+           scope before every projected type so equivalent source aliases do
+           not leave overlapping instances in declaration-dependent orders. *)
+        true
+  in
+  let rec contains = function
+    | Variable name ->
+        not
+          (List.mem (Name.to_string name)
+             (Name.native_types @ Name.native_type_constructors))
+    | Kind _ | String _ | Error _ -> false
+    | Arrow (left, right) | Eq (left, right) ->
+        contains left || contains right
+    | Tuple types -> List.exists contains types
+    | Apply (path, arguments) ->
+        mixed_path_is_local path
+        || List.exists (fun (argument, _) -> contains argument) arguments
+    | Signature (path, parameters) ->
+        path_name_is_local path
+        || List.exists
+             (fun (_, value) -> Option.fold ~none:false ~some:contains value)
+             parameters
+    | InferModule value -> contains value
+    | ForallModule (_, parameter, result) ->
+        contains parameter || contains result
+    | ExistTyps (_, body) | ForallTyps (_, body) | FunTyps (_, body) ->
+        contains body
+    | Let (_, value, body) -> contains value || contains body
+  in
+  contains typ
+
+(** Whether a rendered type contains an applicative functor path.  Such paths
+    embed Gallina terms for their module arguments; a source module namespace
+    is not necessarily itself the generated module-record value. *)
+let rec contains_applied_access (typ : t) : bool =
+  let path_is_applied = function
+    | MixedPath.AppliedAccess _ -> true
+    | MixedPath.PathName _ | MixedPath.Access _ -> false
+  in
+  match typ with
+  | Variable _ | Kind _ | String _ | Error _ -> false
+  | Arrow (left, right) | Eq (left, right) ->
+      contains_applied_access left || contains_applied_access right
+  | Tuple types -> List.exists contains_applied_access types
+  | Apply (path, arguments) ->
+      path_is_applied path
+      || List.exists
+           (fun (argument, _) -> contains_applied_access argument)
+           arguments
+  | Signature (_, parameters) ->
+      List.exists
+        (fun (_, value) ->
+          Option.fold ~none:false ~some:contains_applied_access value)
+        parameters
+  | InferModule value -> contains_applied_access value
+  | ForallModule (_, parameter, result) ->
+      contains_applied_access parameter || contains_applied_access result
+  | ExistTyps (_, body) | ForallTyps (_, body) | FunTyps (_, body) ->
+      contains_applied_access body
+  | Let (_, value, body) ->
+      contains_applied_access value || contains_applied_access body
+
 (** Project type constructors defined below a functor through a concrete value
     of that functor's generated result record. Nested OCaml paths are flattened
     in result signatures: for example [F.M.Option.t] is exposed as
@@ -1627,12 +1918,17 @@ let functor_accessed_modules (functor_path : PathName.t) (typ : t) : Name.Set.t
     | Tuple types -> List.fold_left collect modules types
     | Apply (path, arguments) ->
         let modules =
-          match path with
-          | MixedPath.Access _ -> (
-              match drop_prefix functor_names (mixed_path_names path) with
-              | Some (module_name :: _ :: _) -> Name.Set.add module_name modules
-              | Some _ | None -> modules)
-          | MixedPath.PathName _ | MixedPath.AppliedAccess _ -> modules
+          match drop_prefix functor_names (mixed_path_names path) with
+          | Some (module_name :: signature_name :: _)
+            when
+              (match path with
+              | MixedPath.Access _ | MixedPath.AppliedAccess _ -> true
+              | MixedPath.PathName _ -> false)
+              || String.equal
+                   (Name.to_string signature_name)
+                   (Name.to_string module_name ^ "_signature") ->
+              Name.Set.add module_name modules
+          | Some _ | None -> modules
         in
         List.fold_left
           (fun modules (argument, _) -> collect modules argument)
@@ -2180,6 +2476,15 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
   let* typ =
     if expand_aliases then
       let* env = get_env in
+      let* preserve_module_override =
+        match Types.get_desc typ with
+        | Tconstr (path, _, _)
+          when not (path_contains_functor_application path) ->
+            let* path_name = PathName.of_path_without_convert false path in
+            let* override = PathName.try_module_override path_name in
+            return (Option.is_some override)
+        | _ -> return false
+      in
       let* preserve_configured_constructor =
         match Types.get_desc typ with
         | Tconstr (path, arguments, _)
@@ -2200,7 +2505,8 @@ let rec of_typ_expr ?(should_tag = false) ?(expand_aliases = false)
                       (PathName.to_string canonical_name)))
         | _ -> return false
       in
-      if preserve_configured_constructor then return typ
+      if preserve_module_override || preserve_configured_constructor then
+        return typ
       else
         let expanded =
           try Ctype.full_expand ~may_forget_scope:false env typ with _ -> typ
@@ -2753,7 +3059,33 @@ let of_type_expr_without_free_vars (typ : Types.type_expr) : t Monad.t =
     alias body at one use site but retained the alias constructor at another. *)
 let fully_expand_aliases (typ : Types.type_expr) : Types.type_expr Monad.t =
   let* env = get_env in
-  return (try Ctype.full_expand ~may_forget_scope:false env typ with _ -> typ)
+  let expanded =
+    try Ctype.full_expand ~may_forget_scope:false env typ with _ -> typ
+  in
+  let rec concrete_manifest visited followed_declaration typ =
+    match Types.get_desc typ with
+    | Tconstr (path, arguments, _) -> (
+        if List.exists (Path.same path) visited then None
+        else
+          match Env.find_type path env with
+          | {
+           Types.type_manifest = Some manifest;
+           type_params = parameters;
+           _;
+          } ->
+              let manifest =
+                try Ctype.apply env parameters manifest arguments
+                with Ctype.Cannot_apply -> manifest
+              in
+              concrete_manifest (path :: visited) true manifest
+          | { Types.type_manifest = None; _ } | (exception Not_found) ->
+              if followed_declaration then Some typ else None)
+    | Tlink typ | Tsubst (typ, _) | Tpoly (typ, _) ->
+        concrete_manifest visited followed_declaration typ
+    | _ -> if followed_declaration then Some typ else None
+  in
+  return
+    (Option.value (concrete_manifest [] false expanded) ~default:expanded)
 
 let rec nb_forall_typs (typ : t) : int =
   match typ with
@@ -3014,11 +3346,12 @@ let rec to_coq (subst : Subst.t option) (context : Context.t option) (typ : t) :
                ^^ !^"=>"
                ^^ to_coq subst (Some Context.Forall) typ))
   | Let (name, typ1, typ2) ->
-      nest
-        (!^"let" ^^ Name.to_coq name ^^ !^":="
-        ^^ to_coq subst (Some Context.Let) typ1
-        ^^ !^"in" ^^ newline
-        ^^ to_coq subst (Some Context.Let) typ2)
+      Context.parens context Context.Let
+      @@ nest
+           (!^"let" ^^ Name.to_coq name ^^ !^":="
+           ^^ to_coq subst (Some Context.Let) typ1
+           ^^ !^"in" ^^ newline
+           ^^ to_coq subst (Some Context.Let) typ2)
   | Error message -> !^message
 
 let typ_vars_to_coq (delim : SmartPrint.t -> SmartPrint.t)

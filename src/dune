@@ -1,17 +1,13 @@
 (executable
-  (name rocqOfOCaml)
-  (package rocq-of-ocaml)
-  (flags
-    :standard
-    -open Merlin_kernel
-    -open Ocaml_parsing
-    -open Ocaml_typing)
-  (public_name rocq-of-ocaml)
-  (libraries
-    merlin-lib.analysis
-    merlin-lib.kernel
-    smart_print
-    angstrom
-    yojson
-    )
-  (instrumentation (backend bisect_ppx)))
+ (name rocqOfOCaml)
+ (package rocq-of-ocaml)
+ (flags :standard -open Merlin_kernel -open Ocaml_parsing -open Ocaml_typing)
+ (public_name rocq-of-ocaml)
+ (libraries
+  merlin-lib.analysis
+  merlin-lib.kernel
+  smart_print
+  angstrom
+  yojson)
+ (instrumentation
+  (backend bisect_ppx)))

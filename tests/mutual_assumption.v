@@ -22,6 +22,6 @@ with odd_to_int
   (function_parameter : odd) : int :=
   let 'OddSucc value := function_parameter in
   let '_ :=
-    if RocqOfOCaml.Basics.Stdlib.ge (even_to_int value) 0 then tt else
+    if Z.geb (even_to_int value) 0 then tt else
       (@RocqOfOCaml.Basics.unreachable unit _) in
   1.

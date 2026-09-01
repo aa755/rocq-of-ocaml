@@ -13,7 +13,7 @@ Program Definition search (bound : int) : int :=
         int) -> int) :=
     (fun _rocq_state _rocq_recurse =>
       let value := _rocq_state in
-      if RocqOfOCaml.Basics.Stdlib.lt value bound then
+      if Z.ltb value bound then
         _rocq_recurse (Z.add value 1) _
       else
         value) in

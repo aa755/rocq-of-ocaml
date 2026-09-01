@@ -1,0 +1,5 @@
+{
+  "renaming_type_constructor": [
+    ["iarray", "RocqOfOCaml.OCamlIarray.t"]
+  ]
+}

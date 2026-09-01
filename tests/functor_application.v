@@ -25,11 +25,11 @@ Arguments Target {_}.
 
 Module M.
   Definition t : Set := int.
-
+  
   Definition x_value : int := 12.
-
+  
   Definition id {A : Set} (x_value : A) : A := x_value.
-
+  
   (* M *)
   Definition module :Source (t := t) :=
     {|
@@ -44,11 +44,11 @@ Module F.
     X : Source (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition t `{_fargs : FArgs} : Set := X.(Source.t).
-
+  
   Definition y_value `{_fargs : FArgs} : X.(Source.t) := X.(Source.x_value).
-
+  
   (* F *)
   Definition functor `{_fargs : FArgs} :Target (t := X.(Source.t)) :=
     {|
@@ -65,9 +65,9 @@ Module FSubst.
     X : Source (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition y_value `{_fargs : FArgs} : X.(Source.t) := X.(Source.x_value).
-
+  
   (* FSubst *)
   Definition functor `{_fargs : FArgs} :Target :=
     {|
@@ -82,12 +82,12 @@ Module Sum.
     X : Source (t := int);
     Y : Source (t := int);
   }.
-
+  
   Definition t `{_fargs : FArgs} : Set := int.
-
+  
   Definition y_value `{_fargs : FArgs} : int :=
     Z.add X.(Source.x_value) Y.(Source.x_value).
-
+  
   (* Sum *)
   Definition functor `{_fargs : FArgs} :Target (t := t) :=
     {|
@@ -100,30 +100,30 @@ Definition Sum (X : Source (t := int)) (Y : Source (t := int)) :=
 Module WithM.
   (** Inclusion of the module [M] *)
   Definition t := M.(Source.t).
-
-  Definition x_value : t := M.(Source.x_value).
-
+  
+  Definition x_value := M.(Source.x_value).
+  
   Definition id {a : Set} : a -> a := M.(Source.id).
-
+  
   Definition z_value : int := 0.
 End WithM.
 
 Module WithSum.
   Definition F_include := F M.
-
+  
   (** Inclusion of the module [F_include] *)
   Definition t := F_include.(Target.t).
-
-  Definition y_value : t := F_include.(Target.y_value).
-
+  
+  Definition y_value := F_include.(Target.y_value).
+  
   Definition z_value : int := 0.
 End WithSum.
 
 Module GenFun.
   Definition t : Set := int.
-
+  
   Definition y_value : int := 23.
-
+  
   (* GenFun *)
   Definition module :Target (t := t) :=
     {|
@@ -149,13 +149,13 @@ Module LargeF.
     X : Source (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition t `{_fargs : FArgs} : Set := X.(Source.t).
-
+  
   Definition y_value `{_fargs : FArgs} : X.(Source.t) := X.(Source.x_value).
-
+  
   Definition z_value `{_fargs : FArgs} : X.(Source.t) := y_value.
-
+  
   (* LargeF *)
   Definition functor `{_fargs : FArgs} :LargeTarget (t := t) :=
     {|
@@ -173,20 +173,20 @@ Module FunctorWithInductive.
     X : Source (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Inductive foo `{_fargs : FArgs} (a : Set) : Set :=
   | Foo : a -> X.(Source.t) -> foo a.
-
+  
   Arguments Foo {_ _ _}.
-
+  
   Definition v_value `{_fargs : FArgs} : foo bool :=
     Foo true X.(Source.x_value).
-
+  
   Inductive foo_int `{_fargs : FArgs} : Set :=
   | Foo_int : int -> X.(Source.t) -> foo_int.
-
+  
   Definition v_int `{_fargs : FArgs} : foo_int := Foo_int 12 X.(Source.x_value).
-
+  
   Module FunctorWithInductive_result.
     Record signature `{_fargs : FArgs} {foo : Set -> Set} {foo_int : Set} : Type
       := {
@@ -199,7 +199,7 @@ Module FunctorWithInductive.
   Definition FunctorWithInductive_result `{_fargs : FArgs} :=
     @FunctorWithInductive_result.signature _ _.
   Arguments FunctorWithInductive_result {_ _ _ _}.
-
+  
   (* FunctorWithInductive *)
   Definition functor `{_fargs : FArgs}
     :FunctorWithInductive_result (foo := _) (foo_int := _) :=

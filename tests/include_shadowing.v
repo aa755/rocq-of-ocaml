@@ -5,13 +5,13 @@ Require Import RocqOfOCaml.Settings.
 (** Names declared after an include shadow names from the included namespace. *)
 Module Namespace.
   Definition retained_type : Set := int.
-
+  
   Definition retained_value : int := 17.
-
+  
   Module Retained_module.
     Definition value : int := retained_value.
   End Retained_module.
-
+  
   Module Kept.
     Record signature {t : Set} : Type := {
       t := t;
@@ -19,17 +19,17 @@ Module Namespace.
   End Kept.
   Definition Kept := @Kept.signature.
   Arguments Kept {_}.
-
+  
   Module Replaced.
     Record signature : Type := {
       old_value : int;
     }.
   End Replaced.
   Definition Replaced := Replaced.signature.
-
+  
   Module Replaced_module.
     Definition old_value : int := 1.
-
+    
     (* Replaced_module *)
     Definition module :Replaced :=
       {|
@@ -41,7 +41,7 @@ End Namespace.
 
 Definition retained_type := Namespace.retained_type.
 
-Definition retained_value : int := Namespace.retained_value.
+Definition retained_value := Namespace.retained_value.
 
 Module Retained_module := Namespace.Retained_module.
 
@@ -58,7 +58,7 @@ Definition Replaced := Replaced.signature.
 
 Module Replaced_module.
   Definition new_value : bool := true.
-
+  
   (* Replaced_module *)
   Definition module :Replaced :=
     {|
@@ -76,21 +76,21 @@ Module Use_kept.
     Value : Kept (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition t `{_fargs : FArgs} : Set := Value.(Kept.t).
-
+  
   Definition witness `{_fargs : FArgs} : option t := None.
-
+  
   Module Use_kept_result.
     Record signature `{_fargs : FArgs} : Type := {
       t := Value.(Kept.t);
-      witness : option Value.(Kept.t);
+      witness : option t;
     }.
   End Use_kept_result.
   Definition Use_kept_result `{_fargs : FArgs} := @Use_kept_result.signature _
     _.
   Arguments Use_kept_result {_ _}.
-
+  
   (* Use_kept *)
   Definition functor `{_fargs : FArgs} :@Use_kept_result Value_t _fargs :=
     ((@Use_kept_result.Build_signature Value_t _fargs witness) :

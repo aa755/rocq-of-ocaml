@@ -18,13 +18,13 @@ Module Applied.
     Arg : ARG (_left := Arg_left) (_right := Arg_right);
   }.
   Arguments Build_FArgs {_ _}.
-
+  
   Module Key.
     Definition t `{_fargs : FArgs} : Set := int.
-
+    
     Definition compare `{_fargs : FArgs} : int -> int -> int :=
       RocqOfOCaml.OCamlInt.compare.
-
+    
     (* Key *)
     Definition module `{_fargs : FArgs}
       :RocqOfOCaml.OCamlMap.OrderedType (t := int) :=
@@ -33,24 +33,25 @@ Module Applied.
       |}.
   End Key.
   Definition Key `{_fargs : FArgs} := Key.module.
-
+  
   Definition _Set `{_fargs : FArgs} := RocqOfOCaml.OCamlSet.Make Key.
-
+  
   Definition pair_value `{_fargs : FArgs}
     : Arg.(ARG._left) * Arg.(ARG._right) :=
     (Arg.(ARG.left_value), Arg.(ARG.right_value)).
-
+  
   Module Applied_result.
     Record signature `{_fargs : FArgs} {Set_t : Set} : Type := {
       Key : RocqOfOCaml.OCamlMap.OrderedType (t := int);
       _Set : RocqOfOCaml.OCamlSet.S (elt := int) (t := Set_t);
       pair_value : Arg.(ARG._left) * Arg.(ARG._right);
+      Set_t := Set_t;
     }.
   End Applied_result.
   Definition Applied_result `{_fargs : FArgs} := @Applied_result.signature _ _
     _.
   Arguments Applied_result {_ _ _ _}.
-
+  
   (* Applied *)
   Definition functor `{_fargs : FArgs} :Applied_result (Set_t := _) :=
     {|
@@ -74,17 +75,18 @@ Module Outer.
   Class FArgs := {
     Param : PARAM;
   }.
-
+  
   Module Local.
     Definition _left `{_fargs : FArgs} : Set := int.
-
+    
     Definition _right `{_fargs : FArgs} : Set := string.
   End Local.
-
+  
   Definition Result_fargs `{_fargs : FArgs}
-    `{_rocq_module_assumption_0 : RocqOfOCaml.Basics.Unreachable Local._left}
-    `{_rocq_module_assumption_1 : RocqOfOCaml.Basics.Unreachable Local._right}
-    :=
+    `{_rocq_module_assumption_0 : RocqOfOCaml.Basics.Unreachable Local._right}
+    `{_rocq_module_assumption_1 : RocqOfOCaml.Basics.Unreachable Local._left}
+    `{_rocq_module_assumption_2 : RocqOfOCaml.Basics.Unreachable string}
+    `{_rocq_module_assumption_3 : RocqOfOCaml.Basics.Unreachable int} :=
     Applied.Build_FArgs
       (let _left : Set := Local._left in
       let _right : Set := Local._right in
@@ -94,21 +96,19 @@ Module Outer.
         ARG.left_value := left_value;
         ARG.right_value := right_value
       |} : ARG (_left := _left) (_right := _right))).
-
+  
   Definition Result `{_fargs : FArgs}
-    `{_rocq_module_assumption_0 : RocqOfOCaml.Basics.Unreachable Local._left}
-    `{_rocq_module_assumption_1 : RocqOfOCaml.Basics.Unreachable Local._right} :
-    Applied.Applied_result (_fargs := Result_fargs) :=
-    Applied
-      (let _left : Set := Local._left in
-      let _right : Set := Local._right in
-      let left_value := RocqOfOCaml.OCamlList.hd nil in
-      let right_value := RocqOfOCaml.OCamlOption.get None in
-      ({|
-        ARG.left_value := left_value;
-        ARG.right_value := right_value
-      |} : ARG (_left := _left) (_right := _right))).
-
+    `{_rocq_module_assumption_0 : RocqOfOCaml.Basics.Unreachable Local._right}
+    `{_rocq_module_assumption_1 : RocqOfOCaml.Basics.Unreachable Local._left}
+    `{_rocq_module_assumption_2 : RocqOfOCaml.Basics.Unreachable string}
+    `{_rocq_module_assumption_3 : RocqOfOCaml.Basics.Unreachable int} :
+    Applied.Applied_result
+      (_fargs :=
+        (Result_fargs (_rocq_module_assumption_0 := _rocq_module_assumption_0) (_rocq_module_assumption_1 := _rocq_module_assumption_1) (_rocq_module_assumption_2 := _rocq_module_assumption_2) (_rocq_module_assumption_3 := _rocq_module_assumption_3)))
+    := (Applied.functor
+    (_fargs :=
+      (Result_fargs (_rocq_module_assumption_0 := _rocq_module_assumption_0) (_rocq_module_assumption_1 := _rocq_module_assumption_1) (_rocq_module_assumption_2 := _rocq_module_assumption_2) (_rocq_module_assumption_3 := _rocq_module_assumption_3)))).
+  
   Definition unrelated_partial `{_fargs : FArgs} {A : Set}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A} (value : list A)
     : A :=
@@ -116,32 +116,40 @@ Module Outer.
       RocqOfOCaml.OCamlList.hd value
     else
       RocqOfOCaml.OCamlList.hd value.
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs}
       {Result_Set_t :
         RocqOfOCaml.Basics.Unreachable Local._left ->
-        RocqOfOCaml.Basics.Unreachable Local._right -> Set} : Type := {
+        RocqOfOCaml.Basics.Unreachable Local._right ->
+        RocqOfOCaml.Basics.Unreachable int ->
+        RocqOfOCaml.Basics.Unreachable string -> Set} : Type := {
       Local_left := int;
       Local_right := string;
       Result :
-        forall
-          `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Local._left}
-          `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable Local._right},
-          Applied.Applied_result (_fargs := Result_fargs)
-            (Set_t := Result_Set_t _rocq_assumption_0 _rocq_assumption_1);
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+          `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable string}
+          `{_rocq_assumption_2 : RocqOfOCaml.Basics.Unreachable Local._left}
+          `{_rocq_assumption_3 : RocqOfOCaml.Basics.Unreachable Local._right},
+          Applied.Applied_result
+            (_fargs :=
+              (Result_fargs (_rocq_module_assumption_0 := _rocq_assumption_3) (_rocq_module_assumption_1 := _rocq_assumption_2)))
+            (Set_t :=
+              Result_Set_t _rocq_assumption_2 _rocq_assumption_3
+                _rocq_assumption_0 _rocq_assumption_1);
       unrelated_partial :
         forall {A : Set}
           `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}, list A -> A;
+      Result_Set_t := Result_Set_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (Result_Set_t := _) :=
     {|
-      Outer_result.Result _ _ := Result;
+      Outer_result.Result _ _ _ _ := Result;
       Outer_result.unrelated_partial _ _ := unrelated_partial
     |}.
 End Outer.

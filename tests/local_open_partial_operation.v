@@ -16,12 +16,11 @@ Module Read.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition required `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)} : Value.(VALUE.t) :=
-    let opened_module_123 := Value in
-    RocqOfOCaml.OCamlOption.get opened_module_123.(VALUE.optional).
-
+    RocqOfOCaml.OCamlOption.get Value.(VALUE.optional).
+  
   Module Read_result.
     Record signature `{_fargs : FArgs} : Type := {
       required :
@@ -32,7 +31,7 @@ Module Read.
   End Read_result.
   Definition Read_result `{_fargs : FArgs} := @Read_result.signature _ _.
   Arguments Read_result {_ _}.
-
+  
   (* Read *)
   Definition functor `{_fargs : FArgs} :@Read_result Value_t _fargs :=
     ((@Read_result.Build_signature Value_t _fargs (fun _ => required)) :

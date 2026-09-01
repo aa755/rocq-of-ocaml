@@ -18,15 +18,15 @@ Module Use.
     M : RUNTIME (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Program Definition collect `{_fargs : FArgs} (values : list int)
     : M.(RUNTIME.t) (list int) :=
     M.(RUNTIME.Seq_mapM)
       (fun (value : int) => (M.(RUNTIME._return) (a := int)) (Z.add value 1))
       values.
-
+  
   Admit Obligations.
-
+  
   Module Use_result.
     Record signature `{_fargs : FArgs} : Type := {
       collect : list int -> M.(RUNTIME.t) (list int);
@@ -34,7 +34,7 @@ Module Use.
   End Use_result.
   Definition Use_result `{_fargs : FArgs} := @Use_result.signature _ _.
   Arguments Use_result {_ _}.
-
+  
   (* Use *)
   Definition functor `{_fargs : FArgs} :@Use_result M_t _fargs :=
     ((@Use_result.Build_signature M_t _fargs collect) : @Use_result M_t _fargs).

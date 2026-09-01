@@ -11,12 +11,12 @@ Definition middle
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
   (function_parameter : unit) : int :=
   let '_ := function_parameter in
-  leaf.
+  (leaf (_rocq_assumption_0 := _rocq_assumption_0)).
 
 Definition root
-  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
-  `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable unit}
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
+  `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int}
   (function_parameter : unit) : int :=
   let '_ := function_parameter in
   let '_ := if true then tt else (@RocqOfOCaml.Basics.unreachable unit _) in
-  middle tt.
+  (middle (_rocq_assumption_0 := _rocq_assumption_1)) tt.

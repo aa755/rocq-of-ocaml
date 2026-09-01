@@ -45,7 +45,7 @@ Module ConstructorRecords_wrapper.
         Build t_x x.
     End W_exp.
     Definition W_exp_skeleton := W_exp.record.
-
+    
     Module W_term.
       Record record {x : Set} : Set := Build {
         x : x;

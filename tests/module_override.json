@@ -1,0 +1,10 @@
+{
+  "module_overrides": [
+    [
+      "tests/module_override.ml",
+      "Counter",
+      "Module_override.Counter",
+      "RocqOfOCaml.ModuleOverrideModel"
+    ]
+  ]
+}

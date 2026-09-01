@@ -13,7 +13,7 @@ Arguments T {_}.
 
 Module M.
   Definition t : Set := int.
-
+  
   Definition to_string : int -> string :=
     RocqOfOCaml.Basics.Stdlib.string_of_int.
 End M.

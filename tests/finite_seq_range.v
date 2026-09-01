@@ -15,16 +15,16 @@ Module Make.
   Class FArgs := {
     Argument : ARG;
   }.
-
+  
   Definition marker `{_fargs : FArgs} : int := Argument.(ARG.marker).
-
+  
   Module Seq.
     Definition t `{_fargs : FArgs} (a : Set) : Set := RocqOfOCaml.OCamlSeq.t a.
-
+    
     Definition synthetic_signature_identity `{_fargs : FArgs} {a : Set}
       (values : RocqOfOCaml.OCamlSeq.t a) : RocqOfOCaml.OCamlSeq.t a := values.
   End Seq.
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       marker : int;
@@ -34,7 +34,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
     ((@Make_result.Build_signature _fargs marker
@@ -46,6 +46,16 @@ Definition identity {a : Set} (values : Local.t a) : Local.t a := values.
 
 Definition bounded
   `{_rocq_assumption_0 :
-    RocqOfOCaml.Basics.Unreachable (RocqOfOCaml.OCamlSeq.t int)} (count : int)
-  (start : int) : RocqOfOCaml.OCamlSeq.t int :=
+    RocqOfOCaml.Basics.Unreachable (RocqOfOCaml.OCamlSeq.t int)}
+  `{_rocq_assumption_1 :
+    RocqOfOCaml.Basics.Unreachable (unit -> RocqOfOCaml.OCamlSeq.node int)}
+  (count : int) (start : int) : RocqOfOCaml.OCamlSeq.t int :=
   RocqOfOCaml.OCamlSeq.range count start.
+
+Definition bounded_iterate {A : Set}
+  `{_rocq_assumption_0 :
+    RocqOfOCaml.Basics.Unreachable (RocqOfOCaml.OCamlSeq.t A)}
+  `{_rocq_assumption_1 :
+    RocqOfOCaml.Basics.Unreachable (unit -> RocqOfOCaml.OCamlSeq.node A)}
+  (count : int) (step : A -> A) (start : A) : RocqOfOCaml.OCamlSeq.t A :=
+  RocqOfOCaml.OCamlSeq.iterate_take count step start.

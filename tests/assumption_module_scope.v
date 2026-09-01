@@ -18,14 +18,14 @@ End Base.
 
 Module Nested.
   Include Base.
-
+  
   Module Nested_signature.
     Record signature : Type := {
       map : int -> int;
     }.
   End Nested_signature.
   Definition Nested_signature := Nested_signature.signature.
-
+  
   (* Nested *)
   Definition module :Nested_signature :=
     {|
@@ -48,7 +48,7 @@ End Partial_base.
 
 Module Partial_nested.
   Include Partial_base.
-
+  
   Module Partial_nested_signature.
     Record signature : Type := {
       find :
@@ -57,7 +57,7 @@ Module Partial_nested.
     }.
   End Partial_nested_signature.
   Definition Partial_nested_signature := Partial_nested_signature.signature.
-
+  
   (* Partial_nested *)
   Definition module :Partial_nested_signature :=
     {|
@@ -77,7 +77,7 @@ Module Make.
   Class FArgs := {
     Argument : ARGUMENT;
   }.
-
+  
   Module Map.
     Definition find `{_fargs : FArgs} {A : Set}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable A}
@@ -89,7 +89,7 @@ Module Make.
         (@RocqOfOCaml.Basics.unreachable A _)
       end.
   End Map.
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       Map_find :
@@ -100,7 +100,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
     ((@Make_result.Build_signature _fargs (fun _ _ => Map.find)) :
@@ -122,10 +122,10 @@ Module Keyed.
     Key : KEY (t := Key_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Module Map.
     Definition key `{_fargs : FArgs} : Set := Key.(KEY.t).
-
+    
     Definition min_binding `{_fargs : FArgs} {a : Set}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (key * a)}
       (entries : list (key * a)) : key * a :=
@@ -136,7 +136,7 @@ Module Keyed.
         (@RocqOfOCaml.Basics.unreachable (key * a) _)
       end.
   End Map.
-
+  
   Module Keyed_result.
     Record signature `{_fargs : FArgs} : Type := {
       Map_key := Key.(KEY.t);
@@ -149,7 +149,7 @@ Module Keyed.
   End Keyed_result.
   Definition Keyed_result `{_fargs : FArgs} := @Keyed_result.signature _ _.
   Arguments Keyed_result {_ _}.
-
+  
   (* Keyed *)
   Definition functor `{_fargs : FArgs} :@Keyed_result Key_t _fargs :=
     ((@Keyed_result.Build_signature Key_t _fargs (fun _ _ => Map.min_binding)) :
@@ -157,3 +157,20 @@ Module Keyed.
 End Keyed.
 Definition Keyed {Key_t : Set} (Key : KEY (t := Key_t)) :=
   @Keyed.functor Key_t (Keyed.Build_FArgs Key).
+
+Module Int_key.
+  Definition t : Set := int.
+End Int_key.
+
+Definition Int_keyed_fargs :=
+  Keyed.Build_FArgs
+    ((ltac:(constructor) : KEY (t := Int_key.t)) : KEY (t := Int_key.t)).
+
+Definition Int_keyed : Keyed.Keyed_result (_fargs := Int_keyed_fargs) :=
+  (Keyed.functor (_fargs := (Int_keyed_fargs ))).
+
+Definition first_string
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable (int * string)}
+  (entries : list (int * string)) : int * string :=
+  (Int_keyed.(Keyed.Keyed_result.Map_min_binding)
+    (_rocq_assumption_0 := _rocq_assumption_0)) entries.

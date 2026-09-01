@@ -72,7 +72,7 @@ Module Boxed_set.
     elt := elt;
     elt_ty : comparable_ty;
     OPS : S.SET (elt := elt) (t := OPS_t);
-    boxed : OPS.(S.SET.t);
+    boxed : OPS_t;
     size : int;
   }.
 End Boxed_set.

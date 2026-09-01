@@ -3,6 +3,7 @@
     ["tests/excluded_definitions.ml", "drop"],
     ["tests/excluded_definitions.ml", "*_by_suffix"],
     ["*", "drop_globally"],
+    ["tests/excluded_definitions.ml", "drop_unsupported_body"],
     ["tests/excluded_definitions.ml", "drop_external"],
     ["tests/excluded_definitions.ml", "Nested.drop_nested"],
     ["tests/excluded_definitions.ml", "Packed.drop_packed"],

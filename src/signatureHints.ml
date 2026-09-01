@@ -633,6 +633,32 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                                      signature_path )
                                    :: !direct_signature_children
                              | None -> ())
+                         | Tstr_recmodule bindings ->
+                             let rec path_contains_application = function
+                               | Path.Papply _ -> true
+                               | Path.Pdot (parent, _)
+                               | Path.Pextra_ty (parent, _) ->
+                                   path_contains_application parent
+                               | Path.Pident _ -> false
+                             in
+                             bindings
+                             |> List.iter (fun (binding : Typedtree.module_binding) ->
+                                    match binding.mb_id with
+                                    | Some child_ident -> (
+                                        match
+                                          module_expr_annotation binding.mb_expr
+                                        with
+                                        | Some signature_path
+                                          when not
+                                                 (path_contains_application
+                                                    signature_path) ->
+                                            direct_signature_children :=
+                                              ( Path.Pident outer_ident,
+                                                Ident.name child_ident,
+                                                signature_path )
+                                              :: !direct_signature_children
+                                        | Some _ | None -> ())
+                                    | None -> ())
                          | _ -> ());
                          (match item.str_desc with
                          | Tstr_include { incl_mod; _ } -> (

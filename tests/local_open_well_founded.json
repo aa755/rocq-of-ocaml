@@ -1,0 +1,5 @@
+{
+  "recursion_strategies": [
+    ["tests/local_open_well_founded.ml", "Search.run.loop", "well_founded"]
+  ]
+}

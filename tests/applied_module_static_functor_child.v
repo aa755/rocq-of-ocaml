@@ -16,19 +16,19 @@ Module Outer.
     Left : VALUE (t := Left_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition _left `{_fargs : FArgs} : Left.(VALUE.t) := Left.(VALUE.value).
-
+  
   Module Child.
     Class FArgs `{_fargs : FArgs} {Right_t : Set} := {
       Right : VALUE (t := Right_t);
     }.
     Arguments Build_FArgs {_ _ _}.
-
+    
     Definition pair_value `{_fargs : FArgs}
-      : Left.(VALUE.t) * Right.(VALUE.t) :=
-      (Left.(VALUE.value), Right.(VALUE.value)).
-
+      : Left.(VALUE.t) * (Right (FArgs := _fargs)).(VALUE.t) :=
+      (Left.(VALUE.value), (Right (FArgs := _fargs)).(VALUE.value)).
+    
     Module Child_result.
       Record signature `{_fargs : FArgs} : Type := {
         pair_value : Left.(VALUE.t) * Right.(VALUE.t);
@@ -37,7 +37,7 @@ Module Outer.
     Definition Child_result `{_fargs : FArgs} := @Child_result.signature _ _ _
       _.
     Arguments Child_result {_ _ _ _}.
-
+    
     (* Child *)
     Definition functor `{_fargs : FArgs} :@Child_result _ _ Right_t _fargs :=
       ((@Child_result.Build_signature _ _ Right_t _fargs pair_value) :
@@ -46,16 +46,16 @@ Module Outer.
   Definition Child `{_fargs : FArgs} {Right_t : Set}
     (Right : VALUE (t := Right_t)) :=
     @Child.functor _ _ Right_t (Child.Build_FArgs Right).
-
+  
   Module Outer_result.
     Record signature `{_fargs : FArgs} : Type := {
       _left : Left.(VALUE.t);
-
+    
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _}.
-
+  
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result Left_t _fargs :=
     ((@Outer_result.Build_signature Left_t _fargs _left) :
@@ -69,19 +69,24 @@ Module Use.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition Applied_fargs `{_fargs : FArgs} := Outer.Build_FArgs Value.
-
+  
   Definition Applied `{_fargs : FArgs} :
-    Outer.Outer_result (_fargs := Applied_fargs) := Outer Value.
-
-  Definition Result_fargs `{_fargs : FArgs} :=
+    Outer.Outer_result (_fargs := Applied_fargs) := (Outer.functor
+    (_fargs := (Applied_fargs ))).
+  
+  Section Result_application.
+  Context `{_fargs : FArgs}.
+  #[local] Existing Instance Applied_fargs.
+  
+  Definition Result_fargs :=
     (Outer.Child.Build_FArgs (_fargs := Applied_fargs)) Value.
-
-  Definition Result `{_fargs : FArgs} :
-    Outer.Child.Child_result (_fargs := Result_fargs) :=
-    (Outer.Child (_fargs := Applied_fargs)) Value.
-
+  
+  Definition Result : Outer.Child.Child_result (_fargs := Result_fargs) :=
+    (Outer.Child.functor (_fargs := (Result_fargs ))).
+  End Result_application.
+  
   Module Use_result.
     Record signature `{_fargs : FArgs} : Type := {
       Applied : Outer.Outer_result (_fargs := Applied_fargs);
@@ -90,7 +95,7 @@ Module Use.
   End Use_result.
   Definition Use_result `{_fargs : FArgs} := @Use_result.signature _ _.
   Arguments Use_result {_ _}.
-
+  
   (* Use *)
   Definition functor `{_fargs : FArgs} :@Use_result Value_t _fargs :=
     ((@Use_result.Build_signature Value_t _fargs Applied Result) :

@@ -17,12 +17,12 @@ Module Make.
     M : MONAD (t := M_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   CoFixpoint count_down `{_fargs : FArgs} (value : int)
     : RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) int :=
     (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
       (fun _ =>
-        if RocqOfOCaml.Basics.Stdlib.le value 0 then
+        if Z.leb value 0 then
           (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t))) 0
         else
           (RocqOfOCaml.Partial.Resumption.Bind (M := M.(MONAD.t)))
@@ -30,7 +30,7 @@ Module Make.
             (fun (value : int) =>
               (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
                 (fun _ => count_down value))).
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       count_down : int -> RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) int;
@@ -38,7 +38,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result M_t _fargs :=
     ((@Make_result.Build_signature M_t _fargs count_down) :

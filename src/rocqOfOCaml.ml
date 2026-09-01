@@ -166,11 +166,6 @@ let main () =
       let configuration =
         Configuration.of_optional_file_name file_name !configuration_file_name
       in
-      let project_hints =
-        match !project_cmt_directory with
-        | None -> ProjectHints.empty
-        | Some directory -> ProjectHints.of_directory directory
-      in
       let external_assumption_specs =
         match !assumption_metadata_directory with
         | None -> []
@@ -235,6 +230,11 @@ let main () =
           in
           let constructor_names = ConstructorNames.of_typedtree typedtree in
           let value_names = ValueNames.of_typedtree typedtree in
+          let project_hints =
+            match !project_cmt_directory with
+            | None -> ProjectHints.empty
+            | Some directory -> ProjectHints.of_directory directory
+          in
 
           let context =
             MonadEval.Context.init comments configuration constructor_names

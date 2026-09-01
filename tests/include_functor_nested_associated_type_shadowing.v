@@ -13,9 +13,9 @@ Module Make.
   Class FArgs := {
     Token : Make_Token_signature;
   }.
-
+  
   Definition t `{_fargs : FArgs} : Set := int.
-
+  
   Definition Collection `{_fargs : FArgs} :=
     RocqOfOCaml.OCamlSet.Make
       (let t : Set := t in
@@ -23,16 +23,17 @@ Module Make.
       ({|
         RocqOfOCaml.OCamlMap.OrderedType.compare := compare
       |} : RocqOfOCaml.OCamlMap.OrderedType (t := t))).
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} {Collection_t : Set} : Type := {
       t := int;
       Collection : RocqOfOCaml.OCamlSet.S (elt := int) (t := Collection_t);
+      Collection_t := Collection_t;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_ _}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :Make_result (Collection_t := _) :=
     {|
@@ -52,160 +53,163 @@ Module Int_collection.
       ({|
         Make_Token_signature.token := Token.token
       |} : Make_Token_signature).
-
+  
   Definition Make_include : Make.Make_result (_fargs := Make_include_fargs) :=
-    Make
-      ({|
-        Make_Token_signature.token := Token.token
-      |} : Make_Token_signature).
-
+    (Make.functor (_fargs := (Make_include_fargs ))).
+  
   (** Inclusion of the module [Make_include] *)
+  Section _rocq_include_assumptions_t.
+  #[local] Existing Instance Make_include_fargs.
+  
   Definition t := Make_include.(Make.Make_result.t).
-
+  End _rocq_include_assumptions_t.
+  
   Module Collection.
     Definition elt :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.elt).
-
+    
     Definition t :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.t).
-
-    Definition empty : t :=
+    
+    Definition empty :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.empty).
-
-    Definition add : elt -> t -> t :=
+    
+    Definition add :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.add).
-
-    Definition singleton : elt -> t :=
+    
+    Definition singleton :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.singleton).
-
-    Definition remove : elt -> t -> t :=
+    
+    Definition remove :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.remove).
-
-    Definition union : t -> t -> t :=
+    
+    Definition union :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.union).
-
-    Definition inter : t -> t -> t :=
+    
+    Definition inter :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.inter).
-
-    Definition disjoint : t -> t -> bool :=
+    
+    Definition disjoint :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.disjoint).
-
-    Definition diff : t -> t -> t :=
+    
+    Definition diff :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.diff).
-
-    Definition cardinal : t -> int :=
+    
+    Definition cardinal :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.cardinal).
-
-    Definition elements : t -> list elt :=
+    
+    Definition elements :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.elements).
-
+    
     Definition min_elt
-      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.min_elt).
-
-    Definition min_elt_opt : t -> option elt :=
+    
+    Definition min_elt_opt :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.min_elt_opt).
-
+    
     Definition max_elt
-      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} : t -> elt :=
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.max_elt).
-
-    Definition max_elt_opt : t -> option elt :=
+    
+    Definition max_elt_opt :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.max_elt_opt).
-
+    
     Definition choose `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt}
-      : t -> elt :=
+      :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.choose).
-
-    Definition choose_opt : t -> option elt :=
+    
+    Definition choose_opt :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.choose_opt).
-
-    Definition find `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
-      elt -> t -> elt :=
+    
+    Definition find `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt}
+      :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.find).
-
-    Definition find_opt : elt -> t -> option elt :=
+    
+    Definition find_opt :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.find_opt).
-
+    
     Definition find_first
-      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
-      (elt -> bool) -> t -> elt :=
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.find_first).
-
-    Definition find_first_opt : (elt -> bool) -> t -> option elt :=
+    
+    Definition find_first_opt :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.find_first_opt).
-
+    
     Definition find_last
-      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :
-      (elt -> bool) -> t -> elt :=
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable elt} :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.find_last).
-
-    Definition find_last_opt : (elt -> bool) -> t -> option elt :=
+    
+    Definition find_last_opt :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.find_last_opt).
-
-    Definition iter : (elt -> unit) -> t -> unit :=
+    
+    Definition iter :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.iter).
-
+    
     Definition fold {acc : Set} : (elt -> acc -> acc) -> t -> acc -> acc :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.fold).
-
-    Definition map : (elt -> elt) -> t -> t :=
+    
+    Definition map :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.map).
-
-    Definition filter : (elt -> bool) -> t -> t :=
+    
+    Definition filter :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.filter).
-
-    Definition filter_map : (elt -> option elt) -> t -> t :=
+    
+    Definition filter_map :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.filter_map).
-
-    Definition partition : (elt -> bool) -> t -> t * t :=
+    
+    Definition partition :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.partition).
-
-    Definition split : elt -> t -> t * bool * t :=
+    
+    Definition split :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.split).
-
-    Definition is_empty : t -> bool :=
+    
+    Definition is_empty :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.is_empty).
-
-    Definition mem : elt -> t -> bool :=
+    
+    Definition mem :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.mem).
-
-    Definition equal : t -> t -> bool :=
+    
+    Definition equal :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.equal).
-
-    Definition compare : t -> t -> int :=
+    
+    Definition compare :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.compare).
-
-    Definition subset : t -> t -> bool :=
+    
+    Definition subset :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.subset).
-
-    Definition for_all : (elt -> bool) -> t -> bool :=
+    
+    Definition for_all :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.for_all).
-
-    Definition _exists : (elt -> bool) -> t -> bool :=
+    
+    Definition _exists :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S._exists).
-
-    Definition to_list : t -> list elt :=
+    
+    Definition to_list :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.to_list).
-
-    Definition of_list : list elt -> t :=
+    
+    Definition of_list :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.of_list).
-
-    Definition to_seq_from : elt -> t -> RocqOfOCaml.OCamlSeq.t elt :=
+    
+    Definition to_seq_from :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.to_seq_from).
-
-    Definition to_seq : t -> RocqOfOCaml.OCamlSeq.t elt :=
+    
+    Definition to_seq :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.to_seq).
-
-    Definition to_rev_seq : t -> RocqOfOCaml.OCamlSeq.t elt :=
+    
+    Definition to_rev_seq :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.to_rev_seq).
-
-    Definition add_seq : RocqOfOCaml.OCamlSeq.t elt -> t -> t :=
+    
+    Definition add_seq :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.add_seq).
-
-    Definition of_seq : RocqOfOCaml.OCamlSeq.t elt -> t :=
+    
+    Definition of_seq :=
       Make_include.(Make.Make_result.Collection).(RocqOfOCaml.OCamlSet.S.of_seq).
   End Collection.
-
+  
+  Section _rocq_include_assumptions_Collection.
+  #[local] Existing Instance Make_include_fargs.
+  
   Definition Collection := Make_include.(Make.Make_result.Collection).
+  End _rocq_include_assumptions_Collection.
 End Int_collection.

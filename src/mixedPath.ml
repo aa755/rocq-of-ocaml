@@ -24,6 +24,14 @@ type t =
 (** Shortcut to introduce new local variables for example. *)
 let of_name (name : Name.t) : t = PathName (PathName.of_name [] name)
 
+let fargs_field_marker_prefix = "_rocq_current_fargs_field:"
+
+let fargs_field_marker (name : Name.t) : string =
+  fargs_field_marker_prefix ^ Name.to_string name
+
+let is_fargs_field_marker (value : string) : bool =
+  String.starts_with ~prefix:fargs_field_marker_prefix value
+
 let dec_name : t = PathName (Name.decode_vtag |> PathName.of_name [])
 let projT1 : t = of_name (Name.of_string_raw "projT1")
 let prim_proj_fst : t = PathName PathName.prim_proj_fst
@@ -71,27 +79,89 @@ let rec resolve_included_signature_path_aliases (path : Path.t) : Path.t Monad.t
 let rec get_signature_path (path : Path.t) : Path.t option Monad.t =
   let* env = get_env in
   let* is_static_local_module_alias =
-    match path with
-    | Path.Pident ident when not (Ident.global ident) -> (
-        match (Env.find_module path env).Types.md_type with
-        | Mty_alias target ->
-            let rec root_and_has_field has_field = function
-              | Path.Pdot (parent, _) | Path.Pextra_ty (parent, _) ->
-                  root_and_has_field true parent
-              | (Path.Pident _ | Path.Papply _) as root -> (root, has_field)
-            in
-            let root, has_field = root_and_has_field false target in
-            if not has_field then return false
-            else
-              let* root_signature = get_signature_hint root in
-              return
-                (match root_signature with
-                | Some root_signature ->
-                    String.ends_with ~suffix:"_result"
-                      (Path.last root_signature)
-                | None -> false)
-        | _ -> return false
-        | exception _ -> return false)
+    let rec root_and_fields fields = function
+      | Path.Pdot (parent, field) ->
+          root_and_fields (field :: fields) parent
+      | Path.Pextra_ty (parent, Path.Pcstr_ty field) ->
+          root_and_fields (field :: fields) parent
+      | Path.Pextra_ty (parent, Path.Pext_ty) ->
+          root_and_fields fields parent
+      | (Path.Pident _ | Path.Papply _) as root -> (root, fields)
+    in
+    let rec functor_head = function
+      | Path.Papply (functor_path, _) -> functor_head functor_path
+      | path -> path
+    in
+    let is_result_signature = function
+      | Some signature ->
+          String.ends_with ~suffix:"_result" (Path.last signature)
+      | None -> false
+    in
+    let should_flatten result_signature fields =
+      match (result_signature, fields) with
+      | Some result_signature, first_field :: _
+        when is_result_signature (Some result_signature) ->
+          let* preserved_field =
+            get_result_module_field result_signature first_field
+          in
+          (match preserved_field with
+          | Some _ -> return false
+          | None -> (
+              let* result_module_type =
+                get_module_type_hint result_signature
+              in
+              match
+                Option.map (Env.scrape_alias env) result_module_type
+              with
+              | Some (Mty_signature signature) -> (
+                  match
+                    signature
+                    |> List.find_map (function
+                         | Types.Sig_module
+                             (ident, _, module_declaration, _, _)
+                           when String.equal (Ident.name ident) first_field ->
+                             Some (ident, module_declaration.Types.md_type)
+                         | _ -> None)
+                  with
+                  | Some (ident, module_type) ->
+                      let* classification =
+                        IsFirstClassModule.is_module_typ_first_class
+                          ~include_hidden_hints:true module_type
+                          (Some (Path.Pident ident))
+                      in
+                      (match classification with
+                      | IsFirstClassModule.Found _ -> return false
+                      | IsFirstClassModule.Not_found _ -> return true)
+                  | None -> return true)
+              | Some _ | None -> return true
+              | exception _ -> return true))
+      | _ -> return false
+    in
+    let root, fields = root_and_fields [] path in
+    match root with
+    | Path.Pident ident when not (Ident.global ident) ->
+        let* local_signature =
+          if fields <> [] then get_signature_hint root else return None
+        in
+        let* flatten_local = should_flatten local_signature fields in
+        if flatten_local then return true
+        else (
+          match (Env.find_module root env).Types.md_type with
+          | Mty_alias target ->
+              let target_root, target_fields = root_and_fields [] target in
+              let fields = target_fields @ fields in
+              if fields = [] then return false
+              else
+                let* root_signature =
+                  match target_root with
+                  | Path.Papply _ ->
+                      get_functor_result_signature (functor_head target_root)
+                  | Path.Pident _ -> get_signature_hint target_root
+                  | Path.Pdot _ | Path.Pextra_ty _ -> assert false
+                in
+                return (is_result_signature root_signature)
+          | _ -> return false
+          | exception _ -> return false)
     | Path.Pident _ | Path.Pdot _ | Path.Papply _ | Path.Pextra_ty _ ->
         return false
   in
@@ -120,6 +190,13 @@ let rec get_signature_path (path : Path.t) : Path.t option Monad.t =
     match result with
     | Some _ -> return result
     | None -> (
+        let module_alias () =
+          match Env.find_module path env with
+          | { Types.md_type = Mty_alias alias; _ }
+            when not (Path.same alias path) ->
+              get_signature_path alias
+          | _ | (exception _) -> return None
+        in
         let* resolved_path = resolve_included_signature_path_aliases path in
         let* resolved_result =
           if Path.same path resolved_path then return None
@@ -133,9 +210,15 @@ let rec get_signature_path (path : Path.t) : Path.t option Monad.t =
                 let* parent_signature = get_signature_path parent in
                 match parent_signature with
                 | Some parent_signature ->
-                    get_result_module_field parent_signature field
-                | None -> return None)
-            | Path.Pident _ | Path.Papply _ | Path.Pextra_ty _ -> return None))
+                    let* field_signature =
+                      get_result_module_field parent_signature field
+                    in
+                    (match field_signature with
+                    | Some _ -> return field_signature
+                    | None -> module_alias ())
+                | None -> module_alias ())
+            | Path.Pident _ | Path.Papply _ | Path.Pextra_ty _ ->
+                module_alias ()))
 
 module SignedPath = struct
   type t = { path : Path.t; signature_path : Path.t option }
@@ -155,10 +238,7 @@ module RawDecomposedPath = struct
         let* alias = get_module_path_alias path in
         match alias with
         | Some alias -> get_rev alias
-        | None ->
-            raise (signed_path, []) Unexpected
-              ("No local module binding found for applicative functor path "
-             ^ Path.name path))
+        | None -> return (signed_path, []))
     | Pident ident -> (
         let* alias = get_included_path_alias ident in
         match alias with
@@ -269,10 +349,7 @@ let rec get_local_base_path (is_value : bool) (path : Path.t) :
       let* alias = get_module_path_alias path in
       match alias with
       | Some alias -> get_local_base_path is_value alias
-      | None ->
-          raise None Unexpected
-            ("No local module binding found for applicative functor path "
-           ^ Path.name path))
+      | None -> return None)
   | Pextra_ty (path, Pext_ty) -> get_local_base_path is_value path
   | Pextra_ty _ -> return None
   | Pident _ -> return None
@@ -350,13 +427,103 @@ let rec included_record_access (is_value : bool) (path : Path.t)
       included_record_access is_value parent (field :: trailing_fields)
   | Papply _ -> return None
 
+let applied_path (is_value : bool) (path : Path.t) :
+    (PathName.t * (string * string) list * PathName.t list) option Monad.t =
+  let rec collect path arguments =
+    match path with
+    | Path.Papply (functor_path, argument_path) ->
+        collect functor_path (argument_path :: arguments)
+    | functor_path -> (functor_path, arguments)
+  in
+  let rec split_suffix path suffix =
+    match path with
+    | Path.Pdot (prefix, field) -> split_suffix prefix (field :: suffix)
+    | Path.Pextra_ty (prefix, Path.Pext_ty) -> split_suffix prefix suffix
+    | Path.Pextra_ty (prefix, Path.Pcstr_ty field) ->
+        split_suffix prefix (field :: suffix)
+    | Path.Papply _ -> Some (path, suffix)
+    | Path.Pident _ -> None
+  in
+  let rec module_value path =
+    match collect path [] with
+    | functor_path, [] ->
+        let* name = PathName.of_path_with_convert false functor_path in
+        return (PathName.to_string name)
+    | functor_path, arguments ->
+        let* functor_name =
+          PathName.of_path_with_convert false functor_path
+        in
+        let* arguments = Monad.List.map module_value arguments in
+        return
+          ("("
+          ^ String.concat " " (PathName.to_string functor_name :: arguments)
+          ^ ")")
+  in
+  match split_suffix path [] with
+  | None -> return None
+  | Some (application, suffix) ->
+      let functor_path, arguments = collect application [] in
+      let* functor_name =
+        PathName.of_path_with_convert false functor_path
+      in
+      let* arguments = Monad.List.map module_value arguments in
+      let applied fields =
+        Some
+          ( functor_name,
+            List.map (fun argument -> ("", argument)) arguments,
+            fields )
+      in
+      (match suffix with
+      | [] -> return (applied [])
+      | _ :: _ ->
+          let* result_signature = get_functor_result_signature functor_path in
+          let result_signature =
+            Option.value result_signature
+              ~default:
+                (SignatureHints.derived_functor_result_signature functor_path)
+          in
+          let rec projections signature_path = function
+            | [] -> return []
+            | field :: suffix ->
+                let* field_name = Name.of_string is_value field in
+                let* projection =
+                  PathName.of_path_and_name_with_convert signature_path
+                    field_name
+                in
+                (match suffix with
+                | [] -> return [ projection ]
+                | _ :: _ ->
+                    let* field_signature =
+                      get_result_module_field signature_path field
+                    in
+                    match field_signature with
+                    | None ->
+                        raise [ projection ] Unexpected
+                          ("No result signature found for field " ^ field
+                         ^ " below applicative functor path "
+                         ^ Path.name application)
+                    | Some field_signature ->
+                        let* remaining = projections field_signature suffix in
+                        return (projection :: remaining))
+          in
+          let* fields = projections result_signature suffix in
+          return (applied fields))
+
 (** The current environment must include the potential first-class module
     signature definition of the corresponding projection in the [path]. *)
 let of_path (is_value : bool) (path : Path.t) : t Monad.t =
-  let* included_access = included_record_access is_value path [] in
-  match included_access with
-  | Some access -> return access
-  | None -> (
+  let* direct_override =
+    let static_path = PathName.static_path path in
+    let* path_name = PathName.of_path_without_convert is_value static_path in
+    PathName.try_module_override path_name
+  in
+  match direct_override with
+  | Some path_name -> return (PathName path_name)
+  | None ->
+      let* included_access = included_record_access is_value path [] in
+      (match included_access with
+      | Some access -> return access
+      | None ->
       let* path = resolve_module_path_aliases path in
       let* decomposed_path = DecomposedPath.get path in
       let flattened_decomposed_path =
@@ -367,10 +534,14 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
       in
       let fields = List.rev fields in
       let* local_base_path = get_local_base_path is_value base_path in
+      let* applied_base = applied_path is_value base_path in
+      let* mixed_path =
       match (fields, signature_path) with
       | [], None -> (
-          match local_base_path with
-          | None -> (
+          match (local_base_path, applied_base) with
+          | None, Some (root, arguments, applied_fields) ->
+              return (AppliedAccess (root, arguments, applied_fields))
+          | None, None -> (
               let* path_name =
                 PathName.of_path_without_convert is_value base_path
               in
@@ -382,13 +553,8 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
               match conversion with
               | None -> return (PathName path_name)
               | Some path_name -> return (PathName path_name))
-          | Some local_base_path -> return (PathName local_base_path))
+          | Some local_base_path, _ -> return (PathName local_base_path))
       | _ ->
-          let* base_path_name =
-            match local_base_path with
-            | None -> PathName.of_path_with_convert is_value base_path
-            | Some local_base_path -> return local_base_path
-          in
           let* fields =
             fields
             |> Monad.List.map (fun (signature_path, fields) ->
@@ -396,7 +562,35 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
                 let* field_name = Name.of_string is_value field in
                 PathName.of_path_and_name_with_convert signature_path field_name)
           in
-          return (Access (base_path_name, List.rev fields)))
+          (match (local_base_path, applied_base) with
+          | None, Some (root, arguments, applied_fields) ->
+              return
+                (AppliedAccess
+                   (root, arguments, applied_fields @ List.rev fields))
+          | _ ->
+              let* base_path_name =
+                match local_base_path with
+                | None -> PathName.of_path_with_convert is_value base_path
+                | Some local_base_path -> return local_base_path
+              in
+              return (Access (base_path_name, List.rev fields)))
+      in
+      let* term_environment = get_term_environment in
+      let root =
+        match mixed_path with
+        | Access (root, _) | AppliedAccess (root, _, _) | PathName root -> root
+      in
+      if
+        List.mem (fargs_field_marker root.PathName.base) term_environment
+      then
+        match mixed_path with
+        | Access (root, fields) ->
+            return
+              (AppliedAccess (root, [ ("FArgs", "_fargs") ], fields))
+        | PathName root ->
+            return (AppliedAccess (root, [ ("FArgs", "_fargs") ], []))
+        | AppliedAccess _ -> return mixed_path
+      else return mixed_path)
 
 let is_native_type (path : t) : bool =
   match path with

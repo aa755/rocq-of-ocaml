@@ -13,20 +13,20 @@ Module Make.
   Class FArgs := {
     Argument : ARG;
   }.
-
+  
   Definition trigger `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit} : unit :=
     if false then tt else (@RocqOfOCaml.Basics.unreachable unit _).
-
+  
   Module Nested.
     Definition use `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
       (function_parameter : unit) : unit :=
       let '_ := function_parameter in
       let '_ := Argument.(ARG.token) in
-      trigger.
+      (trigger (_rocq_assumption_0 := _rocq_assumption_0)).
   End Nested.
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       trigger :
@@ -38,7 +38,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
     ((@Make_result.Build_signature _fargs (fun _ => trigger)
@@ -50,23 +50,27 @@ Module Instantiate.
   Class FArgs := {
     Argument : ARG;
   }.
-
+  
   Definition Make_include_fargs `{_fargs : FArgs} := Make.Build_FArgs Argument.
-
+  
   Definition Make_include `{_fargs : FArgs} :
-    Make.Make_result (_fargs := Make_include_fargs) := Make Argument.
-
+    Make.Make_result (_fargs := Make_include_fargs) := (Make.functor
+    (_fargs := (Make_include_fargs ))).
+  
   (** Inclusion of the module [Make_include] *)
   Definition trigger `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit} : unit :=
-    Make_include.(Make.Make_result.trigger).
-
+    (Make_include (_fargs := _fargs)).(Make.Make_result.trigger)
+      (_rocq_assumption_0 := _rocq_assumption_0).
+  
   Module Nested.
     Definition use `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit} : unit -> unit
-      := Make_include.(Make.Make_result.Nested_use).
+      :=
+      Make_include.(Make.Make_result.Nested_use) (_rocq_assumption_0 :=
+        _rocq_assumption_0).
   End Nested.
-
+  
   Module Instantiate_result.
     Record signature `{_fargs : FArgs} : Type := {
       trigger :
@@ -79,7 +83,7 @@ Module Instantiate.
   Definition Instantiate_result `{_fargs : FArgs} :=
     @Instantiate_result.signature _.
   Arguments Instantiate_result {_}.
-
+  
   (* Instantiate *)
   Definition functor `{_fargs : FArgs} :@Instantiate_result _fargs :=
     ((@Instantiate_result.Build_signature _fargs (fun _ => trigger)

@@ -15,28 +15,28 @@ Definition unwrap {A : Set}
 
 Section _rocq_wf_first.
   Context `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable bool}.
-
+  
   Definition _rocq_mutual_result_first (_rocq_call : sum int int) : Set :=
     match _rocq_call with
     | inl _ => bool
     | inr (_) => int
     end.
-
+  
   Program Definition _rocq_mutual_dispatch_first (_rocq_call : sum int int) : _rocq_mutual_result_first _rocq_call :=
     let _rocq_measure (_rocq_call : sum int int) : nat := RocqOfOCaml.Basics.well_founded_measure "first" _rocq_call in
     @Fix (sum int int) (ltof (sum int int) _rocq_measure) (well_founded_ltof (sum
       int int) _rocq_measure) (fun _rocq_call => _rocq_mutual_result_first _rocq_call) (fun
       _rocq_call _rocq_recurse =>
-      match _rocq_call as _rocq_call return _rocq_mutual_result_first _rocq_call with
-      | inl _rocq_state =>
+      match _rocq_call as _rocq_call_view return (_rocq_call = _rocq_call_view -> _rocq_mutual_result_first _rocq_call_view) with
+      | inl _rocq_state => fun _rocq_call_eq =>
         let value := _rocq_state in
         let first (value : int) : bool := _rocq_recurse (inl value) _ in
         let second (value : int) : int := _rocq_recurse (inr value) _ in
         if equiv_decb value 0 then
-          unwrap (Some true)
+          (unwrap (_rocq_assumption_0 := _rocq_assumption_0)) (Some true)
         else
           equiv_decb (second (Z.sub value 1)) 0
-      | inr (_rocq_state) =>
+      | inr (_rocq_state) => fun _rocq_call_eq =>
         let value := _rocq_state in
         let first (value : int) : bool := _rocq_recurse (inl value) _ in
         let second (value : int) : int := _rocq_recurse (inr value) _ in
@@ -47,11 +47,11 @@ Section _rocq_wf_first.
             value
           else
             0
-      end) _rocq_call.
-
+      end eq_refl) _rocq_call.
+  
   Admit Obligations.
-
+  
   Definition first (value : int) : bool := _rocq_mutual_dispatch_first (inl value).
-
+  
   Definition second (value : int) : int := _rocq_mutual_dispatch_first (inr value).
 End _rocq_wf_first.

@@ -39,11 +39,11 @@ Module Make.
     X : Ordered_alias (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-
+  
   Definition compare `{_fargs : FArgs}
     : X.(Ordered_alias.t) -> X.(Ordered_alias.t) -> int :=
     X.(Ordered_alias.compare).
-
+  
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {
       compare : X.(Ordered_alias.t) -> X.(Ordered_alias.t) -> int;
@@ -51,7 +51,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _ _.
   Arguments Make_result {_ _}.
-
+  
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result X_t _fargs :=
     ((@Make_result.Build_signature X_t _fargs compare) : @Make_result X_t _fargs).
@@ -61,10 +61,10 @@ Definition Make {X_t : Set} (X : Ordered_alias (t := X_t)) :=
 
 Module Int_ordered.
   Definition t : Set := int.
-
+  
   Definition compare (x_value : int) (y_value : int) : int :=
     Z.sub x_value y_value.
-
+  
   (* Int_ordered *)
   Definition module :Ordered (t := t) :=
     {|
@@ -80,7 +80,4 @@ Definition Int_comparison_fargs :=
     |} : Ordered_alias (t := Int_ordered.(Ordered.t))).
 
 Definition Int_comparison : Make.Make_result (_fargs := Int_comparison_fargs) :=
-  Make
-    ({|
-      Ordered_alias.compare := Int_ordered.(Ordered.compare)
-    |} : Ordered_alias (t := Int_ordered.(Ordered.t))).
+  (Make.functor (_fargs := (Int_comparison_fargs ))).

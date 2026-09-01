@@ -21,8 +21,10 @@ module Command = struct
     | GetIncludedRecordAlias :
         Ident.t -> IncludedRecordAliasTarget.t option t
     | GetConstructorName : Types.Uid.t -> string option t
+    | GetDeclarationTypePath : Types.Uid.t -> Path.t option t
     | GetValueName : Ident.t -> string option t
     | GetModulePathAlias : Path.t -> Path.t option t
+    | GetModulePathAliasSource : Path.t -> Path.t option t
     | GetSignatureHint : Path.t -> Path.t option t
     | GetModuleTypeHint : Path.t -> Types.module_type option t
     | GetModuleTypeHints : (Path.t * Types.module_type) list t
@@ -87,11 +89,17 @@ module Notations = struct
   let get_constructor_name (uid : Types.Uid.t) : string option t =
     Command (Command.GetConstructorName uid)
 
+  let get_declaration_type_path (uid : Types.Uid.t) : Path.t option t =
+    Command (Command.GetDeclarationTypePath uid)
+
   let get_value_name (ident : Ident.t) : string option t =
     Command (Command.GetValueName ident)
 
   let get_module_path_alias (path : Path.t) : Path.t option t =
     Command (Command.GetModulePathAlias path)
+
+  let get_module_path_alias_source (path : Path.t) : Path.t option t =
+    Command (Command.GetModulePathAliasSource path)
 
   let get_signature_hint (path : Path.t) : Path.t option t =
     Command (Command.GetSignatureHint path)
