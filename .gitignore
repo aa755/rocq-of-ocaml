@@ -20,6 +20,7 @@ a.out
 *.v.d
 .coqdeps.d
 .Makefile.d
+.lia.cache
 Makefile.conf
 _build/
 \#*\#
