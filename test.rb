@@ -4,6 +4,10 @@ require 'fileutils'
 require 'open3'
 require 'tmpdir'
 
+# Generated Gallina and translator diagnostics are UTF-8 regardless of the
+# invoking shell's locale (minimal containers commonly default to US-ASCII).
+Encoding.default_external = Encoding::UTF_8
+
 class Test
   attr_reader :source_file
 
