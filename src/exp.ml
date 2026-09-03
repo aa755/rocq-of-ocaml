@@ -6970,6 +6970,13 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                   ~default:(Ident.create_local "FunctorParameter")
               in
               let* target_name = Name.of_ident false target_ident in
+              let typed_target_parameter_signature =
+                Option.bind target_typed_parameter (fun parameter ->
+                    ModuleTyp.get_module_typ_path_name
+                      parameter.FunctorParameterHint.module_type)
+                |> Option.map (Subst.module_path target_path_substitution)
+                |> Option.map (qualify_typed_path target_typed_parameter)
+              in
               let* source_parameter_signature =
                 let* signature_hint =
                   match source_functor_path with
@@ -6981,17 +6988,25 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                         parameter_name
                   | None -> return None
                 in
+                let signature_hint =
+                  match signature_hint with
+                  | Some _ as hint -> hint
+                  | None
+                    when IsFirstClassModule.module_type_includes env
+                           source_parameter target_parameter
+                         && IsFirstClassModule.module_type_includes env
+                              target_parameter source_parameter ->
+                      (* Higher-order functor coercions can erase the path of
+                         an otherwise identical named parameter signature.
+                         The expected typed functor retains that path. *)
+                      typed_target_parameter_signature
+                  | None -> None
+                in
                 signature_path_of_module_type ?signature_hint source_parameter
               in
               let* target_parameter_signature =
-                let typed_hint =
-                  Option.bind target_typed_parameter (fun parameter ->
-                      ModuleTyp.get_module_typ_path_name
-                        parameter.FunctorParameterHint.module_type)
-                  |> Option.map (Subst.module_path target_path_substitution)
-                  |> Option.map (qualify_typed_path target_typed_parameter)
-                in
-                signature_path_of_module_type ?signature_hint:typed_hint
+                signature_path_of_module_type
+                  ?signature_hint:typed_target_parameter_signature
                   target_parameter
               in
               let* target_parameter_module_type =
@@ -7040,16 +7055,35 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
               raise (Error "module_coercion_functor_shape") Unexpected
                 "A module coercion cannot convert a functor to a non-functor."
           | _ ->
+              let typed_target_signature =
+                Option.bind target_typed_type (fun parameter ->
+                    ModuleTyp.get_module_typ_path_name
+                      parameter.FunctorParameterHint.module_type)
+              in
+              let source_signature_hint =
+                match source_result_signature with
+                | Some _ as hint -> hint
+                | None
+                  when IsFirstClassModule.module_type_includes env source_type
+                         target_type
+                       && IsFirstClassModule.module_type_includes env target_type
+                            source_type ->
+                    (* A higher-order functor parameter may have no path-based
+                       result hint of its own, even though its declared result
+                       is the same named signature as the expected functor.
+                       Reuse the expected name only for mutually compatible
+                       terminal module types; anonymous source results with
+                       extra fields must still use their own record type. *)
+                    typed_target_signature
+                | None -> None
+              in
               let* source_signature_path =
                 signature_path_of_module_type
-                  ?signature_hint:source_result_signature source_type
+                  ?signature_hint:source_signature_hint source_type
               in
               let* target_signature_path =
                 signature_path_of_module_type
-                  ?signature_hint:
-                    (Option.bind target_typed_type (fun parameter ->
-                         ModuleTyp.get_module_typ_path_name
-                           parameter.FunctorParameterHint.module_type))
+                  ?signature_hint:typed_target_signature
                   target_type
               in
               let target_signature_path =
