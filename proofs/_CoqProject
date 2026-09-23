@@ -38,3 +38,4 @@ Termination/Common.v
 Termination/IncreasingIndex.v
 Termination/BinaryExponentiation.v
 Unreachable/ArrayBounds.v
+Unreachable/StringBounds.v
