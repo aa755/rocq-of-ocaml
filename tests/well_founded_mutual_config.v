@@ -51,7 +51,7 @@ Section _rocq_wf_first.
   
   Admit Obligations.
   
-  Definition first (value : int) : bool := _rocq_mutual_dispatch_first (inl value).
+  Definition first (value : int) : RocqOfOCaml.Basics.with_context (_rocq_assumption_0) (bool) := _rocq_mutual_dispatch_first (inl value).
   
-  Definition second (value : int) : int := _rocq_mutual_dispatch_first (inr value).
+  Definition second (value : int) : RocqOfOCaml.Basics.with_context (_rocq_assumption_0) (int) := _rocq_mutual_dispatch_first (inr value).
 End _rocq_wf_first.

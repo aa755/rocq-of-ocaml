@@ -440,6 +440,24 @@ module Value = struct
         ^-^ !^"."
         ^^ admit_uncertified_obligations details
       in
+      (* Section closing drops unused variables, including assumptions that
+         disappear after certified decrease proofs are elaborated. Calls and
+         serialized metadata still use the complete named telescope. Keep it
+         in each public wrapper's type without changing its result value. *)
+      let wrapper_result_type typ =
+        let result = Type.to_coq None None typ in
+        if not use_context_section then result
+        else
+          let context =
+            (match fargs with
+            | None -> []
+            | Some _ -> [ !^"_fargs" ])
+            @ List.map (fun (name, _) -> Name.to_coq name) common_instance_args
+          in
+          !^"RocqOfOCaml.Basics.with_context"
+          ^^ parens (separate (!^"," ^^ space) context)
+          ^^ parens result
+      in
       let wrappers =
         cases
         |> List.mapi (fun index (header, _) ->
@@ -449,7 +467,7 @@ module Value = struct
             ^^ (if use_context_section then empty
                 else Exp.Header.to_coq_instance_args header)
             ^^ render_arguments header ^^ !^":"
-            ^^ Type.to_coq None None header.Exp.Header.typ
+            ^^ wrapper_result_type header.Exp.Header.typ
             ^^ !^":=" ^^ Name.to_coq dispatch_name
             ^^ inject index (tuple_value header.Exp.Header.args)
             ^-^ !^".")
