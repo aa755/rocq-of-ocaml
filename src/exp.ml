@@ -8380,23 +8380,38 @@ let rewrite_well_founded_calls
     in
     match recursive_call with
     | Some (_, argument_count, inject)
-      when List.length supplied_arguments = argument_count
-           && List.length arguments = argument_count ->
+      when List.length supplied_arguments >= argument_count
+           && List.length arguments = List.length supplied_arguments ->
+      (* A recursive state may return a function, particularly after an
+         optional argument's default-value match. Only its state arguments
+         belong in the ranking tuple; apply any remaining arguments to the
+         certified recursive result. *)
+      let state_arguments = List.take argument_count supplied_arguments in
+      let result_arguments = List.drop argument_count supplied_arguments in
       let state =
-        match supplied_arguments with
+        match state_arguments with
         | [] -> Tuple []
         | [ value ] -> rewrite value
         | values -> Tuple (List.map rewrite values)
       in
-      Apply
-        ( Variable (MixedPath.of_name recurse_name, []),
-          [
-            Some (inject state);
-            Some
-              (match certificate_tactic with
-              | Some tactic -> Ltac (Raw tactic)
-              | None -> Variable (MixedPath.of_name (Name.of_string_raw "_"), []));
-          ] )
+      let recursive_result =
+        Apply
+          ( Variable (MixedPath.of_name recurse_name, []),
+            [
+              Some (inject state);
+              Some
+                (match certificate_tactic with
+                | Some tactic -> Ltac (Raw tactic)
+                | None -> Variable (MixedPath.of_name (Name.of_string_raw "_"), []));
+            ] )
+      in
+      (match result_arguments with
+      | [] -> recursive_result
+      | values ->
+          let arguments = List.map (fun value -> Some (rewrite value)) values in
+          match result_typ with
+          | None -> Apply (recursive_result, arguments)
+          | Some result_typ -> SourceApply (recursive_result, arguments, result_typ))
     | _ ->
       let function_ = rewrite function_ in
       let arguments = List.map (map_option rewrite) arguments in
