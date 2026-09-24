@@ -275,4 +275,97 @@ Module Resumption.
     - unfold of_delay_converges. cbn. unfold eq_rect_r.
       rewrite run_transport. cbn. exact IH.
   Qed.
+  (** Map every source action through [lift], preserving suspension and
+      composition. The observation theorem below states the laws needed for
+      this operation to commute with a source monad interpreter. *)
+  CoFixpoint hoist {M N : Set -> Set}
+      (lift : forall {X : Set}, M X -> N X) {A : Set}
+      (computation : t M A) : t N A :=
+    match computation with
+    | Done value => Done value
+    | Tau next => Tau (fun _ => hoist (@lift) (next tt))
+    | Bind action next =>
+        Bind (lift action) (fun value => hoist (@lift) (next value))
+    | Compose source next =>
+        Compose (hoist (@lift) source)
+          (fun value => hoist (@lift) (next value))
+    end.
+
+  Lemma hoist_unfold {M N : Set -> Set}
+      (lift : forall {X : Set}, M X -> N X) {A : Set}
+      (computation : t M A) :
+    hoist (@lift) computation =
+    match computation with
+    | Done value => Done value
+    | Tau next => Tau (fun _ => hoist (@lift) (next tt))
+    | Bind action next =>
+        Bind (lift action) (fun value => hoist (@lift) (next value))
+    | Compose source next =>
+        Compose (hoist (@lift) source)
+          (fun value => hoist (@lift) (next value))
+    end.
+  Proof. destruct computation; rewrite (unfold_eq (hoist _ _)); reflexivity. Qed.
+
+  Definition hoist_converges {M N : Set -> Set}
+      (lift : forall {X : Set}, M X -> N X) {A : Set}
+      (computation : t M A) (proof : converges computation) :
+    converges (hoist (@lift) computation).
+  Proof.
+    induction proof as
+      [A value | A next proof IH | A X action next proof IH |
+       A X source next source_proof source_IH next_proof next_IH];
+      rewrite hoist_unfold.
+    - apply ConvergesDone.
+    - apply ConvergesTau. exact IH.
+    - apply ConvergesBind. exact IH.
+    - apply ConvergesCompose; assumption.
+  Defined.
+
+  (** Observe related target actions instead of requiring equality of
+      functions. State models can instantiate [equiv] with pointwise equality,
+      without assuming functional extensionality or proof irrelevance. *)
+  Lemma run_hoist {M N : Set -> Set}
+      (lift : forall {X : Set}, M X -> N X)
+      (returnM : forall {X : Set}, X -> M X)
+      (bindM : forall {X Y : Set}, M X -> (X -> M Y) -> M Y)
+      (returnN : forall {X : Set}, X -> N X)
+      (bindN : forall {X Y : Set}, N X -> (X -> N Y) -> N Y)
+      (equiv : forall {X : Set}, N X -> N X -> Prop)
+      (equiv_refl : forall (X : Set) (value : N X), equiv value value)
+      (equiv_trans : forall (X : Set) (left middle right : N X),
+        equiv left middle -> equiv middle right -> equiv left right)
+      (bind_respects : forall (X Y : Set) (left right : N X)
+        (next_left next_right : X -> N Y),
+        equiv left right ->
+        (forall value, equiv (next_left value) (next_right value)) ->
+        equiv (bindN left next_left) (bindN right next_right))
+      (lift_return : forall (X : Set) (value : X),
+        equiv (returnN value) (lift (returnM value)))
+      (lift_bind : forall (X Y : Set) (action : M X) (next : X -> M Y),
+        equiv (bindN (lift action) (fun value => lift (next value)))
+          (lift (bindM action next)))
+      {A : Set} (computation : t M A) (proof : converges computation) :
+    equiv
+      (@run N (@returnN) (@bindN) A (hoist (@lift) computation)
+        (@hoist_converges M N (@lift) A computation proof))
+      (lift (@run M (@returnM) (@bindM) A computation proof)).
+  Proof.
+    induction proof as
+      [A value | A next proof IH | A X action next proof IH |
+       A X source next source_proof source_IH next_proof next_IH].
+    - unfold hoist_converges. cbn. unfold eq_rect_r.
+      rewrite run_transport. cbn. apply lift_return.
+    - unfold hoist_converges. cbn. unfold eq_rect_r.
+      rewrite run_transport. cbn. exact IH.
+    - unfold hoist_converges. cbn. unfold eq_rect_r.
+      rewrite run_transport. cbn.
+      eapply equiv_trans.
+      + apply bind_respects. apply equiv_refl. exact IH.
+      + apply lift_bind.
+    - unfold hoist_converges. cbn. unfold eq_rect_r.
+      rewrite run_transport. cbn.
+      eapply equiv_trans.
+      + apply bind_respects. exact source_IH. exact next_IH.
+      + apply lift_bind.
+  Qed.
 End Resumption.
