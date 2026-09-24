@@ -1049,6 +1049,16 @@ let merge_module_include_assumptions kind typ_vars typ mixed_path
   merge_assumption_requirements stored_requirements local_requirements
   |> Exp.stable_uniq_assumptions
 
+(** An included value from a qualified namespace is an emitted definition with
+    an authoritative assumption telescope. Preserve it when ordering result
+    fields, exported metadata, and calls. Local record projections keep their
+    signature's telescope instead. *)
+let qualified_include_target = function
+  | MixedPath.PathName root
+  | MixedPath.Access (root, _)
+  | MixedPath.AppliedAccess (root, _, _) ->
+      root.PathName.path <> []
+
 (** A translated module expression and its generated argument-record value are
     emitted with the same assumption telescope. Keep this calculation shared
     with exported metadata so downstream compilation units apply that exact
@@ -1295,6 +1305,14 @@ let qualified_assumption_call_specs prefix definitions =
           |> Name.Map.bindings
           |> List.map (fun (name, spec) ->
               (path @ [ name ], spec.Exp.requirements))
+      | ModuleIncludeItem
+          (IncludeValue, name, typ_vars, typ, mixed_path, stored, _)
+        when qualified_include_target mixed_path ->
+          let reconstructed =
+            merge_module_include_assumptions IncludeValue typ_vars typ
+              mixed_path stored
+          in
+          [ (path @ [ name ], reconstructed) ]
       | Module (name, _, nested, _) ->
           collect_direct_value_requirements (path @ [ name ]) nested
       | Documentation (_, nested) ->
@@ -3613,6 +3631,14 @@ let propagate_assumption_calls
           |> List.map (fun (name, spec) ->
               ( String.concat "." (context @ [ Name.to_string name ]),
                 spec.Exp.requirements ))
+      | ModuleIncludeItem
+          (IncludeValue, name, typ_vars, typ, mixed_path, stored, _)
+        when qualified_include_target mixed_path ->
+          [
+            ( String.concat "." (context @ [ Name.to_string name ]),
+              merge_module_include_assumptions IncludeValue typ_vars typ
+                mixed_path stored );
+          ]
       | Module (name, _, nested, _) ->
           collect_concrete_value_requirements
             (context @ [ Name.to_string name ])
@@ -7444,6 +7470,17 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
             |> List.map (fun (name, spec) ->
                 ( String.concat "." (List.map Name.to_string (prefix @ [ name ])),
                   spec.Exp.requirements ))
+        | ModuleIncludeItem
+            (IncludeValue, name, typ_vars, typ, mixed_path, stored, _)
+          when qualified_include_target mixed_path ->
+            let reconstructed =
+              merge_module_include_assumptions IncludeValue typ_vars typ
+                mixed_path stored
+            in
+            [
+              ( String.concat "." (List.map Name.to_string (prefix @ [ name ])),
+                reconstructed );
+            ]
         | Module (name, _, nested, _) -> collect (prefix @ [ name ]) nested
         | Documentation (_, nested) -> collect prefix nested
         | ErrorMessage (_, Documentation (_, nested)) -> collect prefix nested
