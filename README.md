@@ -137,6 +137,34 @@ It is a semantic declaration: the lift must preserve return and bind under
 the intended observation relation. `Resumption.run_hoist` states those proof
 requirements explicitly; the translator does not prove them from a type.
 
+Explicit state application of a local partial result-and-state action can
+be configured separately:
+
+```json
+{
+  "partial_state_observers": [
+    ["path/to/source.ml", "Outer.Module.step", 1, "result_state"]
+  ]
+}
+```
+
+The arity counts ordinary arguments before the state: here `step input state`
+becomes `ResultState.observe (step input) state`. The action must already be
+configured as partial, with a named result type such as `'a M.t`, representing
+`state -> ('a, error) result * state`. This declaration requires the canonical
+return and bind of `ResultState`, including retaining the updated state on
+error; those semantics do not follow from the type alone. The observer returns
+a `Delay.t` of the result/state pair. Monadic callers embed it with
+`Resumption.of_delay`. Calls that do not supply the state remain resumptions.
+Matching uses the exact local declaration and source file, as for action lifts.
+All ordinary arguments and the state must be supplied at the observed call.
+
+Pure sequencing whose continuation contains a recursive call uses the
+`RocqOfOCaml.Partial.Delay.bind_guarded` notation. It expands to a local
+`cofix` so Rocq can check the recursive call's guard. `DelayGuarded` proves
+convergence in both directions and returned-value preservation, requiring
+convergence only of the continuation selected by the first computation.
+
 ## Documentation
 You can read the documentation on the website of the project at [https://formal.land/docs/tools/rocq-of-ocaml/introduction](https://formal.land/docs/tools/rocq-of-ocaml/introduction).
 

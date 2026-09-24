@@ -267,6 +267,9 @@ type source_application_type = {
   (* Explicitly configured action lifts retain their polymorphic value
      parameter and source monad until partial-expression lowering. *)
   source_monad_lift : (Name.t * Type.t) option;
+  (* A state application crosses from a resumption into an observed delay.
+     The arity counts ordinary arguments preceding the explicit state. *)
+  source_state_observer : (int * Configuration.PartialStateObserver.kind) option;
   callee : Type.t;
   result : Type.t;
   specialization : Type.t;
@@ -2968,6 +2971,7 @@ let rec map_assumption_types (map_typ : Type.t -> Type.t) (expression : t) : t =
             source_monad_lift =
               Option.map (fun (name, typ) -> (name, map_typ typ))
                 result_typ.source_monad_lift;
+            source_state_observer = result_typ.source_state_observer;
             callee = map_typ result_typ.callee;
             result = map_typ result_typ.result;
             specialization = map_typ result_typ.specialization;
@@ -3123,6 +3127,7 @@ let rec map_types_and_paths ?(map_implicit_value = Fun.id)
             source_monad_lift =
               Option.map (fun (name, typ) -> (name, map_typ typ))
                 source_type.source_monad_lift;
+            source_state_observer = source_type.source_state_observer;
             callee = map_typ source_type.callee;
             result = map_typ source_type.result;
             specialization = map_typ source_type.specialization;
@@ -4103,6 +4108,7 @@ let propagate_call_assumptions
               {
                 source_partial = None;
                 source_monad_lift = None;
+                source_state_observer = None;
                 callee = call_typ;
                 result = call_typ;
                 specialization = call_typ;
@@ -5356,6 +5362,11 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                        = Some Configuration.RecursionStrategy.Partial)
                   origin
               in
+              let source_state_observer =
+                Option.bind origin (fun { ValueOrigins.definition; _ } ->
+                    Configuration.get_partial_state_observer configuration
+                      definition)
+              in
               let* source_monad_lift =
                 match origin with
                 | Some { ValueOrigins.definition; _ }
@@ -5418,6 +5429,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 {
                   source_partial;
                   source_monad_lift;
+                  source_state_observer;
                   callee = application_callee_typ;
                   result = application_typ;
                   specialization = expanded_application_typ;
@@ -7470,6 +7482,7 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
             {
               source_partial = None;
               source_monad_lift = None;
+              source_state_observer = None;
               callee = placeholder;
               result = placeholder;
               specialization = placeholder;
@@ -8684,7 +8697,15 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
   let bind computation continuation =
     if resumption then
       apply_runtime ?monad "Resumption" "Compose" [ computation; continuation ]
-    else apply_runtime "Delay" "bind" [ computation; continuation ]
+    else
+      let free = get_free_vars continuation in
+      let guarded =
+        List.exists
+          (fun name -> Name.Set.mem (Name.of_string_raw name) free)
+          recursive_names
+      in
+      apply_runtime "Delay" (if guarded then "bind_guarded" else "bind")
+        [ computation; continuation ]
   in
   let action action continuation =
     apply_runtime ?monad "Resumption" "Bind" [ action; continuation ]
@@ -8758,8 +8779,36 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
              ])
     | _ -> None
   in
-  let lifted_seq_map =
+  let lifted_application =
     match e with
+    | SourceApply
+        (function_, arguments,
+         { source_state_observer = Some (arity, kind); _ })
+      when is_partial e && List.length arguments = arity + 1
+           && List.for_all Option.is_some arguments ->
+        let arguments = List.map Option.get arguments in
+        let state = List.nth arguments arity in
+        let computation =
+          Apply (function_, List.take arity arguments |> List.map Option.some)
+        in
+        let computation =
+          if is_named_application recursive_names e then
+            apply_runtime "Resumption" "Tau"
+              [ Function (Name.of_string_raw "_", None, computation) ]
+          else computation
+        in
+        Some
+          (with_partial_value state (fun state ->
+               let observer =
+                 match kind with
+                 | Configuration.PartialStateObserver.ResultState -> "ResultState"
+               in
+               let observed =
+                 apply_runtime observer "observe" [ computation; state ]
+               in
+               if resumption then
+                 apply_runtime ?monad "Resumption" "of_delay" [ observed ]
+               else observed))
     | SourceApply
         (function_, [ Some computation ],
          { source_monad_lift = Some (parameter, source_monad); _ })
@@ -8808,7 +8857,7 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
         lift_seq_map function_ arguments
     | _ -> None
   in
-  match lifted_seq_map with
+  match lifted_application with
   | Some e -> e
   | None when is_named_application recursive_names e -> suspend e
   | None when is_partial e -> (

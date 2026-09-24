@@ -100,6 +100,98 @@ Module Delay.
   Qed.
 End Delay.
 
+(** Expand sequencing at the call site when its continuation contains a
+    corecursive call. A global [Delay.bind] would hide that call from Rocq's
+    guard checker. The identity lambda infers the continuation's domain
+    from the computation before elaborating the continuation itself. *)
+Notation "'RocqOfOCaml.Partial.Delay.bind_guarded' computation continuation" :=
+  (let k :=
+     (fun (A B : Set) (_ : Delay.t A) (next : A -> Delay.t B) => next)
+       _ _ computation continuation in
+   (cofix wait (current : Delay.t _) : Delay.t _ :=
+      match current with
+      | Delay.Done value => k value
+      | Delay.Tau next => Delay.Tau (fun _ => wait (next tt))
+      end) computation)
+  (at level 10, computation at level 9, continuation at level 9, only parsing).
+
+Module DelayGuarded.
+  Lemma bind_guarded_unfold {A B : Set}
+      (computation : Delay.t A) (continuation : A -> Delay.t B) :
+    RocqOfOCaml.Partial.Delay.bind_guarded computation continuation =
+    match computation with
+    | Delay.Done value => continuation value
+    | Delay.Tau next => Delay.Tau (fun _ =>
+        RocqOfOCaml.Partial.Delay.bind_guarded (next tt) continuation)
+    end.
+  Proof.
+    destruct computation as [value | next].
+    - rewrite (Delay.unfold_eq
+        (RocqOfOCaml.Partial.Delay.bind_guarded (Delay.Done value) continuation)).
+      cbn. destruct (continuation value); reflexivity.
+    - rewrite (Delay.unfold_eq
+        (RocqOfOCaml.Partial.Delay.bind_guarded (Delay.Tau next) continuation)).
+      reflexivity.
+  Qed.
+
+  Definition bind_guarded_converges {A B : Set}
+      (computation : Delay.t A) (continuation : A -> Delay.t B)
+      (proof : Delay.converges computation) :
+    Delay.converges (continuation (@Delay.run A computation proof)) ->
+    Delay.converges
+      (RocqOfOCaml.Partial.Delay.bind_guarded computation continuation).
+  Proof.
+    induction proof as [value | next proof IH]; intro H;
+      rewrite bind_guarded_unfold.
+    - exact H.
+    - apply Delay.ConvergesTau. apply IH. exact H.
+  Defined.
+
+  Lemma run_bind_guarded {A B : Set}
+      (computation : Delay.t A) (continuation : A -> Delay.t B)
+      (proof : Delay.converges computation)
+      (next_proof : Delay.converges (continuation (@Delay.run A computation proof))) :
+    @Delay.run B
+      (RocqOfOCaml.Partial.Delay.bind_guarded computation continuation)
+      (@bind_guarded_converges A B computation continuation proof next_proof) =
+    @Delay.run B (continuation (@Delay.run A computation proof)) next_proof.
+  Proof.
+    revert next_proof.
+    induction proof as [value | next proof IH]; intro next_proof.
+    - unfold bind_guarded_converges. cbn.
+      unfold eq_rec_r, eq_rec. apply Delay.run_transport.
+    - unfold bind_guarded_converges. cbn.
+      unfold eq_rec_r, eq_rec. rewrite Delay.run_transport. cbn. apply IH.
+  Qed.
+
+  (** Inlining cannot turn a divergent source or selected continuation into
+      a convergent computation. The converse needs no proof irrelevance. *)
+  Definition bind_guarded_converges_inv {A B : Set}
+      (computation : Delay.t A) (continuation : A -> Delay.t B) :
+    Delay.converges
+      (RocqOfOCaml.Partial.Delay.bind_guarded computation continuation) ->
+    { proof : Delay.converges computation &
+      Delay.converges (continuation (@Delay.run A computation proof)) }.
+  Proof.
+    intro proof.
+    remember (RocqOfOCaml.Partial.Delay.bind_guarded computation continuation)
+      as bound eqn:Heq.
+    revert computation Heq.
+    induction proof as [value | next proof IH]; intros computation Heq;
+      destruct computation as [source_value | source_next];
+      rewrite bind_guarded_unfold in Heq.
+    - exists (Delay.ConvergesDone source_value). cbn.
+      rewrite <- Heq. apply Delay.ConvergesDone.
+    - discriminate.
+    - exists (Delay.ConvergesDone source_value). cbn.
+      rewrite <- Heq. apply Delay.ConvergesTau. exact proof.
+    - injection Heq as Hnext.
+      destruct (IH (source_next tt)
+        (f_equal (fun next => next tt) Hnext)) as [source_proof next_proof].
+      exists (Delay.ConvergesTau source_next source_proof). exact next_proof.
+  Defined.
+End DelayGuarded.
+
 Module Resumption.
   (** [Bind] hides the result type of an arbitrary [M] action.  Under
       predicative [Set], that existential package belongs in [Type]. *)

@@ -93,6 +93,17 @@ module RecursionStrategy = struct
   }
 end
 
+module PartialStateObserver = struct
+  type kind = ResultState
+
+  type t = {
+    source : string;
+    definition : string;
+    arity : int;
+    kind : kind;
+  }
+end
+
 module TerminationCertificate = struct
   type t = {
     source : string;
@@ -131,6 +142,7 @@ type t = {
   module_overrides : ModuleOverride.t list;
   operator_infix : Operator.t list;
   partial_monad_lifts : DefinitionExclusion.t list;
+  partial_state_observers : PartialStateObserver.t list;
   recursion_strategies : RecursionStrategy.t list;
   termination_certificates : TerminationCertificate.t list;
   renaming_rules : RenamingRule.t list;
@@ -172,6 +184,7 @@ let default (file_name : string) : t =
     module_overrides = [];
     operator_infix = [];
     partial_monad_lifts = [];
+    partial_state_observers = [];
     recursion_strategies = [];
     termination_certificates = [];
     renaming_rules =
@@ -308,6 +321,18 @@ let is_partial_monad_lift (configuration : t)
        (fun { DefinitionExclusion.source; definition = configured } ->
          configured = definition
          && filename_matches configuration.file_name source)
+
+let get_partial_state_observer (configuration : t)
+    (definition_path : string list) : (int * PartialStateObserver.kind) option =
+  let definition = String.concat "." definition_path in
+  configuration.partial_state_observers
+  |> List.find_map
+       (fun { PartialStateObserver.source; definition = configured; arity; kind } ->
+         if
+           configured = definition
+           && filename_matches configuration.file_name source
+         then Some (arity, kind)
+         else None)
 
 let get_termination_certificate (configuration : t)
     (definition_path : string list) : (string * string) option =
@@ -793,6 +818,36 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                     { DefinitionExclusion.source; definition })
               in
               { configuration with partial_monad_lifts = entry }
+          | "partial_state_observers" ->
+              let error_message =
+                "Expected partial_state_observers entries to contain a source, \
+                 qualified definition, nonnegative arity, and result_state"
+              in
+              let entries =
+                match entry with
+                | `List entries -> entries
+                | _ -> failwith error_message
+              in
+              let entry =
+                entries
+                |> List.map (function
+                  | `List
+                      [
+                        `String source;
+                        `String definition;
+                        `Int arity;
+                        `String "result_state";
+                      ]
+                    when definition <> "" && arity >= 0 ->
+                      {
+                        PartialStateObserver.source;
+                        definition;
+                        arity;
+                        kind = PartialStateObserver.ResultState;
+                      }
+                  | _ -> failwith error_message)
+              in
+              { configuration with partial_state_observers = entry }
           | "recursion_strategies" ->
               let entry =
                 let error_message =
