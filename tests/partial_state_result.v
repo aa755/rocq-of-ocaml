@@ -73,10 +73,14 @@ Module Outer.
     }.
     Arguments Build_FArgs {_ _}.
     
-    CoFixpoint run `{_fargs : FArgs} (n_value : int)
-      : RocqOfOCaml.Partial.Delay.t (int * int) :=
+    CoFixpoint run `{_fargs : FArgs}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit}
+      (n_value : int) : RocqOfOCaml.Partial.Delay.t (int * int) :=
       RocqOfOCaml.Partial.Delay.Tau
         (fun _ =>
+          let '_ :=
+            if Z.geb n_value 0 then tt else
+              (@RocqOfOCaml.Basics.unreachable unit _) in
           if equiv_decb n_value 0 then
             RocqOfOCaml.Partial.Delay.Done
               ((Config (FArgs := _fargs)).(Runner_Config_signature.offset),
@@ -86,7 +90,9 @@ Module Outer.
     
     Module Runner_result.
       Record signature `{_fargs : FArgs} : Type := {
-        run : int -> RocqOfOCaml.Partial.Delay.t (int * int);
+        run :
+          forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit},
+            int -> RocqOfOCaml.Partial.Delay.t (int * int);
       }.
     End Runner_result.
     Definition Runner_result `{_fargs : FArgs} := @Runner_result.signature _ _
@@ -95,13 +101,14 @@ Module Outer.
     
     (* Runner *)
     Definition functor `{_fargs : FArgs} :@Runner_result _ _ _fargs :=
-      ((@Runner_result.Build_signature _ _ _fargs run) :
+      ((@Runner_result.Build_signature _ _ _fargs (fun _ => run)) :
         @Runner_result _ _ _fargs).
   End Runner.
   Definition Runner `{_fargs : FArgs} (Config : Runner_Config_signature) :=
     @Runner.functor _ _ (Runner.Build_FArgs Config).
   
-  Definition execute `{_fargs : FArgs} (n_value : int)
+  Definition execute `{_fargs : FArgs}
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit} (n_value : int)
     : RocqOfOCaml.Partial.Resumption.t
       (HostState (_fargs := _fargs)).(State.State_result.t) int :=
     (RocqOfOCaml.Partial.Resumption.Bind
@@ -119,7 +126,8 @@ Module Outer.
           (M := (HostState (_fargs := _fargs)).(State.State_result.t)))
           ((RocqOfOCaml.Partial.Resumption.of_delay
             (M := (HostState (_fargs := _fargs)).(State.State_result.t)))
-            (Local.(Runner.Runner_result.run) value))
+            ((Local.(Runner.Runner_result.run)
+              (_rocq_assumption_0 := _rocq_assumption_0)) value))
           (fun _rocq_partial_scrutinee =>
             let '(result_value, state) := _rocq_partial_scrutinee in
             (RocqOfOCaml.Partial.Resumption.Done
@@ -131,10 +139,11 @@ Module Outer.
       HostState : State.State_result (_fargs := HostState_fargs);
       
       execute :
-        int ->
-        RocqOfOCaml.Partial.Resumption.t
-          (fun (a : Set) =>
-            Host.(State_T_signature.t) -> a * Host.(State_T_signature.t)) int;
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit},
+          int ->
+          RocqOfOCaml.Partial.Resumption.t
+            (fun (a : Set) =>
+              Host.(State_T_signature.t) -> a * Host.(State_T_signature.t)) int;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
@@ -142,8 +151,8 @@ Module Outer.
   
   (* Outer *)
   Definition functor `{_fargs : FArgs} :@Outer_result Host_t _fargs :=
-    ((@Outer_result.Build_signature Host_t _fargs HostState execute) :
-      @Outer_result Host_t _fargs).
+    ((@Outer_result.Build_signature Host_t _fargs HostState (fun _ => execute))
+      : @Outer_result Host_t _fargs).
 End Outer.
 Definition Outer {Host_t : Set} (Host : State_T_signature (t := Host_t)) :=
   @Outer.functor Host_t (Outer.Build_FArgs Host).
@@ -157,7 +166,9 @@ Definition Concrete_fargs :=
 Definition Concrete : Outer.Outer_result (_fargs := Concrete_fargs) :=
   (Outer.functor (_fargs := (Concrete_fargs ))).
 
-Definition execute_concrete (n_value : int)
+Definition execute_concrete
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable unit} (n_value : int)
   : RocqOfOCaml.Partial.Resumption.t
     Concrete.(Outer.Outer_result.HostState).(State.State_result.t) int :=
-  Concrete.(Outer.Outer_result.execute) n_value.
+  (Concrete.(Outer.Outer_result.execute)
+    (_rocq_assumption_0 := _rocq_assumption_0)) n_value.

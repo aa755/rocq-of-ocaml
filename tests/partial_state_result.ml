@@ -6,7 +6,9 @@ end
 module Outer (Host : sig type t end) = struct
   module HostState = State (Host)
   module Runner (Config : sig val offset : int end) = struct
-    let rec run n = if n = 0 then (Config.offset, n) else run (n - 1)
+    let rec run n =
+      assert (n >= 0);
+      if n = 0 then (Config.offset, n) else run (n - 1)
   end
   let execute n : int HostState.t =
     HostState.bind (HostState.return n) (fun value ->

@@ -8780,6 +8780,10 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
              | Some name -> function_name_matches name "return"
              | None -> false ->
           done_ value
+      | RequiresAssumption (kind, typ, body) ->
+          RequiresAssumption (kind, typ, recurse body)
+      | PropagatedAssumption (kind, typ, body) ->
+          PropagatedAssumption (kind, typ, recurse body)
       | ErrorMessage (body, message) -> ErrorMessage (recurse body, message)
       | TypAnnotation (body, typ) ->
           TypAnnotation (recurse body, Type.partialize typ)
