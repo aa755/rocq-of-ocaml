@@ -1,0 +1,39 @@
+{
+  "recursion_strategies": [
+    [
+      "tests/partial_named_signature.ml",
+      "HOST.call",
+      "partial"
+    ],
+    [
+      "tests/partial_named_signature.ml",
+      "Vm.SIG.execute",
+      "partial"
+    ],
+    [
+      "tests/partial_named_signature.ml",
+      "Engine.run",
+      "partial"
+    ],
+    [
+      "tests/partial_named_signature.ml",
+      "Engine.execute",
+      "partial"
+    ],
+    [
+      "tests/partial_named_signature.ml",
+      "Host.call",
+      "partial"
+    ],
+    [
+      "tests/partial_named_signature.ml",
+      "PURE.step",
+      "partial"
+    ],
+    [
+      "tests/partial_named_signature.ml",
+      "UsePure.consume",
+      "partial"
+    ]
+  ]
+}

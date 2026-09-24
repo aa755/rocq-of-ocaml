@@ -198,7 +198,7 @@ let rec signature_path_and_explicit_params (signature_path : Path.t) :
           (fun path field -> Path.Pdot (path, field))
           path fields
       in
-      let infer_namespace_argument argument_path parameter_ident
+      let infer_namespace_argument ?existing_signature argument_path parameter_ident
           parameter_type =
         let parameter_name =
           Name.string_of_optional_ident parameter_ident
@@ -221,7 +221,10 @@ let rec signature_path_and_explicit_params (signature_path : Path.t) :
         in
         match signature_path with
         | Some signature_path
-          when module_type_has_only_associated_types parameter_type ->
+          when module_type_has_only_associated_types parameter_type
+               && not
+                    (Option.fold ~none:false
+                       ~some:(Path.same signature_path) existing_signature) ->
             let* signature_path_name =
               PathName.of_path_with_convert false signature_path
             in
@@ -259,10 +262,10 @@ let rec signature_path_and_explicit_params (signature_path : Path.t) :
                in
                let* inferred =
                  match (existing_signature, parameter) with
-                 | None, Some (parameter_ident, parameter_type) ->
-                     infer_namespace_argument argument_path parameter_ident
-                       parameter_type
-                 | Some _, _ | None, None -> return None
+                 | _, Some (parameter_ident, parameter_type) ->
+                     infer_namespace_argument ?existing_signature argument_path
+                       parameter_ident parameter_type
+                 | _, None -> return None
                in
                match inferred with
                | Some argument -> return (argument, false)

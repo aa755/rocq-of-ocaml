@@ -132,7 +132,7 @@ Module GenFun.
 End GenFun.
 Definition GenFun := GenFun.module.
 
-Definition AppliedGenFun := GenFun.
+Definition AppliedGenFun : Target (t := _) := GenFun.
 
 Module LargeTarget.
   Record signature {t : Set} : Type := {
@@ -166,7 +166,11 @@ End LargeF.
 Definition LargeF {X_t : Set} (X : Source (t := X_t)) :=
   @LargeF.functor X_t (LargeF.Build_FArgs X).
 
-Definition CastedLarge := LargeF M.
+Definition CastedLarge : Target (t := _) :=
+  let functor_result := LargeF M in
+  {|
+    Target.y_value := functor_result.(LargeTarget.y_value)
+  |}.
 
 Module FunctorWithInductive.
   Class FArgs {X_t : Set} := {

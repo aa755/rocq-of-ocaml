@@ -1642,7 +1642,33 @@ let rec rewrite_sequence_calls ~(discharge_partial : bool)
                      (List.rev rev_monad_path @ [ monad_base ])
                      (Name.of_string_raw "t"))
               in
-              Some (Variable (monad_path, []), monad_type_path)
+              let monad = Variable (monad_path, []) in
+              Some
+                (field monad "_return", field monad "op_letdollar", monad_type_path)
+          | _ -> None)
+      | Variable
+          ((MixedPath.Access (_, fields) | MixedPath.AppliedAccess (_, _, fields))
+            as path, _) -> (
+          match List.rev fields with
+          | ({ PathName.base; _ } as operation) :: preceding
+            when Name.to_string base = "Seq_mapM" ->
+              (* A signature flattens [Seq.mapM] into a record field. Its
+                 monad operations are projections from the same record,
+                 not namespace members such as [M._return]. *)
+              let sibling name =
+                let fields =
+                  List.rev preceding
+                  @ [ { operation with PathName.base = Name.of_string_raw name } ]
+                in
+                match path with
+                | MixedPath.Access (base, _) -> MixedPath.Access (base, fields)
+                | MixedPath.AppliedAccess (base, arguments, _) ->
+                    MixedPath.AppliedAccess (base, arguments, fields)
+                | MixedPath.PathName _ -> assert false
+              in
+              Some
+                (Variable (sibling "_return", []),
+                 Variable (sibling "op_letdollar", []), sibling "t")
           | _ -> None)
       | _ -> None
     in
@@ -1657,7 +1683,7 @@ let rec rewrite_sequence_calls ~(discharge_partial : bool)
                 monad_of_seq_function,
                 arguments )
             with
-            | true, Some (monad, monad_path), [ Some _; Some _ ] ->
+            | true, Some (return_, bind_, monad_path), [ Some _; Some _ ] ->
                 let a = Name.of_string_raw "_rocq_partial_A" in
                 let b = Name.of_string_raw "_rocq_partial_B" in
                 let value = Name.of_string_raw "_rocq_partial_return_value" in
@@ -1675,7 +1701,7 @@ let rec rewrite_sequence_calls ~(discharge_partial : bool)
                   typed_function a (Type.Kind Kind.Set)
                     (typed_function value (Type.Variable a)
                        (Apply
-                          ( field monad "_return",
+                          ( return_,
                             [ Some (Variable (MixedPath.of_name value, [])) ] )))
                 in
                 let bind_operation =
@@ -1685,7 +1711,7 @@ let rec rewrite_sequence_calls ~(discharge_partial : bool)
                           (typed_function continuation
                              (Type.Arrow (Type.Variable a, monad_type b))
                              (Apply
-                                ( field monad "op_letdollar",
+                                ( bind_,
                                   [
                                     Some
                                       (Variable (MixedPath.of_name action, []));
@@ -7212,6 +7238,11 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
         in
         let apply_mod e1 e2 argument_coercion =
           let e1_mod_type = e1.mod_type in
+          let* source_signature_path =
+            match root_functor_path e1 with
+            | Some path -> get_functor_result_signature path
+            | None -> return None
+          in
           let expected_module_typ_for_e2 =
             match e1_mod_type with
             | Mty_functor (Named (_, module_typ_arg), _) -> Some module_typ_arg
@@ -7258,6 +7289,13 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                      (Option.value parameter_types ~default:[])
                      (applied_functor_arguments e1))
             | None -> return Subst.identity
+          in
+          let expected_signature_path_for_e2 =
+            Option.map
+              (fun path ->
+                Subst.module_path expected_typed_module_path_substitution path
+                |> qualify_typed_path expected_typed_module_type_for_e2)
+              expected_signature_path_for_e2
           in
           let* e1 = of_module_expr typ_vars e1 None in
           let* es =
@@ -7373,14 +7411,19 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
           let application = SourceApply (e1, es, module_application_type) in
           match is_module_typ_first_class with
           | Some (Found module_type_path, module_type) ->
-              let* is_cast_needed = get_is_cast_needed module_type_path in
+              let* is_cast_needed =
+                match source_signature_path with
+                | Some path -> return (not (Path.same path module_type_path))
+                | None -> get_is_cast_needed module_type_path
+              in
               if not is_cast_needed then return application
               else
                 let ident = Ident.create_local "functor_result" in
                 let* name = Name.of_ident false ident in
                 let path = Path.Pident ident in
                 let* casted_result =
-                  cast_path path module_type module_type_path
+                  cast_path ?source_signature_path path module_type
+                    module_type_path
                 in
                 return (LetVar (None, name, [], application, casted_result))
           | _ -> return application

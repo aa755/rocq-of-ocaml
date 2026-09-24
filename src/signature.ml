@@ -1337,9 +1337,20 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
           IsFirstClassModule.resolve_included_signature_path_aliases module_path
         in
         let* module_path_alias = get_module_path_alias module_path in
+        let* named_signature =
+          let* hint = get_signature_hint module_path in
+          let* env = get_env in
+          return
+            (Option.bind hint
+               (fun path ->
+                 match Env.find_modtype path env with
+                 | _ -> Some path
+                 | exception Not_found -> None))
+        in
         let* is_first_class =
-          match signature_path with
-          | Some parent_signature -> (
+          match (named_signature, signature_path) with
+          | Some path, _ -> return (IsFirstClassModule.Found path)
+          | None, Some parent_signature -> (
               let* field_signature =
                 get_result_module_field parent_signature (Ident.name ident)
               in
@@ -1349,14 +1360,14 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
               | None ->
                   IsFirstClassModule.is_module_typ_first_class md_type
                     (Some module_path))
-          | None ->
+          | None, None ->
               IsFirstClassModule.is_module_typ_first_class md_type
                 (Some module_path)
         in
         match is_first_class with
         | Found signature_path ->
-            let* signature_path_name =
-              PathName.of_path_with_convert false signature_path
+            let* signature_path_name, applied_record_params =
+              ModuleTyp.signature_path_and_explicit_params signature_path
             in
             let* application_signature_hint =
               get_signature_hint resolved_module_path
@@ -1399,7 +1410,7 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
                       ( Name.of_string_raw "_fargs",
                         Some (Type.Apply (MixedPath.PathName fargs_path, [])) );
                     ]
-              | Some _ | None -> return []
+              | Some _ | None -> return applied_record_params
             in
             let* constructor_aliases =
               let* env = get_env in
@@ -2120,7 +2131,8 @@ let wrap_documentation (items_value : (item list * 'a) Monad.t) :
       let* items, value = items_value in
       return (Documentation documentation :: items, value)
 
-let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
+let rec of_signature_items ?source_path (prefix : string list)
+    (let_in_type : let_in_type)
     (items : signature_item list) (last_env : Env.t) : item list Monad.t =
   let of_signature_item (item : signature_item) (next_env : Env.t) :
       (item list * let_in_type) Monad.t =
@@ -2176,7 +2188,7 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
                   | Tmty_signature signature ->
                       let prefix = prefix @ [ id ] in
                       let* items =
-                        of_signature_items prefix let_in_type
+                        of_signature_items ?source_path prefix let_in_type
                           signature.sig_items next_env
                       in
                       return ([ ModuleWithSignature items ], let_in_type)
@@ -2388,6 +2400,18 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
                     Name.of_strings true (prefix @ [ Ident.name val_id ])
                   in
                   let* typ = quantified_value_type ctyp_type in
+                  let definition_path =
+                    Option.value source_path ~default:enclosing_path
+                    @ prefix @ [ Ident.name val_id ]
+                  in
+                  let typ =
+                    if
+                      Configuration.get_recursion_strategy configuration
+                        definition_path
+                      = Some Configuration.RecursionStrategy.Partial
+                    then Type.partialize typ
+                    else typ
+                  in
                   let typ_with_let_in_type =
                     apply_let_in_type let_in_type typ
                   in
@@ -2408,13 +2432,16 @@ let rec of_signature_items (prefix : string list) (let_in_type : let_in_type)
         match items with { sig_env; _ } :: _ -> sig_env | _ -> last_env
       in
       let* first_items, let_in_type = of_signature_item item next_env in
-      let* last_items = of_signature_items prefix let_in_type items last_env in
+      let* last_items =
+        of_signature_items ?source_path prefix let_in_type items last_env
+      in
       return (first_items @ last_items)
 
-let of_signature (signature : signature) : t Monad.t =
+let of_signature ?source_path (signature : signature) : t Monad.t =
   push_env
     (let* items =
-       of_signature_items [] [] signature.sig_items signature.sig_final_env
+       of_signature_items ?source_path [] [] signature.sig_items
+         signature.sig_final_env
      in
      ModuleTypParams.get_signature_typ_params_arity signature.sig_type
      >>= fun typ_params ->

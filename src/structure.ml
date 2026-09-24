@@ -5433,7 +5433,10 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
                 let* name = Name.of_ident false mtd_id in
                 match module_typ.mty_desc with
                 | Tmty_signature signature ->
-                    Signature.of_signature signature >>= fun signature ->
+                    let* enclosing_path = get_definition_path in
+                    let source_path = enclosing_path @ [ Ident.name mtd_id ] in
+                    Signature.of_signature ~source_path signature
+                    >>= fun signature ->
                     return [ Signature (name, signature) ]
                 | Tmty_ident (path, _) ->
                     let* reference = PathName.of_path_with_convert false path in
@@ -7027,13 +7030,15 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
                      (name, module_typ, application_fargs, module_exp))
               else return (ModuleSynonym (name, reference, is_functor))))
   | Tmod_apply _ | Tmod_apply_unit _ ->
+      let expected_signature_path =
+        Option.bind module_type_annotation SignatureHints.module_type_path
+      in
       let module_type_annotation =
-        match module_type_annotation with
-        | None -> None
-        | Some module_type_annotation -> Some module_type_annotation.mty_type
+        Option.map (fun annotation -> annotation.mty_type) module_type_annotation
       in
       let* module_exp =
-        Exp.of_module_expr Name.Map.empty module_expr module_type_annotation
+        Exp.of_module_expr ?expected_signature_path Name.Map.empty module_expr
+          module_type_annotation
       in
       let rec root_functor_path (module_expr : Typedtree.module_expr) :
           Path.t option =
@@ -7055,6 +7060,11 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
       in
       let* application_fargs, module_typ =
         match root_functor_path module_expr with
+        | _ when Option.is_some module_type_annotation ->
+            (* The expression has already been coerced to this explicit
+               signature. Its type must not revert to the implementation's
+               larger synthesized result record. *)
+            return (None, module_typ)
         | None -> return (None, module_typ)
         | Some functor_path -> (
             let* applied_child = get_applied_functor_child functor_path in
@@ -7257,9 +7267,12 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
       | Named (Some _, _, _), None | Named (None, _, _), _ | Unit, _ -> body)
   | Tmod_constraint (module_expr, _, annotation, _) ->
       let module_type_annotation =
-        match as_expression with
-        | Some _ -> None
-        | None -> (
+        match (module_expr.mod_desc, annotation, as_expression) with
+        | (Tmod_apply _ | Tmod_apply_unit _),
+          Tmodtype_explicit module_type, _ ->
+            Some module_type
+        | _, _, Some _ -> None
+        | _, _, None -> (
             match annotation with
             | Tmodtype_explicit module_type -> Some module_type
             | Tmodtype_implicit -> module_type_annotation)

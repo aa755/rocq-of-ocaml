@@ -7,7 +7,9 @@ Module RUNTIME.
     t := t;
     _return : forall {a : Set} , a -> t a;
     op_letdollar : forall {a b : Set} , t a -> (a -> t b) -> t b;
-    Seq_mapM : forall {a b : Set} , (a -> t b) -> list a -> t (list b);
+    Seq_mapM :
+      forall {a b : Set} ,
+        (a -> t b) -> list a -> RocqOfOCaml.Partial.Resumption.t t (list b);
   }.
 End RUNTIME.
 Definition RUNTIME := @RUNTIME.signature.
@@ -21,9 +23,20 @@ Module Use.
   
   Program Definition collect `{_fargs : FArgs} (values : list int)
     : M.(RUNTIME.t) (list int) :=
-    M.(RUNTIME.Seq_mapM)
-      (fun (value : int) => (M.(RUNTIME._return) (a := int)) (Z.add value 1))
-      values.
+    RocqOfOCaml.Partial.Resumption.run_explicit
+      (fun (_rocq_partial_A : Set) =>
+        fun (_rocq_partial_return_value : _rocq_partial_A) =>
+          M.(RUNTIME._return) _rocq_partial_return_value)
+      (fun (_rocq_partial_A : Set) =>
+        fun (_rocq_partial_B : Set) =>
+          fun (_rocq_partial_action : M.(RUNTIME.t) _rocq_partial_A) =>
+            fun (_rocq_partial_continuation :
+              _rocq_partial_A -> M.(RUNTIME.t) _rocq_partial_B) =>
+              M.(RUNTIME.op_letdollar) _rocq_partial_action
+                _rocq_partial_continuation)
+      (M.(RUNTIME.Seq_mapM)
+        (fun (value : int) => (M.(RUNTIME._return) (a := int)) (Z.add value 1))
+        values) _.
   
   Admit Obligations.
   
