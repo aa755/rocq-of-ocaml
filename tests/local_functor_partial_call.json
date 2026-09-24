@@ -1,0 +1,6 @@
+{
+  "recursion_strategies": [
+    ["tests/local_functor_partial_call.ml", "Runner.run", "partial"],
+    ["tests/local_functor_partial_call.ml", "Runner.finished", "partial"]
+  ]
+}

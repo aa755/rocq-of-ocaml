@@ -1463,12 +1463,36 @@ let configured_partial_path_matches (candidate : string) (expected : string) :
 
 let is_configured_partial_expression (partial_definitions : string list) (e : t)
     : bool =
-  match expression_qualified_name e with
-  | Some candidate ->
-      List.exists
-        (configured_partial_path_matches candidate)
-        partial_definitions
-  | None -> false
+  let source_projection_name { PathName.path; base } =
+    let rec source_path = function
+      | parent :: result :: remaining
+        when String.equal (Name.to_string result)
+               (Name.to_string parent ^ "_result") ->
+          source_path (parent :: remaining)
+      | component :: remaining -> component :: source_path remaining
+      | [] -> []
+    in
+    PathName.to_string { PathName.path = source_path path; base }
+  in
+  (* A call through an applied local functor projects a generated result
+     field, for example [Local.(Runner.Runner_result.run)]. Retain its source
+     definition identity when deciding whether the caller must be partial.
+     Restrict this normalization to record projections: a source namespace
+     actually named [Runner_result] must not acquire an unrelated effect. *)
+  let projected_source =
+    match e with
+    | Variable
+        ( (MixedPath.Access (_, fields) | MixedPath.AppliedAccess (_, _, fields)),
+          _ ) ->
+        Option.map source_projection_name (List.nth_opt (List.rev fields) 0)
+    | Field (_, field) -> Some (source_projection_name field)
+    | _ -> None
+  in
+  Option.to_list (expression_qualified_name e) @ Option.to_list projected_source
+  |> List.exists (fun candidate ->
+         List.exists
+           (configured_partial_path_matches candidate)
+           partial_definitions)
 
 (** Execute configured monadic sequence traversals inside a definition whose
     well-founded specification asserts totality. [Resumption.run] exposes the
@@ -8491,7 +8515,12 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
       ~partial_definitions
   in
   let is_partial e =
-    is_named_application (recursive_names @ partial_definitions) e
+    is_named_application recursive_names e
+    ||
+    match e with
+    | Apply (function_, _) | SourceApply (function_, _, _) ->
+        is_configured_partial_expression partial_definitions function_
+    | _ -> false
   in
   let contains_partial e =
     is_partial e || has_partial_recursion e
@@ -8504,7 +8533,9 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
       "Done" [ value ]
   in
   let bind computation continuation =
-    apply_runtime ?monad "Resumption" "Compose" [ computation; continuation ]
+    if resumption then
+      apply_runtime ?monad "Resumption" "Compose" [ computation; continuation ]
+    else apply_runtime "Delay" "bind" [ computation; continuation ]
   in
   let action action continuation =
     apply_runtime ?monad "Resumption" "Bind" [ action; continuation ]
@@ -8517,6 +8548,18 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
       "Tau" [ thunk ]
   in
   let continuation name typ body = Function (name, typ, recurse body) in
+  let with_partial_value value body =
+    if contains_partial value then
+      let free = get_free_vars e in
+      let rec fresh suffix =
+        let name = Name.of_string_raw ("_rocq_partial_scrutinee" ^ suffix) in
+        if Name.Set.mem name free then fresh (suffix ^ "_") else name
+      in
+      let name = fresh "" in
+      bind (recurse value)
+        (Function (name, None, body (Variable (MixedPath.of_name name, []))))
+    else body value
+  in
   let runtime_sequence_value value_name =
     Variable
       ( MixedPath.PathName
@@ -8579,13 +8622,14 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
   | None -> (
       match e with
       | Match (scrutinee, dependent, cases, default) ->
-          Match
-            ( scrutinee,
-              dependent,
-              List.map
-                (fun (pattern, cast, body) -> (pattern, cast, recurse body))
-                cases,
-              default )
+          with_partial_value scrutinee (fun scrutinee ->
+            Match
+              ( scrutinee,
+                dependent,
+                List.map
+                  (fun (pattern, cast, body) -> (pattern, cast, recurse body))
+                  cases,
+                default ))
       | MatchExtensible (scrutinee, typ, cases) ->
           MatchExtensible
             ( scrutinee,
@@ -8597,9 +8641,13 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
               typ,
               List.map (fun (pattern, body) -> (pattern, recurse body)) cases )
       | IfThenElse (condition, then_, else_) ->
-          IfThenElse (condition, recurse then_, recurse else_)
+          with_partial_value condition (fun condition ->
+            IfThenElse (condition, recurse then_, recurse else_))
       | IfThenElseWithEquation (condition, then_, else_) ->
-          IfThenElseWithEquation (condition, recurse then_, recurse else_)
+          with_partial_value condition (fun condition ->
+            IfThenElseWithEquation (condition, recurse then_, recurse else_))
+      | LetVar (None, name, [], value, body) when contains_partial value ->
+          bind (recurse value) (continuation name None body)
       | LetVar (None, name, parameters, value, body) ->
           LetVar (None, name, parameters, value, recurse body)
       | LetFun (definition, body)
