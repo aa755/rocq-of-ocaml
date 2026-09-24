@@ -1031,6 +1031,18 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
           |> apply_constructor_aliases constructor_aliases
           |> apply_configured_manifest_rewrites
         in
+        (* Keep a named source monad around its result before expanding local
+           aliases. Expanding [HostState.t A] first would turn it into a state
+           argument and pair, changing a resumption into a pure delay. A
+           surrounding transformer manifest still takes precedence when it
+           supplies the configured source argument boundary. *)
+        let partialized_source =
+          is_partial && Option.is_none effective_partial_monad_manifest
+          && match Type.partial_result typ with
+             | Type.Resumed _ -> true
+             | Type.Delayed _ -> false
+        in
+        let typ = if partialized_source then Type.partialize typ else typ in
         let typ_with_let_in_type = apply_let_in_type let_in_type typ in
         let typ_with_let_in_type =
           let introduced_variables =
@@ -1052,7 +1064,7 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
           else typ
         in
         let* typ_with_let_in_type =
-          if is_partial then
+          if is_partial && not partialized_source then
             return
               (match effective_partial_monad_manifest with
               | Some manifest -> (

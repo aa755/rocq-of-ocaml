@@ -1,0 +1,15 @@
+{
+  "recursion_strategies": [
+    [
+      "tests/partial_state_result.ml",
+      "Outer.Runner.run",
+      "partial"
+    ],
+    [
+      "tests/partial_state_result.ml",
+      "Outer.execute",
+      "partial",
+      1
+    ]
+  ]
+}
