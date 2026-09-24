@@ -643,3 +643,82 @@ Module ResultState.
     rewrite equation. apply returns_done.
   Defined.
 End ResultState.
+
+Module StateAction.
+  Definition t (S A : Set) := S -> A * S.
+
+  Definition return_ {S A : Set} (value : A) : t S A :=
+    fun state => (value, state).
+
+  Definition bind_ {S A B : Set} (action : t S A) (next : A -> t S B) : t S B :=
+    fun state => let '(value, state) := action state in next value state.
+
+  Definition lift {S A : Set} (action : t S A) : ResultState.t S Empty_set A :=
+    fun state => let '(value, state) := action state in (inl value, state).
+
+  Definition erase {S A : Set} (result : sum A Empty_set * S) : A * S :=
+    match result with
+    | (inl value, state) => (value, state)
+    | (inr impossible, _) => match impossible with end
+    end.
+
+  (** Observe ordinary state actions through the result/state interpreter
+      with an empty error type. Neither the observer nor erasure requires
+      a convergence witness. *)
+  Definition observe {S A : Set} (computation : Resumption.t (t S) A) (state : S) :
+      Delay.t (A * S) :=
+    Delay.map (@erase S A)
+      (ResultState.observe (Resumption.hoist (@lift S) computation) state).
+
+  Definition run {S A : Set} (computation : Resumption.t (t S) A)
+      (proof : Resumption.converges computation) : t S A :=
+    @Resumption.run (t S) (@return_ S) (@bind_ S) A computation proof.
+
+  Lemma lift_run {S A : Set} (computation : Resumption.t (t S) A)
+      (proof : Resumption.converges computation) :
+    forall state,
+      ResultState.run (Resumption.hoist_converges (@lift S) proof) state =
+      lift (@run S A computation proof) state.
+  Proof.
+    unfold ResultState.run, run.
+    eapply (@Resumption.run_hoist (t S) (ResultState.t S Empty_set)
+      (@lift S) (@return_ S) (@bind_ S)
+      (@ResultState.return_ S Empty_set) (@ResultState.bind_ S Empty_set)
+      (fun A left right => forall state, left state = right state)).
+    - intros X value state. reflexivity.
+    - intros X left middle right Hleft Hright state.
+      rewrite Hleft, Hright. reflexivity.
+    - intros X Y left right next_left next_right Hactions Hnext state.
+      unfold ResultState.bind_. rewrite Hactions.
+      destruct (right state) as [[value | error] next_state].
+      + apply Hnext.
+      + reflexivity.
+    - intros X value state. reflexivity.
+    - intros X Y action next state. unfold lift, bind_, ResultState.bind_.
+      destruct (action state). reflexivity.
+  Qed.
+
+  Definition observe_converges {S A : Set}
+      (computation : Resumption.t (t S) A)
+      (proof : Resumption.converges computation) (state : S) :
+      Delay.converges (observe computation state).
+  Proof.
+    unfold observe, Delay.map.
+    refine (@Delay.bind_converges _ _ _ _
+      (ResultState.observe_converges
+        (Resumption.hoist_converges (@lift S) proof) state) _).
+    apply Delay.ConvergesDone.
+  Defined.
+
+  Lemma run_observe {S A : Set}
+      (computation : Resumption.t (t S) A)
+      (proof : Resumption.converges computation) (state : S) :
+    @Delay.run (A * S) (observe computation state)
+      (@observe_converges S A computation proof state) =
+    @run S A computation proof state.
+  Proof.
+    unfold observe, Delay.map, observe_converges. rewrite Delay.run_bind. cbn.
+    rewrite ResultState.run_observe, lift_run.
+    unfold erase, lift. destruct (@run S A computation proof state). reflexivity.
+  Qed.
+End StateAction.

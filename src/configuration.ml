@@ -94,7 +94,7 @@ module RecursionStrategy = struct
 end
 
 module PartialStateObserver = struct
-  type kind = ResultState
+  type kind = ResultState | State
 
   type t = {
     source : string;
@@ -830,7 +830,8 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
           | "partial_state_observers" ->
               let error_message =
                 "Expected partial_state_observers entries to contain a source, \
-                 qualified definition, nonnegative arity, and result_state"
+                 qualified definition, nonnegative arity, and state or \
+                 result_state"
               in
               let entries =
                 match entry with
@@ -845,14 +846,17 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                         `String source;
                         `String definition;
                         `Int arity;
-                        `String "result_state";
+                        `String kind;
                       ]
-                    when definition <> "" && arity >= 0 ->
+                    when definition <> "" && arity >= 0
+                         && (kind = "result_state" || kind = "state") ->
                       {
                         PartialStateObserver.source;
                         definition;
                         arity;
-                        kind = PartialStateObserver.ResultState;
+                        kind =
+                          (if kind = "state" then PartialStateObserver.State
+                           else PartialStateObserver.ResultState);
                       }
                   | _ -> failwith error_message)
               in

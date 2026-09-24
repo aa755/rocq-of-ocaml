@@ -1,0 +1,11 @@
+{
+  "recursion_strategies": [
+    ["tests/partial_plain_state_observer.ml", "Machine.step", "partial", 1],
+    ["tests/partial_plain_state_observer.ml", "Machine.read", "partial", 2],
+    ["tests/partial_plain_state_observer.ml", "Machine.in_monad", "partial", 2],
+    ["tests/partial_plain_state_observer.ml", "Machine.run", "partial", 1]
+  ],
+  "partial_state_observers": [
+    ["tests/partial_plain_state_observer.ml", "Machine.step", 1, "state"]
+  ]
+}

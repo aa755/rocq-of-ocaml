@@ -8941,6 +8941,7 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
                let observer =
                  match kind with
                  | Configuration.PartialStateObserver.ResultState -> "ResultState"
+                 | Configuration.PartialStateObserver.State -> "StateAction"
                in
                let observed =
                  apply_runtime observer "observe" [ computation; state ]

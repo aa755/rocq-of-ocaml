@@ -158,6 +158,10 @@ a `Delay.t` of the result/state pair. Monadic callers embed it with
 `Resumption.of_delay`. Calls that do not supply the state remain resumptions.
 Matching uses the exact local declaration and source file, as for action lifts.
 All ordinary arguments and the state must be supplied at the observed call.
+Use `"state"` instead of `"result_state"` for plain actions of type
+`state -> 'a * state` with the canonical state-monad operations. This emits
+`StateAction.observe`; its convergence and result/state preservation laws
+reuse the result/state interpreter with an empty error type.
 Configured partial values with recursion arity `0` retain their effect when
 referenced without an application, including branches that select between
 partial and total monadic actions.
