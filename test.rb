@@ -397,7 +397,8 @@ tests = Tests.new(test_files + [
   ProjectResultModuleFieldTest.new('tests/project_signature_associated_type'),
   ProjectResultModuleFieldTest.new('tests/project_signature_field_context'),
   ProjectResultModuleFieldTest.new('tests/project_module_override_metadata'),
-  ProjectResultModuleFieldTest.new('tests/project_module_override_include')
+  ProjectResultModuleFieldTest.new('tests/project_module_override_include'),
+  ProjectResultModuleFieldTest.new('tests/project_fargs_imported_requirements')
 ])
 tests.check
 puts

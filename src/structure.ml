@@ -7912,6 +7912,44 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
     | None ->
         inherited_generated_type_requirements |> matching_candidates |> choose
   in
+  let rec materialize_external_requirement_type visited named_requirements typ =
+    Type.project_mixed_paths
+      (fun path ->
+        match external_projected_spec path with
+        | None -> None
+        | Some (definition, spec) -> (
+            if List.mem definition visited then None
+            else
+              let requirements =
+                spec.Exp.requirements
+                |> List.map (fun (kind, typ) ->
+                    ( kind,
+                      materialize_external_requirement_type
+                        (definition :: visited) named_requirements typ ))
+              in
+              let prefix =
+                external_assumption_prefix path definition
+                  (MixedPath.to_string path)
+              in
+              let applications =
+                assumption_applications prefix named_requirements requirements
+              in
+              let path = rebase_external_module_result_projection path in
+              match (path, applications) with
+              | _, [] -> None
+              | MixedPath.PathName root, applications ->
+                  Some (MixedPath.AppliedAccess (root, applications, []))
+              | MixedPath.Access (root, fields), applications ->
+                  Some (MixedPath.AppliedAccess (root, applications, fields))
+              | MixedPath.AppliedAccess (root, existing, fields), applications
+                ->
+                  Some
+                    (MixedPath.AppliedAccess
+                       ( root,
+                         append_module_applications existing applications,
+                         fields ))))
+      typ
+  in
   let rec module_assumption_applications ?(visited = []) named_requirements root
       =
     let root_name = PathName.to_string root in
@@ -7988,7 +8026,11 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
                     ( root,
                       append_module_applications existing applications,
                       fields )))
-      typ
+      (* Match local module requirements in the same representation as their
+         already emitted providers. Imported associated types can themselves
+         require explicit instances; leaving those applications implicit loses
+         the exact provider and lets Rocq select a convertible alias instead. *)
+      (materialize_external_requirement_type visited named_requirements typ)
   in
   let materialize_generated_type_path_applications named_requirements = function
     | MixedPath.PathName root as path -> (
@@ -8007,44 +8049,6 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
               (root, append_module_applications existing applications, []))
     | (MixedPath.Access _ | MixedPath.AppliedAccess (_, _, _ :: _)) as path ->
         path
-  in
-  let rec materialize_external_requirement_type visited named_requirements typ =
-    Type.project_mixed_paths
-      (fun path ->
-        match external_projected_spec path with
-        | None -> None
-        | Some (definition, spec) -> (
-            if List.mem definition visited then None
-            else
-              let requirements =
-                spec.Exp.requirements
-                |> List.map (fun (kind, typ) ->
-                    ( kind,
-                      materialize_external_requirement_type
-                        (definition :: visited) named_requirements typ ))
-              in
-              let prefix =
-                external_assumption_prefix path definition
-                  (MixedPath.to_string path)
-              in
-              let applications =
-                assumption_applications prefix named_requirements requirements
-              in
-              let path = rebase_external_module_result_projection path in
-              match (path, applications) with
-              | _, [] -> None
-              | MixedPath.PathName root, applications ->
-                  Some (MixedPath.AppliedAccess (root, applications, []))
-              | MixedPath.Access (root, fields), applications ->
-                  Some (MixedPath.AppliedAccess (root, applications, fields))
-              | MixedPath.AppliedAccess (root, existing, fields), applications
-                ->
-                  Some
-                    (MixedPath.AppliedAccess
-                       ( root,
-                         append_module_applications existing applications,
-                         fields ))))
-      typ
   in
   let materialize_external_type_path_applications named_requirements path =
     match external_projected_spec path with
