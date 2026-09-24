@@ -2,10 +2,43 @@
     applications and aliases. Printed Rocq projections can omit enclosing
     modules; the compiler's declaration UID still identifies the source. *)
 
-type origin = { definition : string list; partial_attribute : bool }
+type origin = {
+  definition : string list;
+  partial_attribute : bool;
+  parameters : string option list;
+}
 type t = origin Types.Uid.Map.t
 
 let find uid origins = Types.Uid.Map.find_opt uid origins
+
+let parameter_names (expression : Typedtree.expression) : string option list =
+  match expression.exp_desc with
+  | Texp_function (parameters, _) ->
+      List.map
+        (fun parameter ->
+          let pattern =
+            match parameter.Typedtree.fp_kind with
+            | Tparam_pat pattern | Tparam_optional_default (pattern, _) ->
+                pattern
+          in
+          match pattern.pat_desc with
+          | Tpat_var (ident, _, _) | Tpat_alias (_, ident, _, _, _) ->
+              Some (Ident.name ident)
+          | _ -> None)
+        parameters
+  | _ -> []
+
+let partial_parameter_indices (configuration : Configuration.t)
+    (definition : string list) (parameters : string option list) : int list =
+  parameters
+  |> List.mapi (fun index parameter ->
+         match parameter with
+         | Some name
+           when Configuration.is_partial_value configuration
+                  (definition @ [ name ]) ->
+             Some index
+         | _ -> None)
+  |> List.filter_map Fun.id
 
 let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
   let origins = ref Types.Uid.Map.empty in
@@ -39,7 +72,13 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
           self.pat self binding.vb_pat;
           partial_attribute := false;
           match binding.vb_pat.pat_desc with
-          | Tpat_var (ident, _, _) | Tpat_alias (_, ident, _, _, _) ->
+          | Tpat_var (ident, _, uid) | Tpat_alias (_, ident, _, uid, _) ->
+              origins :=
+                Types.Uid.Map.update uid
+                  (Option.map (fun origin ->
+                       { origin with
+                         parameters = parameter_names binding.vb_expr }))
+                  !origins;
               scoped (Ident.name ident) (fun () ->
                   self.expr self binding.vb_expr)
           | _ -> self.expr self binding.vb_expr);
@@ -51,7 +90,8 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
               origins :=
                 Types.Uid.Map.add uid
                   { definition = !path @ [ Ident.name ident ];
-                    partial_attribute = !partial_attribute }
+                    partial_attribute = !partial_attribute;
+                    parameters = [] }
                   !origins
           | _ -> ());
           default_iterator.pat self pattern);

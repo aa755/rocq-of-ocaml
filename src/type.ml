@@ -460,6 +460,18 @@ let partialize (typ : t) : t =
   in
   replace_arrow_result result typ
 
+let partialize_arguments (indices : int list) (typ : t) : t =
+  let rec map index = function
+    | Arrow (argument, result) ->
+        Arrow
+          ((if List.mem index indices then partialize argument else argument),
+           map (index + 1) result)
+    | ForallTyps (parameters, body) -> ForallTyps (parameters, map index body)
+    | FunTyps (parameters, body) -> FunTyps (parameters, map index body)
+    | typ -> typ
+  in
+  if indices = [] then typ else map 0 typ
+
 let is_partialized (typ : t) : bool =
   match arrow_result typ with
   | Apply (path, _) ->

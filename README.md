@@ -162,6 +162,24 @@ Configured partial values with recursion arity `0` retain their effect when
 referenced without an application, including branches that select between
 partial and total monadic actions.
 
+A computation-valued parameter can use the same arity-zero declaration:
+
+```json
+{
+  "recursion_strategies": [
+    ["path/to/source.ml", "Outer.choose", "partial", 2],
+    ["path/to/source.ml", "Outer.choose.otherwise", "partial", 0]
+  ]
+}
+```
+
+Here `choose flag ~otherwise` receives the `otherwise` action as a resumption.
+The parameter must have a named action type. Its declaration, references,
+and synthesized result interface retain that partial type. Calls to the
+local function lower the supplied argument in the parameter's source monad,
+including ordinary total actions and compound partial expressions. Both
+labeled and positional parameters are matched by their source binding names.
+
 Pure sequencing whose continuation contains a recursive call uses the
 `RocqOfOCaml.Partial.Delay.bind_guarded` notation. It expands to a local
 `cofix` so Rocq can check the recursive call's guard. `DelayGuarded` proves

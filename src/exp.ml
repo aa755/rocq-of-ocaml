@@ -270,6 +270,8 @@ type source_application_type = {
   (* A state application crosses from a resumption into an observed delay.
      The arity counts ordinary arguments preceding the explicit state. *)
   source_state_observer : (int * Configuration.PartialStateObserver.kind) option;
+  (* Computation-valued parameters are lowered in their own source monad. *)
+  source_partial_arguments : (int * Type.t) list;
   callee : Type.t;
   result : Type.t;
   specialization : Type.t;
@@ -2972,6 +2974,9 @@ let rec map_assumption_types (map_typ : Type.t -> Type.t) (expression : t) : t =
               Option.map (fun (name, typ) -> (name, map_typ typ))
                 result_typ.source_monad_lift;
             source_state_observer = result_typ.source_state_observer;
+            source_partial_arguments =
+              List.map (fun (index, typ) -> (index, map_typ typ))
+                result_typ.source_partial_arguments;
             callee = map_typ result_typ.callee;
             result = map_typ result_typ.result;
             specialization = map_typ result_typ.specialization;
@@ -3128,6 +3133,9 @@ let rec map_types_and_paths ?(map_implicit_value = Fun.id)
               Option.map (fun (name, typ) -> (name, map_typ typ))
                 source_type.source_monad_lift;
             source_state_observer = source_type.source_state_observer;
+            source_partial_arguments =
+              List.map (fun (index, typ) -> (index, map_typ typ))
+                source_type.source_partial_arguments;
             callee = map_typ source_type.callee;
             result = map_typ source_type.result;
             specialization = map_typ source_type.specialization;
@@ -4109,6 +4117,7 @@ let propagate_call_assumptions
                 source_partial = None;
                 source_monad_lift = None;
                 source_state_observer = None;
+                source_partial_arguments = [];
                 callee = call_typ;
                 result = call_typ;
                 specialization = call_typ;
@@ -4903,6 +4912,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                             source_state_observer =
                               Configuration.get_partial_state_observer
                                 configuration definition;
+                            source_partial_arguments = [];
                             callee = typ;
                             result;
                             specialization;
@@ -5399,7 +5409,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               let* origin = source_origin source_e_f in
               let source_partial =
                 Option.map
-                  (fun { ValueOrigins.definition; partial_attribute } ->
+                  (fun { ValueOrigins.definition; partial_attribute; _ } ->
                     partial_attribute
                     || Configuration.get_recursion_strategy configuration
                          definition
@@ -5410,6 +5420,53 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 Option.bind origin (fun { ValueOrigins.definition; _ } ->
                     Configuration.get_partial_state_observer configuration
                       definition)
+              in
+              let* source_partial_arguments =
+                match origin with
+                | Some { ValueOrigins.definition; parameters; _ } ->
+                    let indices =
+                      ValueOrigins.partial_parameter_indices configuration
+                        definition parameters
+                    in
+                    let rec declaration_type expression =
+                      match expression.exp_desc with
+                      | Texp_ident (path, _, description) ->
+                          Some
+                            (match Env.find_value path expression.exp_env with
+                            | value -> value.Types.val_type
+                            | exception Not_found -> description.Types.val_type)
+                      | Texp_apply (function_, _) -> declaration_type function_
+                      | _ -> None
+                    in
+                    (match indices with
+                    | [] -> return []
+                    | _ -> (match declaration_type source_e_f with
+                    | None -> return []
+                    | Some typ ->
+                        let argument_types =
+                          open_ocaml_arrow_type source_e_f.exp_env typ
+                            (List.length parameters)
+                          |> Option.map fst |> Option.value ~default:[]
+                        in
+                        indices
+                        |> Monad.List.map (fun index ->
+                            match List.nth_opt argument_types index with
+                            | Some argument ->
+                                let* typ, _, _ =
+                                  Type.of_typ_expr false typ_vars argument
+                                in
+                                (match Type.partial_result typ with
+                                | Type.Resumed { monad; _ } ->
+                                    return (index, monad)
+                                | Type.Delayed _ ->
+                                    raise (index, typ) NotSupported
+                                      "A partial action parameter needs a \
+                                       named monad type.")
+                            | None ->
+                                raise (index, Type.Kind Kind.Set) NotSupported
+                                  "Cannot recover a configured partial action \
+                                   parameter.")))
+                | None -> return []
               in
               let* source_monad_lift =
                 match origin with
@@ -5474,6 +5531,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                   source_partial;
                   source_monad_lift;
                   source_state_observer;
+                  source_partial_arguments;
                   callee = application_callee_typ;
                   result = application_typ;
                   specialization = expanded_application_typ;
@@ -6687,6 +6745,19 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
                       return (argument_types, result_type)
                 in
                 let* configuration = get_configuration in
+                let partial_parameters =
+                  ValueOrigins.partial_parameter_indices configuration
+                    (enclosing_definition_path @ Option.to_list source_name)
+                    (ValueOrigins.parameter_names vb_expr)
+                in
+                let args_typs =
+                  List.mapi
+                    (fun index typ ->
+                      if List.mem index partial_parameters then
+                        Type.partialize typ
+                      else typ)
+                    args_typs
+                in
                 let partial_definitions =
                   Configuration.partial_definition_names configuration
                 in
@@ -7527,6 +7598,7 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
               source_partial = None;
               source_monad_lift = None;
               source_state_observer = None;
+              source_partial_arguments = [];
               callee = placeholder;
               result = placeholder;
               specialization = placeholder;
@@ -8715,6 +8787,29 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
     | _ -> e
   in
   let e = flatten_application e in
+  let e =
+    match e with
+    | SourceApply (function_, arguments, source_type)
+      when source_type.source_partial_arguments <> [] ->
+        let arguments =
+          arguments
+          |> List.mapi (fun index argument ->
+                 match
+                   List.assoc_opt index source_type.source_partial_arguments
+                 with
+                 | None -> argument
+                 | Some source_monad ->
+                     Option.map
+                       (lift_partial_expression ~resumption:true
+                          ~monad:(Some source_monad) ~recursive_names
+                          ~partial_definitions)
+                       argument)
+        in
+        SourceApply
+          (function_, arguments,
+           { source_type with source_partial_arguments = [] })
+    | _ -> e
+  in
   let recurse =
     lift_partial_expression ~resumption ~monad ~recursive_names
       ~partial_definitions

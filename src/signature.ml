@@ -1003,11 +1003,19 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
   let of_types_signature_item (signature_item : Types.signature_item) :
       (item * let_in_type) Monad.t =
     match signature_item with
-    | Sig_value (ident, { val_type; _ }, _) ->
+    | Sig_value (ident, { val_type; val_uid; _ }, _) ->
         let* prefixed_name =
           Name.of_strings true (prefix @ [ Ident.name ident ])
         in
         let* configuration = get_configuration in
+        let* origin = get_value_origin val_uid in
+        let partial_parameters =
+          match origin with
+          | Some { ValueOrigins.definition; parameters; _ } ->
+              ValueOrigins.partial_parameter_indices configuration definition
+                parameters
+          | None -> []
+        in
         let is_partial =
           Configuration.has_recursion_strategy_suffix configuration
             (prefix @ [ Ident.name ident ])
@@ -1030,6 +1038,7 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
           typ
           |> apply_constructor_aliases constructor_aliases
           |> apply_configured_manifest_rewrites
+          |> Type.partialize_arguments partial_parameters
         in
         (* Keep a named source monad around its result before expanding local
            aliases. Expanding [HostState.t A] first would turn it into a state
