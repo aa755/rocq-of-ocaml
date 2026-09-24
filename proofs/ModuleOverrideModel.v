@@ -13,3 +13,9 @@ Definition pred `{Unreachable t} (value : t) : t :=
   end.
 
 Definition to_int (value : t) : Z := Z.of_nat value.
+
+(** A nested namespace exposes the same carrier through a second path. *)
+Module Impl.
+  Definition t := t.
+  Definition zero := zero.
+End Impl.

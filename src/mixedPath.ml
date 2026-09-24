@@ -515,7 +515,29 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
   let* direct_override =
     let static_path = PathName.static_path path in
     let* path_name = PathName.of_path_without_convert is_value static_path in
-    PathName.try_module_override path_name
+    let* direct = PathName.try_module_override path_name in
+    match direct with
+    | Some _ -> return direct
+    | None ->
+        (* Included nested modules retain local identifiers even when their
+           owner is replaced by a namespace override. Only use the include's
+           provenance if it leads to an explicit override; ordinary record
+           projections must keep their existing representation. *)
+        let rec included_origin = function
+          | Path.Pident ident as path ->
+              let* alias = get_included_signature_path_alias ident in
+              return (Option.value alias ~default:path)
+          | Path.Pdot (parent, field) ->
+              let* parent = included_origin parent in
+              return (Path.Pdot (parent, field))
+          | path -> return path
+        in
+        let* origin = included_origin path in
+        let* path_name =
+          PathName.of_path_without_convert is_value
+            (PathName.static_path origin)
+        in
+        PathName.try_module_override path_name
   in
   match direct_override with
   | Some path_name -> return (PathName path_name)

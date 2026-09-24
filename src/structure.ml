@@ -4442,7 +4442,18 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
           [] )
     in
     let* is_first_class =
-      IsFirstClassModule.is_module_typ_first_class mod_type module_path
+      let* override =
+        match module_path with
+        | None -> return None
+        | Some path ->
+            let* name = PathName.of_path_without_convert false path in
+            PathName.try_module_override name
+      in
+      match override with
+      | Some _ ->
+          return (IsFirstClassModule.Not_found "configured namespace override")
+      | None ->
+          IsFirstClassModule.is_module_typ_first_class mod_type module_path
     in
     let is_first_class =
       match (is_first_class, fallback_signature_path) with
