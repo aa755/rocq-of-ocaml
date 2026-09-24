@@ -269,7 +269,7 @@ Module Fixed.
   Definition functor `{_fargs : FArgs} :Fixed_result (Bucket_t := _) :=
     {|
       Fixed_result.Impl := Impl;
-      Fixed_result.zero _ := zero;
+      Fixed_result.zero := @zero _;
       Fixed_result.Bucket := Bucket;
       Fixed_result.empty_bucket := empty_bucket
     |}.

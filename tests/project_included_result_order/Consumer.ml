@@ -5,6 +5,9 @@ module Make (Config : sig
 end) = struct
   include Source
   let enabled = Config.enabled
+
+  (** Retain explicit fallback arguments when packaging this documented value. *)
+  let documented () = empty
 end
 
 module Result = Make (struct

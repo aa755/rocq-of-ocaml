@@ -15,11 +15,11 @@ Module Make.
   Class FArgs := {
     Config : Make_Config_signature;
   }.
-  
+
   Module Key := TestProject.Provider.Source.Key.
-  
+
   Definition t `{_fargs : FArgs} := TestProject.Provider.Source.t.
-  
+
   Definition empty `{_fargs : FArgs}
     `{_rocq_assumption_0 :
       RocqOfOCaml.Basics.Unreachable TestProject.Provider.Word.t}
@@ -28,10 +28,21 @@ Module Make.
     Provider.Source.t :=
     TestProject.Provider.Source.empty (_rocq_assumption_0 := _rocq_assumption_0)
       (_rocq_assumption_1 := _rocq_assumption_1).
-  
+
   Definition enabled `{_fargs : FArgs} : bool :=
     Config.(Make_Config_signature.enabled).
-  
+
+  (** Retain explicit fallback arguments when packaging this documented value. *)
+  Definition documented `{_fargs : FArgs}
+    `{_rocq_assumption_0 :
+      RocqOfOCaml.Basics.Unreachable TestProject.Provider.Word.t}
+    `{_rocq_assumption_1 :
+      RocqOfOCaml.Basics.Unreachable TestProject.Provider.Flag.t}
+    (function_parameter : unit) : Provider.Source.t :=
+    let '_ := function_parameter in
+    (empty (_rocq_assumption_0 := _rocq_assumption_0)
+      (_rocq_assumption_1 := _rocq_assumption_1)).
+
   Module Make_result.
     Record signature `{_fargs : FArgs} {Key_Set_t : Set} : Type := {
       Key_Impl : RocqOfOCaml.OCamlMap.OrderedType (t := int);
@@ -51,12 +62,19 @@ Module Make.
             RocqOfOCaml.Basics.Unreachable TestProject.Provider.Flag.t},
           Provider.Source.t;
       enabled : bool;
+      documented :
+        forall
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable TestProject.Provider.Word.t}
+          `{_rocq_assumption_1 :
+            RocqOfOCaml.Basics.Unreachable TestProject.Provider.Flag.t},
+          unit -> Provider.Source.t;
       Key_Set_t := Key_Set_t;
     }.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :Make_result (Key_Set_t := _) :=
     {|
@@ -76,7 +94,8 @@ Module Make.
       Make_result.t__rocq_record_get_members :=
         fun _rocq_record_value => _rocq_record_value.(Provider.Source.t.members);
       Make_result.empty := @empty _;
-      Make_result.enabled := enabled
+      Make_result.enabled := enabled;
+      Make_result.documented := @documented _
     |}.
 End Make.
 Definition Make (Config : Make_Config_signature) :=

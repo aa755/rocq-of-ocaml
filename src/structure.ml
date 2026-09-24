@@ -8794,62 +8794,65 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
         let compact_module_result_aliases =
           if inner_fargs <> Some 0 || free_vars_params <> [] then Name.Map.empty
           else
-            defs
-            |> List.fold_left
-                 (fun names -> function
-                   | Value { Value.definition; _ }
-                     when definition.Exp.Definition.cases
-                          |> List.for_all (fun (header, _) ->
-                              header.Exp.Header.typ_vars = []) ->
-                       definition.Exp.Definition.cases
-                       |> List.fold_left
-                            (fun names (header, _) ->
-                              let assumption_count =
-                                header.Exp.Header.instance_args
-                                |> List.filter (fun (_, typ) ->
-                                    match
-                                      Exp.assumption_requirement_of_class_type
-                                        typ
-                                    with
-                                    | Some (Exp.ModuleContext, _) | None ->
-                                        false
-                                    | Some (Exp.Unreachable, _)
-                                    | Some (Exp.Unimplemented, _) ->
-                                        true)
-                                |> List.length
-                              in
-                              Name.Map.add header.Exp.Header.name
-                                assumption_count names)
-                            names
-                   | ModuleIncludeItem
-                       ( IncludeValue,
-                         name,
-                         [],
-                         typ,
-                         mixed_path,
-                         stored_requirements,
-                         _ ) ->
-                       let reconstructed =
-                         module_include_item_requirements IncludeValue [] typ
-                           mixed_path stored_requirements
+            (* Documentation and diagnostic wrappers do not create a scope.
+               Their definitions need the same explicit argument treatment as
+               unwrapped fields, especially for large dependent telescopes. *)
+            let rec collect names = function
+            | Value { Value.definition; _ }
+              when definition.Exp.Definition.cases
+                   |> List.for_all (fun (header, _) ->
+                       header.Exp.Header.typ_vars = []) ->
+                definition.Exp.Definition.cases
+                |> List.fold_left
+                     (fun names (header, _) ->
+                       let assumption_count =
+                         header.Exp.Header.instance_args
+                         |> List.filter (fun (_, typ) ->
+                             match
+                               Exp.assumption_requirement_of_class_type
+                                 typ
+                             with
+                             | Some (Exp.ModuleContext, _) | None ->
+                                 false
+                             | Some (Exp.Unreachable, _)
+                             | Some (Exp.Unimplemented, _) ->
+                                 true)
+                         |> List.length
                        in
-                       let target =
-                         direct_value_target_requirements mixed_path
-                       in
-                       if
-                         target <> []
-                         && Option.is_some
-                              (reorder_assumption_requirements_like target
-                                 reconstructed)
-                       then Name.Map.add name (List.length reconstructed) names
-                       else names
-                   | Value _ | AbstractValue _ | TypeDefinition _ | Module _
-                   | ModuleExpression _ | ContextAssumption _ | ModuleInclude _
-                   | ModuleIncludeItem _ | TypeSynonym _ | ModuleSynonym _
-                   | Signature _ | SignatureSynonym _ | Documentation _
-                   | Error _ | ErrorMessage _ ->
-                       names)
-                 Name.Map.empty
+                       Name.Map.add header.Exp.Header.name
+                         assumption_count names)
+                     names
+            | ModuleIncludeItem
+                ( IncludeValue,
+                  name,
+                  [],
+                  typ,
+                  mixed_path,
+                  stored_requirements,
+                  _ ) ->
+                let reconstructed =
+                  module_include_item_requirements IncludeValue [] typ
+                    mixed_path stored_requirements
+                in
+                let target =
+                  direct_value_target_requirements mixed_path
+                in
+                if
+                  target <> []
+                  && Option.is_some
+                       (reorder_assumption_requirements_like target
+                          reconstructed)
+                then Name.Map.add name (List.length reconstructed) names
+                else names
+            | Documentation (_, nested) ->
+                List.fold_left collect names nested
+            | ErrorMessage (_, nested) -> collect names nested
+            | Value _ | AbstractValue _ | TypeDefinition _ | Module _
+            | ModuleExpression _ | ContextAssumption _ | ModuleInclude _
+            | ModuleIncludeItem _ | TypeSynonym _ | ModuleSynonym _
+            | Signature _ | SignatureSynonym _ | Error _ -> names
+            in
+            List.fold_left collect Name.Map.empty defs
         in
         let to_coq_result_value (e : Exp.t) (typ : Type.t option) : SmartPrint.t
             =
