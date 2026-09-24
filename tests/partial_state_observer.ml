@@ -27,7 +27,10 @@ module Machine (Config : sig val count : int end) = struct
   let current : bool M.t = step 0
 
   let dispatch n : bool M.t =
-    let impl = if n = 0 then current else M.return true in
+    let impl =
+      if n = 0 then (current : int -> (bool, bool) result * int)
+      else M.return true
+    in
     impl
 
   let observe_current state = current state

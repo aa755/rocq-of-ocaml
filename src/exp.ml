@@ -4878,6 +4878,18 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                       infer_projection_implicits typ_vars e variable
                     in
                     let* typ, _, _ = Type.of_typ_expr false typ_vars e.exp_type in
+                    (* An occurrence annotation can expand a named action
+                       into its state-function representation. Classify the
+                       partial value from its declaration, while retaining
+                       the occurrence type for assumption specialization. *)
+                    let declaration_type =
+                      match Env.find_value path e.exp_env with
+                      | value -> value.Types.val_type
+                      | exception Not_found -> description.Types.val_type
+                    in
+                    let* result, _, _ =
+                      Type.of_typ_expr false typ_vars declaration_type
+                    in
                     let* expanded_typ = Type.fully_expand_aliases e.exp_type in
                     let* specialization, _, _ =
                       Type.of_typ_expr false typ_vars expanded_typ
@@ -4892,7 +4904,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                               Configuration.get_partial_state_observer
                                 configuration definition;
                             callee = typ;
-                            result = typ;
+                            result;
                             specialization;
                             module_substitutions = [];
                             module_assumption_telescope = None;
