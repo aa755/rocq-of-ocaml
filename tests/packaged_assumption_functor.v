@@ -101,9 +101,7 @@ Module Package.
   
   Module Package_result.
     Record signature `{_fargs : FArgs} : Type := {
-      Applied :
-        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int},
-          Make.Make_result (_fargs := Applied_fargs);
+      Applied : Make.Make_result (_fargs := Applied_fargs);
       Checked : Package.Checked.Checked_signature;
       t := int;
       get :
@@ -116,8 +114,8 @@ Module Package.
   
   (* Package *)
   Definition functor `{_fargs : FArgs} :@Package_result _fargs :=
-    ((@Package_result.Build_signature _fargs (fun _ => Applied) Checked
-      (fun _ => get)) : @Package_result _fargs).
+    ((@Package_result.Build_signature _fargs Applied Checked (fun _ => get)) :
+      @Package_result _fargs).
 End Package.
 Definition Package (_rocq_fargs : Package.FArgs) := @Package.functor
   _rocq_fargs.

@@ -3419,6 +3419,14 @@ let propagate_assumption_calls
     in
     let rec add = function
       | Signature (name, signature) when Name.equal name signature_name ->
+          let rec module_fields items =
+            items
+            |> List.concat_map (function
+              | Signature.Module (field, _, _) -> [ field ]
+              | Signature.ModuleWithSignature items -> module_fields items
+              | _ -> [])
+          in
+          let module_fields = module_fields signature.Signature.items in
           let signature =
             Signature.add_assumption_requirements specs signature
           in
@@ -3439,10 +3447,20 @@ let propagate_assumption_calls
                   |> Exp.specialize_assumption_requirements body
                   |> Signature.normalize_manifest_requirements signature
                 in
-                (* The concrete field body is authoritative. Imported
-                   signatures can retain a definitionally equal external alias;
-                   discard only those compatible duplicates here. *)
+                (* A named module field's implementation may carry assumptions
+                   inherited from the enclosing functor application. If the
+                   finalized local spec has discharged all of them through
+                   [FArgs], do not quantify over them again in the result
+                   record. Other fields retain their concrete requirements. *)
+                let requirements_already_in_context =
+                  List.exists (Name.equal name) module_fields
+                  &&
+                  match Name.Map.find_opt name specs with
+                  | Some { Exp.requirements = []; _ } -> true
+                  | Some _ | None -> false
+                in
                 match observed with
+                | _ when requirements_already_in_context -> []
                 | [] -> []
                 | _ :: _ ->
                     observed
