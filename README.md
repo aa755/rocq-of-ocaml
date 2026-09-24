@@ -158,6 +158,9 @@ a `Delay.t` of the result/state pair. Monadic callers embed it with
 `Resumption.of_delay`. Calls that do not supply the state remain resumptions.
 Matching uses the exact local declaration and source file, as for action lifts.
 All ordinary arguments and the state must be supplied at the observed call.
+Configured partial values with recursion arity `0` retain their effect when
+referenced without an application, including branches that select between
+partial and total monadic actions.
 
 Pure sequencing whose continuation contains a recursive call uses the
 `RocqOfOCaml.Partial.Delay.bind_guarded` notation. It expands to a local

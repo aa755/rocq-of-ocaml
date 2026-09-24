@@ -4,6 +4,7 @@
     ["tests/partial_state_observer.ml", "Machine.apply", "partial", 2],
     ["tests/partial_state_observer.ml", "Machine.nested", "partial", 2],
     ["tests/partial_state_observer.ml", "Machine.current", "partial", 0],
+    ["tests/partial_state_observer.ml", "Machine.dispatch", "partial", 1],
     ["tests/partial_state_observer.ml", "Machine.observe_current", "partial", 1],
     ["tests/partial_state_observer.ml", "Machine.within", "partial", 2],
     ["tests/partial_state_observer.ml", "Machine.state_action", "partial", 1],

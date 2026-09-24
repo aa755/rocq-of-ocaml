@@ -322,6 +322,15 @@ let is_partial_monad_lift (configuration : t)
          configured = definition
          && filename_matches configuration.file_name source)
 
+let is_partial_value (configuration : t) (definition_path : string list) : bool =
+  let definition = String.concat "." definition_path in
+  configuration.recursion_strategies
+  |> List.exists
+       (fun { RecursionStrategy.source; definition = configured; kind; arity } ->
+         configured = definition && kind = RecursionStrategy.Partial
+         && arity = Some 0
+         && filename_matches configuration.file_name source)
+
 let get_partial_state_observer (configuration : t)
     (definition_path : string list) : (int * PartialStateObserver.kind) option =
   let definition = String.concat "." definition_path in

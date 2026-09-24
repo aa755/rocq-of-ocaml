@@ -4,10 +4,10 @@ Require Import RocqOfOCaml.Settings.
 
 Module M.
   Definition t (a : Set) : Set := int -> sum a bool * int.
-  
+
   Definition _return {A B C : Set} (value : A) (state : B) : sum A C * B :=
     (((inl value) : sum A C), state).
-  
+
   Definition bind {A B C D E : Set}
     (action : A -> sum B C * D) (next : B -> D -> sum E C * D) (state : A)
     : sum E C * D :=
@@ -16,7 +16,7 @@ Module M.
     | inl value => next value state
     | inr _error => (((inr _error) : sum E C), state)
     end.
-  
+
   Definition fail {A B : Set} (_error : A) (state : int) : sum B A * int :=
     (((inr _error) : sum B A), (Z.add state 1)).
 End M.
@@ -37,7 +37,7 @@ Module Machine.
   Class FArgs := {
     Config : Machine_Config_signature;
   }.
-  
+
   CoFixpoint step `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Resumption.t M.t bool :=
     (RocqOfOCaml.Partial.Resumption.Tau (M := M.t))
@@ -56,22 +56,29 @@ Module Machine.
               (fun (value : int) =>
                 (RocqOfOCaml.Partial.Resumption.Tau (M := M.t))
                   (fun _ => step value))).
-  
+
   Definition apply `{_fargs : FArgs} (n_value : int) (state : int)
     : RocqOfOCaml.Partial.Delay.t (sum bool bool * int) :=
     RocqOfOCaml.Partial.ResultState.observe (step n_value) state.
-  
+
   Definition nested `{_fargs : FArgs} (n_value : int) (state : int)
     : RocqOfOCaml.Partial.Delay.t (sum bool bool * int) :=
     RocqOfOCaml.Partial.ResultState.observe (step n_value) state.
-  
+
   Definition current `{_fargs : FArgs}
     : RocqOfOCaml.Partial.Resumption.t M.t bool := step 0.
-  
+
+  Definition dispatch `{_fargs : FArgs} (n_value : int)
+    : RocqOfOCaml.Partial.Resumption.t M.t bool :=
+    if equiv_decb n_value 0 then
+      current
+    else
+      (RocqOfOCaml.Partial.Resumption.Done (M := M.t)) true.
+
   Definition observe_current `{_fargs : FArgs} (state : int)
     : RocqOfOCaml.Partial.Delay.t (sum bool bool * int) :=
     RocqOfOCaml.Partial.ResultState.observe (current) state.
-  
+
   Definition within `{_fargs : FArgs} (n_value : int) (state : int)
     : RocqOfOCaml.Partial.Resumption.t M.t int :=
     (RocqOfOCaml.Partial.Resumption.Compose (M := M.t))
@@ -87,13 +94,13 @@ Module Machine.
               (RocqOfOCaml.Partial.Resumption.Done (M := M.t))
                 _rocq_partial_value)
         end).
-  
+
   Definition state_action `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Resumption.t M.t bool := step n_value.
-  
+
   Definition total `{_fargs : FArgs} {A B : Set} (n_value : int) (state : A)
     : sum bool B * A := Other.step n_value state.
-  
+
   CoFixpoint run `{_fargs : FArgs} (state : int)
     : RocqOfOCaml.Partial.Delay.t (sum bool bool * int) :=
     RocqOfOCaml.Partial.Delay.Tau
@@ -107,13 +114,14 @@ Module Machine.
             | inl true => RocqOfOCaml.Partial.Delay.Tau (fun _ => run state)
             | _ => RocqOfOCaml.Partial.Delay.Done (result_value, state)
             end)).
-  
+
   Module Machine_result.
     Record signature `{_fargs : FArgs} : Type := {
       step : int -> RocqOfOCaml.Partial.Resumption.t M.t bool;
       apply : int -> int -> RocqOfOCaml.Partial.Delay.t (sum bool bool * int);
       nested : int -> int -> RocqOfOCaml.Partial.Delay.t (sum bool bool * int);
       current : RocqOfOCaml.Partial.Resumption.t M.t bool;
+      dispatch : int -> RocqOfOCaml.Partial.Resumption.t M.t bool;
       observe_current :
         int -> RocqOfOCaml.Partial.Delay.t (sum bool bool * int);
       within : int -> int -> RocqOfOCaml.Partial.Resumption.t M.t int;
@@ -124,10 +132,10 @@ Module Machine.
   End Machine_result.
   Definition Machine_result `{_fargs : FArgs} := @Machine_result.signature _.
   Arguments Machine_result {_}.
-  
+
   (* Machine *)
   Definition functor `{_fargs : FArgs} :@Machine_result _fargs :=
-    ((@Machine_result.Build_signature _fargs step apply nested current
+    ((@Machine_result.Build_signature _fargs step apply nested current dispatch
       observe_current within state_action (fun _ _ => total) run) :
       @Machine_result _fargs).
 End Machine.

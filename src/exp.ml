@@ -4834,7 +4834,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
         (* We do not indent here to preserve the diff. *)
         let* e =
           match e.exp_desc with
-          | Texp_ident (path, _, _) ->
+          | Texp_ident (path, _, description) ->
               let implicits = Attribute.get_implicits attributes in
               let* x = MixedPath.of_path true path in
               let is_unsupported_equality =
@@ -4868,6 +4868,38 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 | None -> x
               in
               let variable = Variable (x, implicits) in
+              let* configuration = get_configuration in
+              let* origin = get_value_origin description.Types.val_uid in
+              let* variable =
+                match origin with
+                | Some { ValueOrigins.definition; _ }
+                  when Configuration.is_partial_value configuration definition ->
+                    let* variable =
+                      infer_projection_implicits typ_vars e variable
+                    in
+                    let* typ, _, _ = Type.of_typ_expr false typ_vars e.exp_type in
+                    let* expanded_typ = Type.fully_expand_aliases e.exp_type in
+                    let* specialization, _, _ =
+                      Type.of_typ_expr false typ_vars expanded_typ
+                    in
+                    return
+                      (SourceApply
+                         (variable, [],
+                          {
+                            source_partial = Some true;
+                            source_monad_lift = None;
+                            source_state_observer =
+                              Configuration.get_partial_state_observer
+                                configuration definition;
+                            callee = typ;
+                            result = typ;
+                            specialization;
+                            module_substitutions = [];
+                            module_assumption_telescope = None;
+                            assumption_telescope = None;
+                          }))
+                | _ -> return variable
+              in
               if not (is_partial_operation_path path) then return variable
               else
                 let* expanded_typ = Type.fully_expand_aliases e.exp_type in
@@ -8896,6 +8928,11 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
       | IfThenElseWithEquation (condition, then_, else_) ->
           with_partial_value condition (fun condition ->
             IfThenElseWithEquation (condition, recurse then_, recurse else_))
+      | LetVar
+          (None, name, [], value,
+           Variable (MixedPath.PathName { path = []; base }, []))
+        when Name.equal name base ->
+          recurse value
       | LetVar (None, name, [], value, body) when contains_partial value ->
           bind (recurse value) (continuation name None body)
       | LetVar (None, name, parameters, value, body) ->
