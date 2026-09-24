@@ -108,6 +108,21 @@ let find_result_module_field_raw result_signature field_name hints =
          then Some field_signature
          else None)
 
+(** An imported alias or functor application cannot always be resolved while
+    collecting one CMT. For synthesized result records, recover the member's
+    implementation path and resolve it after all project hints are merged.
+    Named signatures may be shared by different functors, so they must retain
+    their explicitly recorded field signatures instead. *)
+let find_result_module_source_raw result_signature field_name hints =
+  match result_signature with
+  | Path.Pdot (owner, name)
+    when String.equal name (Path.last owner ^ "_result")
+         && Option.fold ~none:false
+              ~some:(project_paths_equal result_signature)
+              (find_path owner hints.functor_results) ->
+      Some (Path.Pdot (owner, field_name))
+  | _ -> None
+
 let find_module_result path hints =
   let rec find visited path =
     if List.exists (project_paths_equal path) visited then None
@@ -127,13 +142,20 @@ let find_module_result path hints =
                       Option.bind
                         (find (path :: visited) parent)
                         (fun parent_result ->
-                          Option.map
-                            (fun field_signature ->
-                              Option.value
-                                (find (path :: visited) field_signature)
-                                ~default:field_signature)
-                            (find_result_module_field_raw parent_result field
-                               hints))
+                          match
+                            find_result_module_field_raw parent_result field
+                              hints
+                          with
+                          | Some field_signature ->
+                              Some
+                                (Option.value
+                                   (find (path :: visited) field_signature)
+                                   ~default:field_signature)
+                          | None ->
+                              Option.bind
+                                (find_result_module_source_raw parent_result
+                                   field hints)
+                                (find (path :: visited)))
                   | Path.Pextra_ty (parent, _) ->
                       find (path :: visited) parent
                   | Path.Pident _ | Path.Papply _ -> None)))
@@ -149,11 +171,16 @@ let find_declaration_type_path uid hints =
          if Types.Uid.equal candidate uid then Some path else None)
 
 let find_result_module_field result_signature field_name hints =
-  find_result_module_field_raw result_signature field_name hints
-  |> Option.map (fun field_signature ->
-         Option.value
+  match find_result_module_field_raw result_signature field_name hints with
+  | Some field_signature ->
+      Some
+        (Option.value
            (find_module_result field_signature hints)
            ~default:field_signature)
+  | None ->
+      Option.bind
+        (find_result_module_source_raw result_signature field_name hints)
+        (fun alias -> find_module_result alias hints)
 
 let has_module_result_reference path hints =
   let rec find visited path =

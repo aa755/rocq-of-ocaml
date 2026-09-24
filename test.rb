@@ -198,6 +198,63 @@ class ProjectResultModuleFieldTest < Test
   end
 end
 
+class WrappedProjectModuleFieldTest < ProjectResultModuleFieldTest
+  def initialize
+    super('tests/project_deferred_result_field')
+    @units = ['Provider', 'Middle', 'Consumer']
+  end
+
+  def check
+    executable = File.expand_path('_build/default/src/rocqOfOCaml.exe')
+    snapshots = {}
+    Dir.mktmpdir('rocq-of-ocaml-wrapped-project-test') do |directory|
+      metadata = File.join(directory, 'metadata')
+      FileUtils.mkdir_p(metadata)
+      Dir.children(@directory).grep(/\.(?:ml|json)\z/).each do |name|
+        FileUtils.cp(File.join(@directory, name), directory)
+      end
+      commands = [
+        ['ocamlc', '-no-alias-deps', '-w', '-49', '-bin-annot', '-c', 'Project.ml']
+      ] + @units.map do |unit|
+        ['ocamlc', '-bin-annot', '-I', '.', '-c', '-o',
+          "Project__#{unit}.cmo", "#{unit}.ml"]
+      end
+      return false unless commands.all? do |command|
+        system(*command, chdir: directory, out: File::NULL, err: File::NULL)
+      end
+      @units.each do |unit|
+        command = [executable, '-config', "#{unit}.json",
+          '-project-cmt-dir', '.', '-assumption-metadata-dir', metadata,
+          '-assumption-prefix', "TestProject.#{unit}",
+          '-assumption-prefix', "Project.#{unit}",
+          '-assumption-metadata-output', File.join(metadata, "#{unit}.rocq-assumptions"),
+          '-output', '/dev/stdout', "#{unit}.ml"]
+        contents = capture_translation(command, directory)
+        return false if contents.nil?
+        snapshots["#{unit}.v"] = contents
+      end
+    end
+    if ENV['UPDATE_SNAPSHOTS'] == '1'
+      snapshots.each { |name, contents| File.write(File.join(@directory, name), contents) }
+    end
+    snapshots.all? do |name, contents|
+      normalize_snapshot(contents) == normalize_snapshot(File.read(File.join(@directory, name)))
+    end
+  end
+
+  def rocq_cmd
+    "rocq c Provider.v, Middle.v, then Consumer.v, with #{@directory} mapped to TestProject"
+  end
+
+  def rocq
+    @units.all? do |unit|
+      system('rocq', 'c', '-Q', 'proofs', 'RocqOfOCaml',
+        '-Q', @directory, 'TestProject', '-impredicative-set',
+        File.join(@directory, "#{unit}.v"), out: File::NULL, err: File::NULL)
+    end
+  end
+end
+
 class NegativeTest < Test
   def initialize(source_file, json_mode = false)
     super(source_file)
@@ -401,7 +458,8 @@ tests = Tests.new(test_files + [
   ProjectResultModuleFieldTest.new('tests/project_fargs_imported_requirements'),
   ProjectResultModuleFieldTest.new(
     'tests/project_included_result_order', ['TestProject.Provider']
-  )
+  ),
+  WrappedProjectModuleFieldTest.new
 ])
 tests.check
 puts
