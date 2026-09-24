@@ -90,3 +90,82 @@ Module Make.
 End Make.
 Definition Make (Params : Make_Params_signature) :=
   @Make.functor (Make.Build_FArgs Params).
+
+Module IncludedMake.
+  Class FArgs := {
+    Params : Make_Params_signature;
+  }.
+
+  Definition Instantiation_fargs `{_fargs : FArgs} :=
+    TestProject.Middle.IncludedInstantiation.Build_FArgs
+      ({|
+        TestProject.Middle.Host_Params_signature.enabled :=
+          Params.(Make_Params_signature.enabled)
+      |} : TestProject.Middle.Host_Params_signature).
+
+  Definition Instantiation `{_fargs : FArgs} :
+    TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result
+      (_fargs := Instantiation_fargs) :=
+    (TestProject.Middle.IncludedInstantiation.functor
+    (_fargs := (Instantiation_fargs ))).
+
+  Module Host.
+    Module M.
+      Module Inner.
+        Definition t `{_fargs : FArgs} (a : Set) :=
+          Instantiation.(TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result.Host).(TestProject.Middle.IncludedHost.IncludedHost_result.M).(TestProject.Provider.State.State_result.Inner_t)
+            a.
+
+        Definition _return `{_fargs : FArgs} {A : Set} :=
+          Instantiation.(TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result.Host).(TestProject.Middle.IncludedHost.IncludedHost_result.M).(TestProject.Provider.State.State_result.Inner_return)
+            (A := A).
+      End Inner.
+
+      Definition t `{_fargs : FArgs} (a : Set) :=
+        Instantiation.(TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result.Host).(TestProject.Middle.IncludedHost.IncludedHost_result.M).(TestProject.Provider.State.State_result.t)
+          a.
+
+      Definition _return `{_fargs : FArgs} {A B : Set} :=
+        Instantiation.(TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result.Host).(TestProject.Middle.IncludedHost.IncludedHost_result.M).(TestProject.Provider.State.State_result._return)
+          (A := A) (B := B).
+    End M.
+
+    Definition M `{_fargs : FArgs} :=
+      Instantiation.(TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result.Host).(TestProject.Middle.IncludedHost.IncludedHost_result.M).
+
+    Definition enabled `{_fargs : FArgs} :=
+      Instantiation.(TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result.Host).(TestProject.Middle.IncludedHost.IncludedHost_result.enabled).
+
+    Definition included_marker `{_fargs : FArgs} :=
+      Instantiation.(TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result.Host).(TestProject.Middle.IncludedHost.IncludedHost_result.included_marker).
+  End Host.
+
+  Definition use `{_fargs : FArgs} (value : int) : Host.M.Inner.t int :=
+    Host.M.Inner._return value.
+
+  Module IncludedMake_result.
+    Record signature `{_fargs : FArgs} : Type := {
+      Instantiation :
+        TestProject.Middle.IncludedInstantiation.IncludedInstantiation_result
+          (_fargs := Instantiation_fargs);
+      Host_M_Inner_t := fun (a : Set) => a;
+      Host_M_Inner_return : forall {A : Set} , A -> A;
+      Host_M_t := fun (a : Set) => int -> Host_M_Inner_t (a * int);
+      Host_M_return : forall {A B : Set} , A -> B -> A * B;
+      Host_enabled : bool;
+      Host_included_marker : int;
+      use : int -> Host_M_Inner_t int;
+    }.
+  End IncludedMake_result.
+  Definition IncludedMake_result `{_fargs : FArgs} :=
+    @IncludedMake_result.signature _.
+  Arguments IncludedMake_result {_}.
+
+  (* IncludedMake *)
+  Definition functor `{_fargs : FArgs} :@IncludedMake_result _fargs :=
+    ((@IncludedMake_result.Build_signature _fargs Instantiation
+      (fun _ => Host.M.Inner._return) (fun _ _ => Host.M._return) Host.enabled
+      Host.included_marker use) : @IncludedMake_result _fargs).
+End IncludedMake.
+Definition IncludedMake (Params : Make_Params_signature) :=
+  @IncludedMake.functor (IncludedMake.Build_FArgs Params).

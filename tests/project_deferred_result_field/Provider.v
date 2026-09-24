@@ -50,3 +50,14 @@ Module State.
 End State.
 Definition State {T_t : Set} (T : State_T_signature (t := T_t)) :=
   @State.functor T_t (State.Build_FArgs T).
+
+Module Source.
+  Definition M_fargs :=
+    State.Build_FArgs
+      (let t : Set := int in
+      ((ltac:(constructor) : State_T_signature (t := t)) :
+        State_T_signature (t := t))).
+
+  Definition M : State.State_result (_fargs := M_fargs) := (State.functor
+    (_fargs := (M_fargs ))).
+End Source.

@@ -114,13 +114,22 @@ let find_result_module_field_raw result_signature field_name hints =
     Named signatures may be shared by different functors, so they must retain
     their explicitly recorded field signatures instead. *)
 let find_result_module_source_raw result_signature field_name hints =
+  let rec resolve visited path =
+    if List.exists (project_paths_equal path) visited then None
+    else
+      match
+        find_path path (hints.module_aliases @ hints.included_module_aliases)
+      with
+      | Some target -> resolve (path :: visited) target
+      | None -> Some path
+  in
   match result_signature with
   | Path.Pdot (owner, name)
     when String.equal name (Path.last owner ^ "_result")
          && Option.fold ~none:false
               ~some:(project_paths_equal result_signature)
               (find_path owner hints.functor_results) ->
-      Some (Path.Pdot (owner, field_name))
+      resolve [] (Path.Pdot (owner, field_name))
   | _ -> None
 
 let find_module_result path hints =

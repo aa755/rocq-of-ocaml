@@ -71,3 +71,64 @@ Module Instantiate.
 End Instantiate.
 Definition Instantiate (Params : Host_Params_signature) :=
   @Instantiate.functor (Instantiate.Build_FArgs Params).
+
+Module IncludedHost.
+  Class FArgs := {
+    Params : Host_Params_signature;
+  }.
+
+  Definition M `{_fargs : FArgs} := TestProject.Provider.Source.M.
+
+  Definition enabled `{_fargs : FArgs} : bool :=
+    Params.(Host_Params_signature.enabled).
+
+  Definition included_marker `{_fargs : FArgs} : int := 1.
+
+  Module IncludedHost_result.
+    Record signature `{_fargs : FArgs} : Type := {
+      M :
+        TestProject.Provider.State.State_result
+          (_fargs := TestProject.Provider.Source.M_fargs);
+      enabled : bool;
+      included_marker : int;
+    }.
+  End IncludedHost_result.
+  Definition IncludedHost_result `{_fargs : FArgs} :=
+    @IncludedHost_result.signature _.
+  Arguments IncludedHost_result {_}.
+
+  (* IncludedHost *)
+  Definition functor `{_fargs : FArgs} :@IncludedHost_result _fargs :=
+    ((@IncludedHost_result.Build_signature _fargs M enabled included_marker) :
+      @IncludedHost_result _fargs).
+End IncludedHost.
+Definition IncludedHost (Params : Host_Params_signature) :=
+  @IncludedHost.functor (IncludedHost.Build_FArgs Params).
+
+Module IncludedInstantiation.
+  Class FArgs := {
+    Params : Host_Params_signature;
+  }.
+
+  Definition Host_fargs `{_fargs : FArgs} := IncludedHost.Build_FArgs Params.
+
+  Definition Host `{_fargs : FArgs} :
+    IncludedHost.IncludedHost_result (_fargs := Host_fargs) :=
+    (IncludedHost.functor (_fargs := (Host_fargs ))).
+
+  Module IncludedInstantiation_result.
+    Record signature `{_fargs : FArgs} : Type := {
+      Host : IncludedHost.IncludedHost_result (_fargs := Host_fargs);
+    }.
+  End IncludedInstantiation_result.
+  Definition IncludedInstantiation_result `{_fargs : FArgs} :=
+    @IncludedInstantiation_result.signature _.
+  Arguments IncludedInstantiation_result {_}.
+
+  (* IncludedInstantiation *)
+  Definition functor `{_fargs : FArgs} :@IncludedInstantiation_result _fargs :=
+    ((@IncludedInstantiation_result.Build_signature _fargs Host) :
+      @IncludedInstantiation_result _fargs).
+End IncludedInstantiation.
+Definition IncludedInstantiation (Params : Host_Params_signature) :=
+  @IncludedInstantiation.functor (IncludedInstantiation.Build_FArgs Params).
