@@ -1,0 +1,8 @@
+{
+  "recursion_strategies": [
+    ["Provider.ml", "Make.step", "partial", 1],
+    ["Provider.ml", "Make.current", "partial", 0],
+    ["Provider.ml", "Make.choose", "partial", 2],
+    ["Provider.ml", "Make.choose.otherwise", "partial", 0]
+  ]
+}

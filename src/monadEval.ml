@@ -161,7 +161,10 @@ module Command = struct
     | GetValueName ident ->
         Result.success (ValueNames.find ident context.value_names)
     | GetValueOrigin uid ->
-        Result.success (ValueOrigins.find uid context.value_origins)
+        Result.success
+          (match ValueOrigins.find uid context.value_origins with
+          | Some _ as origin -> origin
+          | None -> ValueOrigins.find uid context.project_hints.value_origins)
     | GetProjectModuleOrigin path ->
         Result.success (ProjectHints.module_origin path context.project_hints)
     | GetModulePathAlias path ->

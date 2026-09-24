@@ -3,6 +3,7 @@
     modules; the compiler's declaration UID still identifies the source. *)
 
 type origin = {
+  source : string option;
   definition : string list;
   partial_attribute : bool;
   parameters : string option list;
@@ -10,6 +11,11 @@ type origin = {
 type t = origin Types.Uid.Map.t
 
 let find uid origins = Types.Uid.Map.find_opt uid origins
+
+let source_configuration (configuration : Configuration.t) (origin : origin) =
+  match origin.source with
+  | Some source -> { configuration with file_name = source }
+  | None -> configuration
 
 let parameter_names (expression : Typedtree.expression) : string option list =
   match expression.exp_desc with
@@ -40,7 +46,7 @@ let partial_parameter_indices (configuration : Configuration.t)
          | _ -> None)
   |> List.filter_map Fun.id
 
-let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
+let of_typedtree ?source (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
   let origins = ref Types.Uid.Map.empty in
   let path = ref [] in
   let partial_attribute = ref false in
@@ -89,7 +95,8 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
           | Tpat_var (ident, _, uid) | Tpat_alias (_, ident, _, uid, _) ->
               origins :=
                 Types.Uid.Map.add uid
-                  { definition = !path @ [ Ident.name ident ];
+                  { source;
+                    definition = !path @ [ Ident.name ident ];
                     partial_attribute = !partial_attribute;
                     parameters = [] }
                   !origins

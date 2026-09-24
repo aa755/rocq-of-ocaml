@@ -4879,10 +4879,15 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               let variable = Variable (x, implicits) in
               let* configuration = get_configuration in
               let* origin = get_value_origin description.Types.val_uid in
+              let origin_configuration =
+                Option.fold ~none:configuration
+                  ~some:(ValueOrigins.source_configuration configuration) origin
+              in
               let* variable =
                 match origin with
                 | Some { ValueOrigins.definition; _ }
-                  when Configuration.is_partial_value configuration definition ->
+                  when Configuration.is_partial_value origin_configuration
+                         definition ->
                     let* variable =
                       infer_projection_implicits typ_vars e variable
                     in
@@ -4911,7 +4916,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                             source_monad_lift = None;
                             source_state_observer =
                               Configuration.get_partial_state_observer
-                                configuration definition;
+                                origin_configuration definition;
                             source_partial_arguments = [];
                             callee = typ;
                             result;
@@ -5407,25 +5412,29 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 | _ -> return None
               in
               let* origin = source_origin source_e_f in
+              let origin_configuration =
+                Option.fold ~none:configuration
+                  ~some:(ValueOrigins.source_configuration configuration) origin
+              in
               let source_partial =
                 Option.map
                   (fun { ValueOrigins.definition; partial_attribute; _ } ->
                     partial_attribute
-                    || Configuration.get_recursion_strategy configuration
+                    || Configuration.get_recursion_strategy origin_configuration
                          definition
                        = Some Configuration.RecursionStrategy.Partial)
                   origin
               in
               let source_state_observer =
                 Option.bind origin (fun { ValueOrigins.definition; _ } ->
-                    Configuration.get_partial_state_observer configuration
+                    Configuration.get_partial_state_observer origin_configuration
                       definition)
               in
               let* source_partial_arguments =
                 match origin with
                 | Some { ValueOrigins.definition; parameters; _ } ->
                     let indices =
-                      ValueOrigins.partial_parameter_indices configuration
+                      ValueOrigins.partial_parameter_indices origin_configuration
                         definition parameters
                     in
                     let rec declaration_type expression =
@@ -5471,7 +5480,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               let* source_monad_lift =
                 match origin with
                 | Some { ValueOrigins.definition; _ }
-                  when Configuration.is_partial_monad_lift configuration
+                  when Configuration.is_partial_monad_lift origin_configuration
                          definition ->
                     let rec declaration expression =
                       match expression.exp_desc with

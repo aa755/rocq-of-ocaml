@@ -1,0 +1,21 @@
+{
+  "require": [["Project", "TestProject"]],
+  "recursion_strategies": [
+    ["Provider.ml", "Make.step", "partial", 1],
+    ["Provider.ml", "Make.current", "partial", 0],
+    ["Provider.ml", "Make.choose", "partial", 2],
+    ["Provider.ml", "Make.choose.otherwise", "partial", 0],
+    ["Consumer.ml", "read", "partial", 2],
+    ["Consumer.ml", "read_current", "partial", 1],
+    ["Consumer.ml", "choose", "partial", 1],
+    ["Consumer.ml", "choose_total", "partial", 1],
+    ["Consumer.ml", "observe_choice", "partial", 2],
+    ["Consumer.ml", "mapped", "partial", 1]
+  ],
+  "partial_state_observers": [
+    ["Provider.ml", "Make.step", 1, "state"],
+    ["Provider.ml", "Make.current", 0, "state"],
+    ["Consumer.ml", "choose", 1, "state"]
+  ],
+  "partial_monad_lifts": [["Provider.ml", "lift"]]
+}

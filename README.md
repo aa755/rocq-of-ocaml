@@ -116,7 +116,7 @@ Rocq measure and a named call-site tactic for a `well_founded` definition;
 successfully checked certificates remove both the abstract measure and
 `Admit Obligations` from the generated definition.
 
-To map a partial computation between monads through a local action lift,
+To map a partial computation between monads through an action lift,
 declare that operation explicitly:
 
 ```json
@@ -132,12 +132,15 @@ on each side, such as `'a Host.t -> 'a Machine.t`. A call whose argument is
 partial becomes `Resumption.hoist` with the original polymorphic operation;
 calls with total arguments retain their source form. The configuration uses
 the declaration's exact lexical path and source file, rather than its final
-name alone. This currently applies to declarations in the translated unit.
+name alone. Imported declarations are recovered from the implementation CMT
+files supplied with `-project-cmt-dir`, including functor applications and
+included aliases. The configuration names the original source file and
+lexical declaration, even when the caller uses another module path.
 It is a semantic declaration: the lift must preserve return and bind under
 the intended observation relation. `Resumption.run_hoist` states those proof
 requirements explicitly; the translator does not prove them from a type.
 
-Explicit state application of a local partial result-and-state action can
+Explicit state application of a partial result-and-state action can
 be configured separately:
 
 ```json
@@ -156,7 +159,7 @@ return and bind of `ResultState`, including retaining the updated state on
 error; those semantics do not follow from the type alone. The observer returns
 a `Delay.t` of the result/state pair. Monadic callers embed it with
 `Resumption.of_delay`. Calls that do not supply the state remain resumptions.
-Matching uses the exact local declaration and source file, as for action lifts.
+Matching uses the declaration identity and source file, as for action lifts.
 All ordinary arguments and the state must be supplied at the observed call.
 Use `"state"` instead of `"result_state"` for plain actions of type
 `state -> 'a * state` with the canonical state-monad operations. This emits
@@ -180,9 +183,10 @@ A computation-valued parameter can use the same arity-zero declaration:
 Here `choose flag ~otherwise` receives the `otherwise` action as a resumption.
 The parameter must have a named action type. Its declaration, references,
 and synthesized result interface retain that partial type. Calls to the
-local function lower the supplied argument in the parameter's source monad,
+function lower the supplied argument in the parameter's source monad,
 including ordinary total actions and compound partial expressions. Both
 labeled and positional parameters are matched by their source binding names.
+Imported calls require the provider's implementation CMT in the project index.
 
 Pure sequencing whose continuation contains a recursive call uses the
 `RocqOfOCaml.Partial.Delay.bind_guarded` notation. It expands to a local

@@ -1011,9 +1011,10 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
         let* origin = get_value_origin val_uid in
         let partial_parameters =
           match origin with
-          | Some { ValueOrigins.definition; parameters; _ } ->
-              ValueOrigins.partial_parameter_indices configuration definition
-                parameters
+          | Some ({ ValueOrigins.definition; parameters; _ } as origin) ->
+              ValueOrigins.partial_parameter_indices
+                (ValueOrigins.source_configuration configuration origin)
+                definition parameters
           | None -> []
         in
         let is_partial =

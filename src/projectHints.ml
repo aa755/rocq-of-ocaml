@@ -19,6 +19,7 @@ type t = {
   result_module_fields : (Path.t * string * Path.t) list;
   module_types : (Path.t * Types.module_type) list;
   declaration_type_paths : (Types.Uid.t * Path.t) list;
+  value_origins : ValueOrigins.t;
 }
 
 let empty =
@@ -34,6 +35,7 @@ let empty =
     result_module_fields = [];
     module_types = [];
     declaration_type_paths = [];
+    value_origins = Types.Uid.Map.empty;
   }
 
 let merge left right =
@@ -57,6 +59,9 @@ let merge left right =
     module_types = left.module_types @ right.module_types;
     declaration_type_paths =
       left.declaration_type_paths @ right.declaration_type_paths;
+    value_origins =
+      Types.Uid.Map.union (fun _ left _ -> Some left)
+        left.value_origins right.value_origins;
   }
 
 let project_paths_equal left right =
@@ -984,7 +989,10 @@ let cmt_file_hints file =
     let cmt = Cmt_format.read_cmt file in
     match cmt.cmt_annots with
     | Cmt_format.Implementation structure ->
-        of_structure cmt.cmt_modname structure
+        { (of_structure cmt.cmt_modname structure) with
+          value_origins =
+            ValueOrigins.of_typedtree ?source:cmt.cmt_sourcefile
+              (`Implementation structure) }
     | Cmt_format.Interface _
     | Cmt_format.Packed _
     | Cmt_format.Partial_implementation _
