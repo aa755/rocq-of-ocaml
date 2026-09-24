@@ -368,4 +368,186 @@ Module Resumption.
       + apply bind_respects. exact source_IH. exact next_IH.
       + apply lift_bind.
   Qed.
+
+  Lemma bind_unfold {M : Set -> Set} {A B : Set}
+      (computation : t M A) (continuation : A -> t M B) :
+    bind computation continuation =
+    match computation with
+    | Done value => continuation value
+    | Tau next => Tau (fun _ => bind (next tt) continuation)
+    | Bind action next =>
+        Bind action (fun value => bind (next value) continuation)
+    | Compose source next =>
+        Compose source (fun value => bind (next value) continuation)
+    end.
+  Proof.
+    destruct computation as [value | next | X action next | X source next];
+      rewrite (unfold_eq (bind _ _)); cbn;
+      try reflexivity.
+    destruct (continuation value); reflexivity.
+  Qed.
 End Resumption.
+
+Module ResultState.
+  Definition t (S E A : Set) := S -> sum A E * S.
+
+  Definition return_ {S E A : Set} (value : A) : t S E A :=
+    fun state => (inl value, state).
+
+  Definition bind_ {S E A B : Set} (action : t S E A)
+      (next : A -> t S E B) : t S E B :=
+    fun state =>
+      let '(result, state) := action state in
+      match result with
+      | inl value => next value state
+      | inr error => (inr error, state)
+      end.
+
+  (** Observe state actions without requiring a convergence witness. A
+      source error retains its updated state and skips every continuation.
+      Flattening [Compose] beneath [Tau] keeps this evaluator productive. *)
+  CoFixpoint observe {S E A : Set}
+      (computation : Resumption.t (t S E) A) (state : S) :
+      Delay.t (sum A E * S) :=
+    match computation with
+    | Resumption.Done value => Delay.Done (inl value, state)
+    | Resumption.Tau next =>
+        Delay.Tau (fun _ => observe (next tt) state)
+    | Resumption.Bind action next =>
+        Delay.Tau (fun _ =>
+          let '(result, state) := action state in
+          match result with
+          | inl value => observe (next value) state
+          | inr error => Delay.Done (inr error, state)
+          end)
+    | Resumption.Compose source next =>
+        Delay.Tau (fun _ => observe (Resumption.bind source next) state)
+    end.
+
+  Lemma observe_unfold {S E A : Set}
+      (computation : Resumption.t (t S E) A) (state : S) :
+    observe computation state =
+    match computation with
+    | Resumption.Done value => Delay.Done (inl value, state)
+    | Resumption.Tau next =>
+        Delay.Tau (fun _ => observe (next tt) state)
+    | Resumption.Bind action next =>
+        Delay.Tau (fun _ =>
+          let '(result, state) := action state in
+          match result with
+          | inl value => observe (next value) state
+          | inr error => Delay.Done (inr error, state)
+          end)
+    | Resumption.Compose source next =>
+        Delay.Tau (fun _ => observe (Resumption.bind source next) state)
+    end.
+  Proof.
+    destruct computation; rewrite (Delay.unfold_eq (observe _ _)); reflexivity.
+  Qed.
+
+  Definition returns {A : Set} (computation : Delay.t A) (value : A) : Type :=
+    { proof : Delay.converges computation &
+      @Delay.run A computation proof = value }.
+
+  Lemma returns_done {A : Set} (value : A) :
+    returns (Delay.Done value) value.
+  Proof. exists (Delay.ConvergesDone value). reflexivity. Defined.
+
+  Lemma returns_tau {A : Set} (next : unit -> Delay.t A) (value : A) :
+    returns (next tt) value -> returns (Delay.Tau next) value.
+  Proof.
+    intros [proof equation]. exists (Delay.ConvergesTau next proof). exact equation.
+  Defined.
+
+  Definition run {S E A : Set} (computation : Resumption.t (t S E) A)
+      (proof : Resumption.converges computation) : t S E A :=
+    @Resumption.run (t S E) (@return_ S E) (@bind_ S E) A computation proof.
+
+  Lemma bind_assoc {S E A B C : Set} (action : t S E A)
+      (next : A -> t S E B) (last : B -> t S E C) (state : S) :
+    bind_ (bind_ action next) last state =
+    bind_ action (fun value => bind_ (next value) last) state.
+  Proof.
+    unfold bind_. destruct (action state) as [[value | error] next_state];
+      reflexivity.
+  Qed.
+
+  (** Prove observation and observation after binding together: flattening
+      a composed resumption needs the induction hypothesis for its source and
+      the continuation selected by that source. *)
+  Definition observe_spec {S E A : Set}
+      (computation : Resumption.t (t S E) A)
+      (proof : Resumption.converges computation) :
+    ((forall state, returns (observe computation state)
+        (@run S E A computation proof state)) *
+     (forall (B : Set) (next : A -> Resumption.t (t S E) B)
+        (next_run : A -> t S E B),
+        (forall value state, returns (observe (next value) state)
+          (next_run value state)) ->
+        forall state, returns (observe (Resumption.bind computation next) state)
+          (bind_ (@run S E A computation proof) next_run state)))%type.
+  Proof.
+    induction proof as
+      [A value | A next proof IH | A X action next proof IH |
+       A X source next source_proof source_IH next_proof next_IH].
+    - split.
+      + intro state. rewrite observe_unfold. apply returns_done.
+      + intros B next next_run Hnext state.
+        rewrite Resumption.bind_unfold. apply Hnext.
+    - destruct IH as [IHobserve IHbind]. split.
+      + intro state. rewrite observe_unfold. apply returns_tau. apply IHobserve.
+      + intros B continuation next_run Hnext state.
+        rewrite Resumption.bind_unfold, observe_unfold.
+        apply returns_tau. apply IHbind. exact Hnext.
+    - split.
+      + intro state. rewrite observe_unfold. apply returns_tau.
+        cbn [run Resumption.run]. unfold bind_.
+        destruct (action state) as [[value | error] next_state].
+        * apply (fst (IH value)).
+        * apply returns_done.
+      + intros B continuation next_run Hnext state.
+        rewrite Resumption.bind_unfold, observe_unfold. apply returns_tau.
+        cbn [run Resumption.run]. unfold bind_.
+        destruct (action state) as [[value | error] next_state].
+        * apply (snd (IH value)). exact Hnext.
+        * apply returns_done.
+    - destruct source_IH as [source_observe source_bind]. split.
+      + intro state. rewrite observe_unfold. apply returns_tau.
+        apply source_bind. intros value next_state. apply (fst (next_IH value)).
+      + intros B continuation next_run Hnext state.
+        rewrite Resumption.bind_unfold, observe_unfold. apply returns_tau.
+        cbn [run Resumption.run]. rewrite bind_assoc.
+        apply source_bind. intros value next_state.
+        apply (snd (next_IH value)). exact Hnext.
+  Defined.
+
+  (** The abstract resumption witness is sufficient, but not necessary:
+      state observation can terminate when an error skips a divergent branch. *)
+  Definition observe_converges {S E A : Set}
+      (computation : Resumption.t (t S E) A)
+      (proof : Resumption.converges computation) (state : S) :
+    Delay.converges (observe computation state) :=
+    projT1 (fst (@observe_spec S E A computation proof) state).
+
+  Lemma run_observe {S E A : Set}
+      (computation : Resumption.t (t S E) A)
+      (proof : Resumption.converges computation) (state : S) :
+    @Delay.run (sum A E * S) (observe computation state)
+      (@observe_converges S E A computation proof state) =
+    @run S E A computation proof state.
+  Proof.
+    exact (projT2 (fst (@observe_spec S E A computation proof) state)).
+  Qed.
+
+  (** An error keeps the action's updated state and requires no termination
+      fact about the continuation, which may diverge. *)
+  Definition observe_bind_error {S E A X : Set}
+      (action : t S E X) (next : X -> Resumption.t (t S E) A)
+      (state : S) (error : E) (next_state : S)
+      (equation : action state = (inr error, next_state)) :
+    returns (observe (Resumption.Bind action next) state) (inr error, next_state).
+  Proof.
+    rewrite observe_unfold. apply returns_tau.
+    rewrite equation. apply returns_done.
+  Defined.
+End ResultState.
