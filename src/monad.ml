@@ -25,6 +25,7 @@ module Command = struct
     | GetValueName : Ident.t -> string option t
     | GetModulePathAlias : Path.t -> Path.t option t
     | GetModulePathAliasSource : Path.t -> Path.t option t
+    | GetProjectModuleOrigin : Path.t -> Path.t t
     | GetSignatureHint : Path.t -> Path.t option t
     | GetModuleTypeHint : Path.t -> Types.module_type option t
     | GetModuleTypeHints : (Path.t * Types.module_type) list t
@@ -97,6 +98,9 @@ module Notations = struct
 
   let get_module_path_alias (path : Path.t) : Path.t option t =
     Command (Command.GetModulePathAlias path)
+
+  let get_project_module_origin (path : Path.t) : Path.t t =
+    Command (Command.GetProjectModuleOrigin path)
 
   let get_module_path_alias_source (path : Path.t) : Path.t option t =
     Command (Command.GetModulePathAliasSource path)

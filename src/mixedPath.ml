@@ -532,12 +532,22 @@ let of_path (is_value : bool) (path : Path.t) : t Monad.t =
               return (Path.Pdot (parent, field))
           | path -> return path
         in
-        let* origin = included_origin path in
-        let* path_name =
-          PathName.of_path_without_convert is_value
-            (PathName.static_path origin)
+        let rec configured_origin visited origin =
+          let* path_name =
+            PathName.of_path_without_convert is_value
+              (PathName.static_path origin)
+          in
+          let* override = PathName.try_module_override path_name in
+          match override with
+          | Some _ -> return override
+          | None ->
+              let* next = get_project_module_origin origin in
+              if Path.same next origin || List.exists (Path.same next) visited
+              then return None
+              else configured_origin (origin :: visited) next
         in
-        PathName.try_module_override path_name
+        let* origin = included_origin path in
+        configured_origin [] origin
   in
   match direct_override with
   | Some path_name -> return (PathName path_name)

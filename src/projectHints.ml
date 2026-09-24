@@ -11,6 +11,7 @@ type t = {
   module_applications : (Path.t * Path.t) list;
   applicative_aliases : (Path.t * Path.t) list;
   module_aliases : (Path.t * Path.t) list;
+  included_module_aliases : (Path.t * Path.t) list;
   functor_results : (Path.t * Path.t) list;
   anonymous_functor_parameters : (Path.t * string * Path.t) list;
   functor_parameter_types :
@@ -26,6 +27,7 @@ let empty =
     module_applications = [];
     applicative_aliases = [];
     module_aliases = [];
+    included_module_aliases = [];
     functor_results = [];
     anonymous_functor_parameters = [];
     functor_parameter_types = [];
@@ -42,6 +44,8 @@ let merge left right =
     applicative_aliases =
       left.applicative_aliases @ right.applicative_aliases;
     module_aliases = left.module_aliases @ right.module_aliases;
+    included_module_aliases =
+      left.included_module_aliases @ right.included_module_aliases;
     functor_results = left.functor_results @ right.functor_results;
     anonymous_functor_parameters =
       left.anonymous_functor_parameters
@@ -75,6 +79,24 @@ let find_path path entries =
   entries
   |> List.find_map (fun (candidate, value) ->
          if project_paths_equal candidate path then Some value else None)
+
+(** Recover the owner of a module copied by [include], possibly through
+    exported module aliases. This provenance is used only when selecting an
+    explicit namespace override, not to change ordinary record projections.
+    Return one step so the caller can honor an override before following the
+    original module's implementation past that representation boundary. *)
+let rec module_origin path hints =
+  match
+    find_path path (hints.included_module_aliases @ hints.module_aliases)
+  with
+  | Some target -> target
+  | None -> (
+      match path with
+      | Path.Pdot (parent, field) ->
+          Path.Pdot (module_origin parent hints, field)
+      | Path.Pextra_ty (parent, extra) ->
+          Path.Pextra_ty (module_origin parent hints, extra)
+      | Path.Pident _ | Path.Papply _ -> path)
 
 let find_result_module_field_raw result_signature field_name hints =
   hints.result_module_fields
@@ -748,12 +770,58 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
     | None -> ()
   in
   let rec collect_structure owner (structure : Typedtree.structure) =
+    (* CMT environments may contain summaries only. Determine the final
+       bindings from the structure itself, including later shadowing, rather
+       than asking an incompletely reconstructed environment for them. *)
+    let add_module modules ident =
+      let name = Ident.name ident in
+      (name, ident) :: List.remove_assoc name modules
+    in
+    let final_modules =
+      List.fold_left
+        (fun modules (item : Typedtree.structure_item) ->
+          match item.str_desc with
+          | Tstr_module { mb_id = Some ident; _ } -> add_module modules ident
+          | Tstr_recmodule bindings ->
+              List.fold_left (fun modules binding ->
+                match binding.Typedtree.mb_id with
+                | Some ident -> add_module modules ident
+                | None -> modules) modules bindings
+          | Tstr_include { incl_type; _ } ->
+              List.fold_left (fun modules -> function
+                | Types.Sig_module (ident, _, _, _, _) ->
+                    add_module modules ident
+                | _ -> modules) modules incl_type
+          | _ -> modules)
+        [] structure.str_items
+    in
     List.iter
       (fun (item : Typedtree.structure_item) ->
         match item.str_desc with
         | Tstr_module binding -> collect_binding owner binding
         | Tstr_recmodule bindings ->
             List.iter (collect_binding owner) bindings
+        | Tstr_include { incl_mod; incl_type; _ } -> (
+            match module_expr_path incl_mod with
+            | None -> ()
+            | Some source ->
+                let source = qualify_path !locals source in
+                incl_type
+                |> List.iter (function
+                     | Types.Sig_module (ident, _, _, _, _)
+                       when (match List.assoc_opt (Ident.name ident) final_modules with
+                         | Some latest -> Ident.same latest ident
+                         | None -> false) ->
+                         let field = Ident.name ident in
+                         hints :=
+                           {
+                             !hints with
+                             included_module_aliases =
+                               (Path.Pdot (owner, field),
+                                Path.Pdot (source, field))
+                               :: !hints.included_module_aliases;
+                           }
+                     | _ -> ()))
         | Tstr_modtype declaration -> (
             match declaration.mtd_type with
             | Some module_typ ->

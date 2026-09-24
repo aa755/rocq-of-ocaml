@@ -158,6 +158,8 @@ module Command = struct
           (ProjectHints.find_declaration_type_path uid context.project_hints)
     | GetValueName ident ->
         Result.success (ValueNames.find ident context.value_names)
+    | GetProjectModuleOrigin path ->
+        Result.success (ProjectHints.module_origin path context.project_hints)
     | GetModulePathAlias path ->
         let normalized_path = normalize_project_path context.env path in
         let alias =

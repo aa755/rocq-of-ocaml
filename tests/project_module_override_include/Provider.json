@@ -1,0 +1,16 @@
+{
+  "require": [
+    [
+      "Project",
+      "TestProject"
+    ]
+  ],
+  "module_overrides": [
+    [
+      "Provider.ml",
+      "Counter",
+      "Provider.Counter",
+      "RocqOfOCaml.ModuleOverrideModel"
+    ]
+  ]
+}
