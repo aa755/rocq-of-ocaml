@@ -1,0 +1,10 @@
+{
+  "recursion_strategies": [
+    ["tests/mixed_partial_effects.ml", "Runner.run", "partial"],
+    ["tests/mixed_partial_effects.ml", "pure_pair", "partial"],
+    ["tests/mixed_partial_effects.ml", "Effectful.resumed_countdown", "partial"],
+    ["tests/mixed_partial_effects.ml", "Use.execute", "partial"],
+    ["tests/mixed_partial_effects.ml", "Use.pure_tail", "partial"],
+    ["tests/mixed_partial_effects.ml", "Use.monadic_tail", "partial"]
+  ]
+}

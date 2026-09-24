@@ -114,6 +114,37 @@ Module Resumption.
   Arguments Bind {M A X}.
   Arguments Compose {M A X}.
 
+  (** A pure partial computation can suspend inside a monadic computation
+      without inventing an [M] action or requiring convergence up front. *)
+  CoFixpoint of_delay {M : Set -> Set} {A : Set}
+      (computation : Delay.t A) : t M A :=
+    match computation with
+    | Delay.Done value => Done value
+    | Delay.Tau next => Tau (fun _ => of_delay (next tt))
+    end.
+
+  Lemma unfold_eq {M : Set -> Set} {A : Set} (computation : t M A) :
+    computation =
+    match computation with
+    | Done value => Done value
+    | Tau next => Tau next
+    | Bind action next => Bind action next
+    | Compose computation next => Compose computation next
+    end.
+  Proof. destruct computation; reflexivity. Qed.
+
+  Lemma of_delay_unfold {M : Set -> Set} {A : Set}
+      (computation : Delay.t A) :
+    @of_delay M A computation =
+    match computation with
+    | Delay.Done value => Done value
+    | Delay.Tau next => Tau (fun _ => of_delay (next tt))
+    end.
+  Proof.
+    destruct computation as [value | next];
+      rewrite (unfold_eq (of_delay _)); reflexivity.
+  Qed.
+
   CoFixpoint bind {M : Set -> Set} {A B : Set}
       (computation : t M A) (continuation : A -> t M B) : t M B :=
     match computation with
@@ -188,4 +219,60 @@ Module Resumption.
     @run M (@return_) (@bind_) A computation proof.
 
   Arguments run_explicit {M} return_ bind_ {A} computation proof.
+
+  Definition of_delay_converges {M : Set -> Set} {A : Set}
+      (computation : Delay.t A) (proof : Delay.converges computation) :
+    converges (@of_delay M A computation).
+  Proof.
+    induction proof as [value | next proof IH]; rewrite of_delay_unfold.
+    - apply ConvergesDone.
+    - apply ConvergesTau. exact IH.
+  Defined.
+
+  (** The embedding cannot make a divergent pure computation converge. *)
+  Lemma of_delay_converges_inv {M : Set -> Set} {A : Set}
+      (computation : Delay.t A) :
+    converges (@of_delay M A computation) -> Delay.converges computation.
+  Proof.
+    intro proof.
+    remember (@of_delay M A computation) as resumed eqn:Heq.
+    revert computation Heq.
+    induction proof as
+      [A value | A next proof IH | A X action next proof IH |
+       A X source next source_proof source_IH next_proof next_IH];
+      intros computation Heq; destruct computation as [value' | next'];
+      rewrite of_delay_unfold in Heq; try discriminate.
+    - apply Delay.ConvergesDone.
+    - apply Delay.ConvergesTau. apply IH.
+      injection Heq as Hnext.
+      exact (f_equal (fun continuation => continuation tt) Hnext).
+  Qed.
+
+  Lemma run_transport {M : Set -> Set}
+      (return_ : forall {A : Set}, A -> M A)
+      (bind_ : forall {A B : Set}, M A -> (A -> M B) -> M B)
+      {A : Set} (left right : t M A) (equation : left = right)
+      (proof : converges left) :
+    @run M (@return_) (@bind_) A right
+      (eq_rect left converges proof right equation) =
+    @run M (@return_) (@bind_) A left proof.
+  Proof. destruct equation. reflexivity. Qed.
+
+  (** Embedding a convergent pure computation introduces no monadic action:
+      observing it returns exactly its original result. *)
+  Lemma run_of_delay {M : Set -> Set}
+      (return_ : forall {A : Set}, A -> M A)
+      (bind_ : forall {A B : Set}, M A -> (A -> M B) -> M B)
+      {A : Set} (computation : Delay.t A)
+      (proof : Delay.converges computation) :
+    @run M (@return_) (@bind_) A (of_delay computation)
+      (@of_delay_converges M A computation proof) =
+    return_ (@Delay.run A computation proof).
+  Proof.
+    induction proof as [value | next proof IH].
+    - unfold of_delay_converges. cbn. unfold eq_rect_r.
+      rewrite run_transport. reflexivity.
+    - unfold of_delay_converges. cbn. unfold eq_rect_r.
+      rewrite run_transport. cbn. exact IH.
+  Qed.
 End Resumption.

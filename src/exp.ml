@@ -8502,11 +8502,18 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
       when List.for_all (function None -> false | Some _ -> true) arguments ->
         let function_, preceding_arguments =
           match flatten_application function_ with
-          | Apply (function_, preceding_arguments) ->
+          | Apply (function_, preceding_arguments)
+          | SourceApply (function_, preceding_arguments, _) ->
               (function_, preceding_arguments)
           | function_ -> (function_, [])
         in
-        Apply (function_, preceding_arguments @ arguments)
+        (* Retain the source result type: a pure partial callee needs an
+           explicit embedding when its caller uses a monadic resumption. *)
+        (match e with
+        | SourceApply (_, _, source_type) ->
+            SourceApply
+              (function_, preceding_arguments @ arguments, source_type)
+        | _ -> Apply (function_, preceding_arguments @ arguments))
     | _ -> e
   in
   let e = flatten_application e in
@@ -8618,7 +8625,15 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
   match lifted_seq_map with
   | Some e -> e
   | None when is_named_application recursive_names e -> suspend e
-  | None when is_partial e -> e
+  | None when is_partial e -> (
+      match e with
+      | SourceApply (_, _, source_type)
+        when resumption
+             && (match Type.partial_result source_type.result with
+                | Type.Delayed _ -> true
+                | Type.Resumed _ -> false) ->
+          apply_runtime ?monad "Resumption" "of_delay" [ e ]
+      | _ -> e)
   | None -> (
       match e with
       | Match (scrutinee, dependent, cases, default) ->
