@@ -1,0 +1,14 @@
+{
+  "recursion_strategies": [
+    [
+      "tests/partial_recursive_modules.ml",
+      "HOST.call",
+      "partial"
+    ],
+    [
+      "tests/partial_recursive_modules.ml",
+      "VmProtocol.SIG.execute",
+      "partial"
+    ]
+  ]
+}

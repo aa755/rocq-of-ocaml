@@ -74,10 +74,11 @@ Parameter well_founded_measure :
     The generated definition receives [seed] through an [Unreachable]
     requirement, making the approximation boundary explicit.  Projects that
     execute recursive modules must replace the seed and justify a sufficient
-    unrolling bound; there is no sound general fixed-point operator on [Set]. *)
+    unrolling bound; there is no sound general fixed-point operator on [Type].
+    Partial module interfaces may themselves live above [Set]. *)
 Definition recursive_module_default_fuel : nat := 1024%nat.
 
-Fixpoint recursive_module_unroll {A : Set} (fuel : nat) (seed : A)
+Polymorphic Fixpoint recursive_module_unroll {A : Type} (fuel : nat) (seed : A)
     (f : A -> A) : A :=
   match fuel with
   | O => seed

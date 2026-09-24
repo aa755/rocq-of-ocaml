@@ -178,7 +178,7 @@ Module RecursiveResult.
   
   Module RecursiveResult_signature.
     Record signature `{_fargs : FArgs} : Type := {
-      Worker_run : T.(TYPE.t) -> T.(TYPE.t);
+      Worker : Box.S (_fargs := Box.Build_FArgs T);
     }.
   End RecursiveResult_signature.
   Definition RecursiveResult_signature `{_fargs : FArgs} :=
@@ -188,7 +188,7 @@ Module RecursiveResult.
   (* RecursiveResult *)
   Definition functor `{_fargs : FArgs} :RecursiveResult_signature :=
     {|
-      RecursiveResult_signature.Worker_run := Worker.(Box.S.run)
+      RecursiveResult_signature.Worker := Worker
     |}.
 End RecursiveResult.
 Definition RecursiveResult {T_t : Set}

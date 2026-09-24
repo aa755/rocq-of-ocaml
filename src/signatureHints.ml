@@ -439,6 +439,10 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                 :: !module_types
           | None -> ());
           default_iterator.module_type_declaration self declaration);
+      module_declaration =
+        (fun self declaration ->
+          add declaration.md_id (module_type_path declaration.md_type);
+          default_iterator.module_declaration self declaration);
     }
   in
   (match typedtree with
