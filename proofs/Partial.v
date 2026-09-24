@@ -38,6 +38,66 @@ Module Delay.
     | ConvergesDone value => value
     | ConvergesTau next proof => @run A (next tt) proof
     end.
+
+  Lemma unfold_eq {A : Set} (computation : t A) :
+    computation =
+    match computation with
+    | Done value => Done value
+    | Tau next => Tau next
+    end.
+  Proof. destruct computation; reflexivity. Qed.
+
+  Lemma bind_unfold {A B : Set}
+      (computation : t A) (continuation : A -> t B) :
+    bind computation continuation =
+    match computation with
+    | Done value => continuation value
+    | Tau next => Tau (fun _ => bind (next tt) continuation)
+    end.
+  Proof.
+    destruct computation as [value | next].
+    - rewrite (unfold_eq (bind (Done value) continuation)).
+      cbn. destruct (continuation value); reflexivity.
+    - rewrite (unfold_eq (bind (Tau next) continuation)). reflexivity.
+  Qed.
+
+  (** A caller needs convergence only for the continuation reached by the
+      first computation, not for every possible value of its result type. *)
+  Definition bind_converges {A B : Set}
+      (computation : t A) (continuation : A -> t B)
+      (proof : converges computation) :
+    converges (continuation (@run A computation proof)) ->
+    converges (bind computation continuation).
+  Proof.
+    induction proof as [value | next proof IH]; intro H;
+      rewrite bind_unfold.
+    - exact H.
+    - apply ConvergesTau. apply IH. exact H.
+  Defined.
+
+  Lemma run_transport {A : Set} (left right : t A)
+      (equation : left = right) (proof : converges left) :
+    @run A right (eq_rect left converges proof right equation) =
+    @run A left proof.
+  Proof. destruct equation. reflexivity. Qed.
+
+  (** Sequencing suspended computations preserves their returned value.
+      No proof irrelevance or total projection from [t] is required. *)
+  Lemma run_bind {A B : Set}
+      (computation : t A) (continuation : A -> t B)
+      (proof : converges computation)
+      (next_proof : converges (continuation (@run A computation proof))) :
+    @run B (bind computation continuation)
+      (@bind_converges A B computation continuation proof next_proof) =
+    @run B (continuation (@run A computation proof)) next_proof.
+  Proof.
+    revert next_proof.
+    induction proof as [value | next proof IH]; intro next_proof.
+    - unfold bind_converges. cbn.
+      unfold eq_rec_r, eq_rec. apply run_transport.
+    - unfold bind_converges. cbn.
+      unfold eq_rec_r, eq_rec. rewrite run_transport. cbn. apply IH.
+  Qed.
 End Delay.
 
 Module Resumption.
