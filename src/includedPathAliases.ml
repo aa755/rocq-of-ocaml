@@ -122,7 +122,19 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
       (declaration : Typedtree.include_declaration) : unit =
     match ModulePathAliases.module_expr_path declaration.incl_mod with
     | None -> ()
-    | Some module_path when contains_functor_application module_path -> ()
+    | Some module_path when contains_functor_application module_path ->
+        (* A module copied from an applied result still needs its named
+           signature when the enclosing module exports it. Keep this origin
+           for signature recovery only; value references use the emitted
+           include record rather than duplicating the application. *)
+        let available_from = declaration.incl_loc.loc_start.pos_cnum in
+        declaration.incl_type
+        |> List.iter (function
+             | Types.Sig_module (ident, _, _, _, _) ->
+                 add_alias ~use_for_path:false scope_start scope_end
+                   available_from true ident
+                   (Path.Pdot (module_path, Ident.name ident))
+             | _ -> ())
     | Some module_path ->
         let available_from = declaration.incl_loc.loc_start.pos_cnum in
         let env = declaration.incl_mod.mod_env in

@@ -138,6 +138,10 @@ let find_result_module_source_raw result_signature field_name hints =
   | _ -> None
 
 let find_module_result path hints =
+  let rec application_head = function
+    | Path.Papply (functor_path, _) -> application_head functor_path
+    | path -> path
+  in
   let rec find visited path =
     if List.exists (project_paths_equal path) visited then None
     else
@@ -172,7 +176,9 @@ let find_module_result path hints =
                                 (find (path :: visited)))
                   | Path.Pextra_ty (parent, _) ->
                       find (path :: visited) parent
-                  | Path.Pident _ | Path.Papply _ -> None)))
+                  | Path.Papply _ ->
+                      find_path (application_head path) hints.functor_results
+                  | Path.Pident _ -> None)))
   in
   find [] path
 
@@ -686,6 +692,27 @@ let of_structure (unit_name : string) (structure : Typedtree.structure) : t =
               | Some _ as result -> result
               | None -> find_qualified_local_result alias)
         in
+        (* Result annotations retain named member signatures even after the
+           exported OCaml type expands them. In particular, an applicative
+           signature [Protocol (T).SIG] must remain a record-valued member,
+           including when its implementation is a recursive module. *)
+        (match SignatureHints.module_expr_anonymous_annotation body with
+        | Some { mty_desc = Tmty_signature signature; _ } ->
+            signature.sig_items
+            |> List.iter (fun (item : Typedtree.signature_item) ->
+                   match item.sig_desc with
+                   | Tsig_module { md_id = Some ident; md_type; _ } -> (
+                       match SignatureHints.module_type_path md_type with
+                       | Some signature_path ->
+                           hints :=
+                             { !hints with
+                               result_module_fields =
+                                 (result, Ident.name ident,
+                                  qualify_path !locals signature_path)
+                                 :: !hints.result_module_fields }
+                       | None -> ())
+                   | _ -> ())
+        | Some _ | None -> ());
         (match module_expr_structure body with
         | Some structure ->
             structure.str_items

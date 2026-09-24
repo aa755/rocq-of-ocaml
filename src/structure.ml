@@ -4186,6 +4186,12 @@ let names_declared_by_structure_item (item : structure_item) : string list =
       incl_type |> List.map Types.signature_item_id |> List.map Ident.name
   | _ -> []
 
+let rec path_head_ident (path : Path.t) : Ident.t =
+  match path with
+  | Path.Pident ident -> ident
+  | Path.Pdot (parent, _) | Path.Pextra_ty (parent, _) -> path_head_ident parent
+  | Path.Papply (functor_path, _) -> path_head_ident functor_path
+
 (** A synthesized result signature may record a nested field signature using a
     path local to the owning functor. Qualify that path before emitting record
     projections unless it already resolves independently. *)
@@ -4198,7 +4204,7 @@ let qualify_result_field_signature (env : Env.t) (result_signature : Path.t)
         Path.Pextra_ty (append_path prefix parent, extra)
     | Path.Papply _ as path -> path
   in
-  let head = Path.head field_signature in
+  let head = path_head_ident field_signature in
   let head_is_resolvable =
     match Env.find_module (Path.Pident head) env with
     | _ -> true
@@ -4218,12 +4224,6 @@ let signature_item_named (name : string) (signature : Types.signature) :
   signature
   |> List.find_opt (fun item ->
       String.equal (Ident.name (Types.signature_item_id item)) name)
-
-let rec path_head_ident (path : Path.t) : Ident.t =
-  match path with
-  | Path.Pident ident -> ident
-  | Path.Pdot (parent, _) | Path.Pextra_ty (parent, _) -> path_head_ident parent
-  | Path.Papply (functor_path, _) -> path_head_ident functor_path
 
 (** Recover a stable, qualified constructor path when the type checker retained
     only a local identifier introduced by an include. *)

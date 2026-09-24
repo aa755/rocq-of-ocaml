@@ -1,0 +1,21 @@
+{
+  "require": [
+    [
+      "Project",
+      "TestProject"
+    ]
+  ],
+  "recursion_strategies": [
+    [
+      "Provider.ml",
+      "VmProtocol.SIG.execute",
+      "partial"
+    ],
+    [
+      "Consumer.ml",
+      "Instantiate.call",
+      "partial",
+      1
+    ]
+  ]
+}

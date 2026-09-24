@@ -1,0 +1,9 @@
+{
+  "recursion_strategies": [
+    [
+      "Provider.ml",
+      "VmProtocol.SIG.execute",
+      "partial"
+    ]
+  ]
+}
