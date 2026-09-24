@@ -230,6 +230,7 @@ let main () =
           in
           let constructor_names = ConstructorNames.of_typedtree typedtree in
           let value_names = ValueNames.of_typedtree typedtree in
+          let value_origins = ValueOrigins.of_typedtree typedtree in
           let project_hints =
             match !project_cmt_directory with
             | None -> ProjectHints.empty
@@ -241,6 +242,7 @@ let main () =
               initial_env
               initial_loc included_path_aliases included_record_aliases
               module_path_aliases signature_hints project_hints value_names
+              value_origins
           in
 
           let output =

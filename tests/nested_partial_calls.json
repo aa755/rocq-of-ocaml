@@ -1,0 +1,8 @@
+{
+  "recursion_strategies": [
+    ["tests/nested_partial_calls.ml", "Outer.Runner.run", "partial"],
+    ["tests/nested_partial_calls.ml", "Outer.countdown", "partial"],
+    ["tests/nested_partial_calls.ml", "Outer.execute", "partial"],
+    ["tests/nested_partial_calls.ml", "Outer.execute_shadow", "partial"]
+  ]
+}

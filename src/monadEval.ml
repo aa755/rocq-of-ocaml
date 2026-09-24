@@ -56,6 +56,7 @@ module Context = struct
     signature_hints : SignatureHints.t;
     project_hints : ProjectHints.t;
     value_names : ValueNames.t;
+    value_origins : ValueOrigins.t;
   }
 
   let init (comments : comments) (configuration : Configuration.t)
@@ -66,7 +67,7 @@ module Context = struct
       (module_path_aliases : ModulePathAliases.t)
       (signature_hints : SignatureHints.t)
       (project_hints : ProjectHints.t)
-      (value_names : ValueNames.t) : t =
+      (value_names : ValueNames.t) (value_origins : ValueOrigins.t) : t =
     {
       comments;
       configuration;
@@ -83,6 +84,7 @@ module Context = struct
       signature_hints;
       project_hints;
       value_names;
+      value_origins;
     }
 end
 
@@ -158,6 +160,8 @@ module Command = struct
           (ProjectHints.find_declaration_type_path uid context.project_hints)
     | GetValueName ident ->
         Result.success (ValueNames.find ident context.value_names)
+    | GetValueOrigin uid ->
+        Result.success (ValueOrigins.find uid context.value_origins)
     | GetProjectModuleOrigin path ->
         Result.success (ProjectHints.module_origin path context.project_hints)
     | GetModulePathAlias path ->

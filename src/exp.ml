@@ -261,6 +261,9 @@ let is_partial_operation_path (path : Path.t) : bool =
   is_partial_operation_name (Path.name path)
 
 type source_application_type = {
+  (* [Some] records the effect of a declaration identified by its compiler
+      UID. [None] leaves imported or synthetic callees to path-based lookup. *)
+  source_partial : bool option;
   callee : Type.t;
   result : Type.t;
   specialization : Type.t;
@@ -1792,8 +1795,11 @@ let rec rewrite_sequence_calls ~(discharge_partial : bool)
 let rec has_partial_reference (partial_definitions : string list) (e : t) : bool
     =
   let any es = List.exists (has_partial_reference partial_definitions) es in
-  if is_configured_partial_expression partial_definitions e then true
-  else
+  match e with
+  | SourceApply (_, arguments, { source_partial = Some partial; _ }) ->
+      partial || any (List.filter_map Fun.id arguments)
+  | _ when is_configured_partial_expression partial_definitions e -> true
+  | _ ->
     match e with
     | Constant _ | Error _ | ErrorTyp _ | Ltac _ | Variable _ -> false
     | Tuple es | Constructor (_, _, es) | Assumption (_, _, es) | ErrorArray es
@@ -2929,6 +2935,7 @@ let rec map_assumption_types (map_typ : Type.t -> Type.t) (expression : t) : t =
         ( map function_,
           List.map (map_option map) arguments,
           {
+            source_partial = result_typ.source_partial;
             callee = map_typ result_typ.callee;
             result = map_typ result_typ.result;
             specialization = map_typ result_typ.specialization;
@@ -3080,6 +3087,7 @@ let rec map_types_and_paths ?(map_implicit_value = Fun.id)
         ( map head,
           List.map map_option arguments,
           {
+            source_partial = source_type.source_partial;
             callee = map_typ source_type.callee;
             result = map_typ source_type.result;
             specialization = map_typ source_type.specialization;
@@ -4058,6 +4066,7 @@ let propagate_call_assumptions
             in
             let source_type =
               {
+                source_partial = None;
                 callee = call_typ;
                 result = call_typ;
                 specialization = call_typ;
@@ -5294,8 +5303,26 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               let* expanded_application_typ, _, _ =
                 Type.of_typ_expr false typ_vars expanded_application_source_typ
               in
+              let rec source_origin expression =
+                match expression.exp_desc with
+                | Texp_ident (_, _, description) ->
+                    get_value_origin description.Types.val_uid
+                | Texp_apply (function_, _) -> source_origin function_
+                | _ -> return None
+              in
+              let* origin = source_origin source_e_f in
+              let source_partial =
+                Option.map
+                  (fun { ValueOrigins.definition; partial_attribute } ->
+                    partial_attribute
+                    || Configuration.get_recursion_strategy configuration
+                         definition
+                       = Some Configuration.RecursionStrategy.Partial)
+                  origin
+              in
               let source_application_type =
                 {
+                  source_partial;
                   callee = application_callee_typ;
                   result = application_typ;
                   specialization = expanded_application_typ;
@@ -7334,6 +7361,7 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
           let module_application_type =
             let placeholder = Type.Error "module_application" in
             {
+              source_partial = None;
               callee = placeholder;
               result = placeholder;
               specialization = placeholder;
@@ -8525,6 +8553,7 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
     is_named_application recursive_names e
     ||
     match e with
+    | SourceApply (_, _, { source_partial = Some partial; _ }) -> partial
     | Apply (function_, _) | SourceApply (function_, _, _) ->
         is_configured_partial_expression partial_definitions function_
     | _ -> false

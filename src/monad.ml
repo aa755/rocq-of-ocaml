@@ -23,6 +23,7 @@ module Command = struct
     | GetConstructorName : Types.Uid.t -> string option t
     | GetDeclarationTypePath : Types.Uid.t -> Path.t option t
     | GetValueName : Ident.t -> string option t
+    | GetValueOrigin : Types.Uid.t -> ValueOrigins.origin option t
     | GetModulePathAlias : Path.t -> Path.t option t
     | GetModulePathAliasSource : Path.t -> Path.t option t
     | GetProjectModuleOrigin : Path.t -> Path.t t
@@ -95,6 +96,9 @@ module Notations = struct
 
   let get_value_name (ident : Ident.t) : string option t =
     Command (Command.GetValueName ident)
+
+  let get_value_origin (uid : Types.Uid.t) : ValueOrigins.origin option t =
+    Command (Command.GetValueOrigin uid)
 
   let get_module_path_alias (path : Path.t) : Path.t option t =
     Command (Command.GetModulePathAlias path)
