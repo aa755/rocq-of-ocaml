@@ -138,9 +138,66 @@ let find_result_module_source_raw result_signature field_name hints =
   | _ -> None
 
 let find_module_result path hints =
-  let rec application_head = function
-    | Path.Papply (functor_path, _) -> application_head functor_path
-    | path -> path
+  let rec application_parts arguments = function
+    | Path.Papply (functor_path, argument) ->
+        application_parts (argument :: arguments) functor_path
+    | path -> (path, arguments)
+  in
+  (* Member annotations mention the declaring functor's formal parameters.
+     Resolve them at the actual application before exporting the member from
+     an importing unit; otherwise paths such as [Protocol (T).SIG] contain an
+     out-of-scope [T]. Keep substitutions scoped to this application. *)
+  let rec application_substitutions visited path =
+    if List.exists (project_paths_equal path) visited then []
+    else
+      match path with
+      | Path.Papply _ ->
+          let functor_path, arguments = application_parts [] path in
+          let parameters =
+            Option.value (find_path functor_path hints.functor_parameter_types)
+              ~default:[]
+          in
+          let rec pair parameters arguments =
+            match (parameters, arguments) with
+            | parameter :: parameters, argument :: arguments ->
+                let rest = pair parameters arguments in
+                (match parameter.FunctorParameterHint.ident with
+                | Some ident -> (ident, argument) :: rest
+                | None -> rest)
+            | _, _ -> []
+          in
+          pair parameters arguments
+      | _ ->
+          let application =
+            hints.applicative_aliases
+            |> List.find_map (fun (application, alias) ->
+                   if project_paths_equal path alias then Some application
+                   else None)
+          in
+          let target =
+            match application with
+            | Some _ -> application
+            | None -> find_path path hints.module_aliases
+          in
+          Option.fold ~none:[]
+            ~some:(application_substitutions (path :: visited)) target
+  in
+  let rec substitute substitutions = function
+    | Path.Pident ident as path ->
+        Option.value
+          (List.find_map
+             (fun (parameter, argument) ->
+               if Ident.same parameter ident then Some argument else None)
+             substitutions)
+          ~default:path
+    | Path.Pdot (parent, field) ->
+        Path.Pdot (substitute substitutions parent, field)
+    | Path.Papply (functor_path, argument) ->
+        Path.Papply
+          ( substitute substitutions functor_path,
+            substitute substitutions argument )
+    | Path.Pextra_ty (parent, extra) ->
+        Path.Pextra_ty (substitute substitutions parent, extra)
   in
   let rec find visited path =
     if List.exists (project_paths_equal path) visited then None
@@ -165,6 +222,11 @@ let find_module_result path hints =
                               hints
                           with
                           | Some field_signature ->
+                              let field_signature =
+                                substitute
+                                  (application_substitutions [] parent)
+                                  field_signature
+                              in
                               Some
                                 (Option.value
                                    (find (path :: visited) field_signature)
@@ -177,7 +239,8 @@ let find_module_result path hints =
                   | Path.Pextra_ty (parent, _) ->
                       find (path :: visited) parent
                   | Path.Papply _ ->
-                      find_path (application_head path) hints.functor_results
+                      find_path (fst (application_parts [] path))
+                        hints.functor_results
                   | Path.Pident _ -> None)))
   in
   find [] path

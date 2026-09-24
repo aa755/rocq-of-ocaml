@@ -4,6 +4,6 @@ module Config : CONFIG = struct let token = () end
 module VmProtocol (Config : CONFIG) = struct
   module type SIG = sig val execute : int -> int M.t end
 end
-module Instantiate (Vm : VmProtocol(Config).SIG) : sig
+module Instantiate (Config : CONFIG) (Vm : VmProtocol(Config).SIG) : sig
   module Vm : VmProtocol(Config).SIG
 end = struct module Vm = Vm end

@@ -14,13 +14,14 @@ Module Instantiate.
   }.
 
   Definition TestProject_Provider_Instantiate_include `{_fargs : FArgs} :=
-    TestProject.Provider.Instantiate
+    TestProject.Provider.Instantiate TestProject.Provider.Config
       ({|
         Provider.VmProtocol.SIG.execute :=
           Vm_parameter.(TestProject.Provider.VmProtocol.SIG.execute)
       |} :
         Provider.VmProtocol.SIG
-          (_fargs := Provider.VmProtocol.Build_FArgs Provider.Config)).
+          (_fargs :=
+            Provider.VmProtocol.Build_FArgs TestProject.Provider.Config)).
 
   (** Inclusion of the module [TestProject_Provider_Instantiate_include] *)
   Module Vm.

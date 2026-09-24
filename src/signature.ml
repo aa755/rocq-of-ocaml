@@ -1348,7 +1348,12 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
         in
         let* module_path_alias = get_module_path_alias module_path in
         let* named_signature =
-          let* hint = get_signature_hint module_path in
+          let* hint = get_signature_hint resolved_module_path in
+          let* hint =
+            match hint with
+            | Some _ -> return hint
+            | None -> get_signature_hint module_path
+          in
           let* env = get_env in
           return
             (Option.bind hint

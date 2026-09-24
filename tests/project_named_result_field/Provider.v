@@ -54,6 +54,7 @@ Definition VmProtocol (Config : CONFIG) :=
 
 Module Instantiate.
   Class FArgs := {
+    Config : CONFIG;
     Vm_parameter : VmProtocol.SIG (_fargs := VmProtocol.Build_FArgs Config);
   }.
 
@@ -75,5 +76,6 @@ Module Instantiate.
     |}.
 End Instantiate.
 Definition Instantiate
+  (Config : CONFIG)
   (Vm_parameter : VmProtocol.SIG (_fargs := VmProtocol.Build_FArgs Config)) :=
-  @Instantiate.functor (Instantiate.Build_FArgs Vm_parameter).
+  @Instantiate.functor (Instantiate.Build_FArgs Config Vm_parameter).
