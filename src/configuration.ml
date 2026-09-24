@@ -130,6 +130,7 @@ type t = {
   monadic_return_lets : MonadicOperators.t list;
   module_overrides : ModuleOverride.t list;
   operator_infix : Operator.t list;
+  partial_monad_lifts : DefinitionExclusion.t list;
   recursion_strategies : RecursionStrategy.t list;
   termination_certificates : TerminationCertificate.t list;
   renaming_rules : RenamingRule.t list;
@@ -170,6 +171,7 @@ let default (file_name : string) : t =
     monadic_return_lets = [];
     module_overrides = [];
     operator_infix = [];
+    partial_monad_lifts = [];
     recursion_strategies = [];
     termination_certificates = [];
     renaming_rules =
@@ -297,6 +299,15 @@ let get_recursion_strategy (configuration : t) (definition_path : string list) :
          configured = definition
          && filename_matches configuration.file_name source)
   |> Option.map (fun { RecursionStrategy.kind; _ } -> kind)
+
+let is_partial_monad_lift (configuration : t)
+    (definition_path : string list) : bool =
+  let definition = String.concat "." definition_path in
+  configuration.partial_monad_lifts
+  |> List.exists
+       (fun { DefinitionExclusion.source; definition = configured } ->
+         configured = definition
+         && filename_matches configuration.file_name source)
 
 let get_termination_certificate (configuration : t)
     (definition_path : string list) : (string * string) option =
@@ -770,6 +781,18 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                     { Operator.name; notation })
               in
               { configuration with operator_infix = entry }
+          | "partial_monad_lifts" ->
+              let entry =
+                entry
+                |> get_string_couple_list "partial_monad_lifts"
+                |> List.map (fun (source, definition) ->
+                    if definition = "" then
+                      failwith
+                        "Expected a qualified definition name in \
+                         partial_monad_lifts";
+                    { DefinitionExclusion.source; definition })
+              in
+              { configuration with partial_monad_lifts = entry }
           | "recursion_strategies" ->
               let entry =
                 let error_message =

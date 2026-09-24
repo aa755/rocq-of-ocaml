@@ -1,0 +1,9 @@
+{
+  "recursion_strategies": [
+    ["tests/partial_monad_lift.ml", "Host.run", "partial"],
+    ["tests/partial_monad_lift.ml", "Use.execute", "partial"]
+  ],
+  "partial_monad_lifts": [
+    ["tests/partial_monad_lift.ml", "Use.lift"]
+  ]
+}

@@ -116,6 +116,27 @@ Rocq measure and a named call-site tactic for a `well_founded` definition;
 successfully checked certificates remove both the abstract measure and
 `Admit Obligations` from the generated definition.
 
+To map a partial computation between monads through a local action lift,
+declare that operation explicitly:
+
+```json
+{
+  "partial_monad_lifts": [
+    ["path/to/source.ml", "Outer.Module.lift"]
+  ]
+}
+```
+
+The operation must have one polymorphic value type and a named action type
+on each side, such as `'a Host.t -> 'a Machine.t`. A call whose argument is
+partial becomes `Resumption.hoist` with the original polymorphic operation;
+calls with total arguments retain their source form. The configuration uses
+the declaration's exact lexical path and source file, rather than its final
+name alone. This currently applies to declarations in the translated unit.
+It is a semantic declaration: the lift must preserve return and bind under
+the intended observation relation. `Resumption.run_hoist` states those proof
+requirements explicitly; the translator does not prove them from a type.
+
 ## Documentation
 You can read the documentation on the website of the project at [https://formal.land/docs/tools/rocq-of-ocaml/introduction](https://formal.land/docs/tools/rocq-of-ocaml/introduction).
 

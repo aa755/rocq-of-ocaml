@@ -264,6 +264,9 @@ type source_application_type = {
   (* [Some] records the effect of a declaration identified by its compiler
       UID. [None] leaves imported or synthetic callees to path-based lookup. *)
   source_partial : bool option;
+  (* Explicitly configured action lifts retain their polymorphic value
+     parameter and source monad until partial-expression lowering. *)
+  source_monad_lift : (Name.t * Type.t) option;
   callee : Type.t;
   result : Type.t;
   specialization : Type.t;
@@ -2962,6 +2965,9 @@ let rec map_assumption_types (map_typ : Type.t -> Type.t) (expression : t) : t =
           List.map (map_option map) arguments,
           {
             source_partial = result_typ.source_partial;
+            source_monad_lift =
+              Option.map (fun (name, typ) -> (name, map_typ typ))
+                result_typ.source_monad_lift;
             callee = map_typ result_typ.callee;
             result = map_typ result_typ.result;
             specialization = map_typ result_typ.specialization;
@@ -3114,6 +3120,9 @@ let rec map_types_and_paths ?(map_implicit_value = Fun.id)
           List.map map_option arguments,
           {
             source_partial = source_type.source_partial;
+            source_monad_lift =
+              Option.map (fun (name, typ) -> (name, map_typ typ))
+                source_type.source_monad_lift;
             callee = map_typ source_type.callee;
             result = map_typ source_type.result;
             specialization = map_typ source_type.specialization;
@@ -4093,6 +4102,7 @@ let propagate_call_assumptions
             let source_type =
               {
                 source_partial = None;
+                source_monad_lift = None;
                 callee = call_typ;
                 result = call_typ;
                 specialization = call_typ;
@@ -5346,9 +5356,68 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                        = Some Configuration.RecursionStrategy.Partial)
                   origin
               in
+              let* source_monad_lift =
+                match origin with
+                | Some { ValueOrigins.definition; _ }
+                  when Configuration.is_partial_monad_lift configuration
+                         definition ->
+                    let rec declaration expression =
+                      match expression.exp_desc with
+                      | Texp_ident (path, _, description) ->
+                          Some
+                            (match Env.find_value path expression.exp_env with
+                            | value -> value
+                            | exception Not_found -> description)
+                      | Texp_apply (function_, _) -> declaration function_
+                      | _ -> None
+                    in
+                    let* generic_type =
+                      match declaration source_e_f with
+                      | Some description ->
+                          let* typ, _, _ =
+                            Type.of_typ_expr true Name.Map.empty
+                              description.Types.val_type
+                          in
+                          return (Some typ)
+                      | None -> return None
+                    in
+                    let parameter =
+                      Option.bind generic_type (fun typ ->
+                          match
+                            (Type.typ_args_of_typ typ |> Name.Set.elements, typ)
+                          with
+                          | [ parameter ], Type.Arrow (source, target) -> (
+                              match
+                                (Type.partial_result source,
+                                 Type.partial_result target)
+                              with
+                              | Type.Resumed { value = source; _ },
+                                Type.Resumed { value = target; _ }
+                                when source = Type.Variable parameter
+                                     && target = Type.Variable parameter ->
+                                  Some parameter
+                              | _ -> None)
+                          | _ -> None)
+                    in
+                    (match (parameter, application_callee_typ) with
+                    | Some parameter, Type.Arrow (source, _) -> (
+                        match Type.partial_result source with
+                        | Type.Resumed { monad; _ } ->
+                            return (Some (parameter, monad))
+                        | Type.Delayed _ ->
+                            raise None NotSupported
+                              "A configured partial monad lift needs a named \
+                               source action type.")
+                    | _ ->
+                        raise None NotSupported
+                          "A configured partial monad lift must have type \
+                           'a M.t -> 'a N.t with one polymorphic value type.")
+                | _ -> return None
+              in
               let source_application_type =
                 {
                   source_partial;
+                  source_monad_lift;
                   callee = application_callee_typ;
                   result = application_typ;
                   specialization = expanded_application_typ;
@@ -7400,6 +7469,7 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
             let placeholder = Type.Error "module_application" in
             {
               source_partial = None;
+              source_monad_lift = None;
               callee = placeholder;
               result = placeholder;
               specialization = placeholder;
@@ -8690,6 +8760,50 @@ let rec lift_partial_expression ~(resumption : bool) ~(monad : Type.t option)
   in
   let lifted_seq_map =
     match e with
+    | SourceApply
+        (function_, [ Some computation ],
+         { source_monad_lift = Some (parameter, source_monad); _ })
+      when resumption && contains_partial computation ->
+        let free = get_free_vars e in
+        let rec fresh text =
+          let name = Name.of_string_raw text in
+          if Name.Set.mem name free then fresh (text ^ "_") else name
+        in
+        let value_type = fresh "_rocq_lift_type" in
+        let action = fresh "_rocq_lift_action" in
+        let rec generalize = function
+          | Variable (path, implicits) ->
+              let parameter = Name.to_string parameter in
+              let implicits =
+                (parameter, Name.to_string value_type)
+                :: List.filter (fun (name, _) -> name <> parameter) implicits
+              in
+              Variable (path, implicits)
+          | RequiresAssumption (kind, typ, body) ->
+              RequiresAssumption (kind, typ, generalize body)
+          | PropagatedAssumption (kind, typ, body) ->
+              PropagatedAssumption (kind, typ, generalize body)
+          | Apply (head, arguments) -> Apply (generalize head, arguments)
+          | SourceApply (head, arguments, typ) ->
+              SourceApply (generalize head, arguments, typ)
+          | ErrorMessage (body, message) ->
+              ErrorMessage (generalize body, message)
+          | body -> body
+        in
+        let lift =
+          Function
+            (value_type, Some (Type.Kind Kind.Set),
+             Function
+               (action, None,
+                Apply
+                  (generalize function_,
+                   [ Some (Variable (MixedPath.of_name action, [])) ])))
+        in
+        let computation =
+          lift_partial_expression ~resumption:true ~monad:(Some source_monad)
+            ~recursive_names ~partial_definitions computation
+        in
+        Some (apply_runtime "Resumption" "hoist" [ lift; computation ])
     | Apply (function_, arguments) | SourceApply (function_, arguments, _) ->
         lift_seq_map function_ arguments
     | _ -> None
