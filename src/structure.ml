@@ -1039,6 +1039,36 @@ let merge_assumption_requirements primary secondary =
   in
   primary @ secondary
 
+let depends_on_generated_fargs typ =
+  let found = ref false in
+  let _ =
+    Type.project_mixed_paths
+      (fun path ->
+        let root =
+          match path with
+          | MixedPath.PathName root
+          | MixedPath.Access (root, _)
+          | MixedPath.AppliedAccess (root, _, _) -> root
+        in
+        if
+          String.ends_with ~suffix:"_fargs"
+            (Name.to_string root.PathName.base)
+        then found := true;
+        None)
+      typ
+  in
+  !found
+
+let order_named_types_by_fargs get_type named =
+  (* Preserve names and implicit-argument labels while moving requirements
+     that supply a generated argument record before types projected from it. *)
+  let concrete, projected =
+    List.partition
+      (fun entry -> not (depends_on_generated_fargs (get_type entry)))
+      named
+  in
+  concrete @ projected
+
 let merge_module_include_assumptions kind typ_vars typ mixed_path
     stored_requirements =
   let local_requirements =
@@ -8434,6 +8464,7 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
       |> List.mapi (fun index requirement ->
           ( Name.of_string_raw (Printf.sprintf "_rocq_assumption_%d" index),
             requirement ))
+      |> order_named_types_by_fargs (fun (_, (_, typ)) -> typ)
     in
     let named_requirements =
       raw_named_requirements
@@ -8583,7 +8614,8 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
               value.Value.definition.Exp.Definition.cases
               |> List.map (fun (header, body) ->
                   let instance_args, named_requirements =
-                    header.Exp.Header.instance_args
+                    (header.Exp.Header.instance_args
+                    |> order_named_types_by_fargs snd)
                     |> List.fold_left
                          (fun (instance_args, named_requirements) (name, typ) ->
                            match
@@ -9066,6 +9098,7 @@ let rec to_coq ?(external_specs = []) ?(available_assumptions = [])
               ( Name.of_string_raw
                   (Printf.sprintf "_rocq_module_assumption_%d" index),
                 requirement ))
+          |> order_named_types_by_fargs (fun (_, (_, typ)) -> typ)
         in
         let named_requirements =
           raw_named_requirements
