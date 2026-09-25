@@ -1039,6 +1039,9 @@ let merge_assumption_requirements primary secondary =
   in
   primary @ secondary
 
+(** Only a local generated record can depend on another binder in the same
+    telescope. A qualified record is already defined elsewhere; moving its
+    assumption changes the order promised by exported signatures. *)
 let depends_on_generated_fargs typ =
   let found = ref false in
   let _ =
@@ -1051,8 +1054,9 @@ let depends_on_generated_fargs typ =
           | MixedPath.AppliedAccess (root, _, _) -> root
         in
         if
-          String.ends_with ~suffix:"_fargs"
-            (Name.to_string root.PathName.base)
+          root.PathName.path = []
+          && String.ends_with ~suffix:"_fargs"
+               (Name.to_string root.PathName.base)
         then found := true;
         None)
       typ
