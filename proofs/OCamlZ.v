@@ -1,4 +1,5 @@
-From Stdlib Require Import Numbers.DecimalString ZArith.Znumtheory Lia.
+From Stdlib Require Import Numbers.DecimalString Lia.
+From Stdlib Require ZArith.Znumtheory.
 Require Import RocqOfOCaml.Libraries.
 Require Import RocqOfOCaml.Basics.
 
@@ -157,6 +158,11 @@ Proof.
   symmetry.
   apply Z.mod_unique_pos with (q := -v); [lia | nia].
 Qed.
+
+(** Keep generated clients from repeatedly reducing the extended Euclidean
+    computation during type checking. The specification lemmas above remain
+    available for proofs that need its behavior. *)
+Opaque invert.
 
 (** The Legendre symbol still depends on GMP's implementation. *)
 
