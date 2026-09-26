@@ -27,11 +27,28 @@ Definition b_le : bool := RocqOfOCaml.Basics.Stdlib.le true false.
 
 Definition b_ge : bool := RocqOfOCaml.Basics.Stdlib.ge tt tt.
 
-Definition comp : int := RocqOfOCaml.Basics.Stdlib.compare 1 2.
+Definition comp : int := RocqOfOCaml.OCamlInt.compare 1 2.
 
-Definition n_min : int := RocqOfOCaml.Basics.Stdlib.min 1 2.
+Definition n_min : int := Z.min 1 2.
 
-Definition n_max : int := RocqOfOCaml.Basics.Stdlib.max 1 2.
+Definition n_max : int := Z.max 1 2.
+
+Definition c_lt : bool := RocqOfOCaml.OCamlChar.lt "a" % char "b" % char.
+
+Definition c_le : bool := RocqOfOCaml.OCamlChar.le "a" % char "b" % char.
+
+Definition c_gt : bool := RocqOfOCaml.OCamlChar.gt "b" % char "a" % char.
+
+Definition c_ge : bool := RocqOfOCaml.OCamlChar.ge "b" % char "a" % char.
+
+Definition c_comp : int := RocqOfOCaml.OCamlChar.compare "a" % char "b" % char.
+
+Definition c_min : ascii := RocqOfOCaml.OCamlChar.min "a" % char "b" % char.
+
+Definition c_max : ascii := RocqOfOCaml.OCamlChar.max "a" % char "b" % char.
+
+Definition generic_min {A : Set} (x_value : A) (y_value : A) : A :=
+  RocqOfOCaml.Basics.Stdlib.min x_value y_value.
 
 Definition b_not : bool := negb false.
 

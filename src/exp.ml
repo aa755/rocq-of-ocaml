@@ -425,25 +425,27 @@ let equality_argument_has_rocq_eq_dec (e : expression) : bool =
   | Some (argument :: _, _) -> has_rocq_eq_dec e.exp_env argument
   | Some ([], _) | None -> false
 
-(** OCaml's ordering operators are polymorphic runtime primitives, but their
-    behavior at [int] is exactly the corresponding signed integer comparison.
-    Preserve the explicit polymorphic boundary for every other type while giving
-    integer programs a computational, provable translation. *)
-let specialized_integer_comparison (e : expression) : string option =
+(** These Stdlib functions are polymorphic in OCaml. Specialize only when the
+    occurrence type is a base type with an executable compatibility model. *)
+let specialized_base_comparison (e : expression) :
+    (string list * string) option =
   let target =
     match e.exp_desc with
     | Texp_ident (path, _, _) -> (
         match Path.name path with
         | "Stdlib.<" | "Pervasives.<" | "Stdlib.op_lt" | "Pervasives.op_lt" ->
-            Some "ltb"
+            Some "lt"
         | "Stdlib.>" | "Pervasives.>" | "Stdlib.op_gt" | "Pervasives.op_gt" ->
-            Some "gtb"
+            Some "gt"
         | "Stdlib.<=" | "Pervasives.<=" | "Stdlib.op_lteq"
         | "Pervasives.op_lteq" ->
-            Some "leb"
+            Some "le"
         | "Stdlib.>=" | "Pervasives.>=" | "Stdlib.op_gteq"
         | "Pervasives.op_gteq" ->
-            Some "geb"
+            Some "ge"
+        | "Stdlib.min" | "Pervasives.min" -> Some "min"
+        | "Stdlib.max" | "Pervasives.max" -> Some "max"
+        | "Stdlib.compare" | "Pervasives.compare" -> Some "compare"
         | _ -> None)
     | _ -> None
   in
@@ -455,14 +457,32 @@ let specialized_integer_comparison (e : expression) : string option =
       in
       match Types.get_desc argument with
       | Tconstr (path, _, _) when String.equal (Path.last path) "int" ->
-          Some target
+          let name =
+            match target with
+            | "lt" -> "ltb"
+            | "gt" -> "gtb"
+            | "le" -> "leb"
+            | "ge" -> "geb"
+            | "min" | "max" -> target
+            | "compare" -> "compare"
+            | _ -> assert false
+          in
+          let path =
+            if String.equal target "compare" then
+              [ "RocqOfOCaml"; "OCamlInt" ]
+            else [ "Z" ]
+          in
+          Some (path, name)
+      | Tconstr (path, _, _) when String.equal (Path.last path) "char" ->
+          Some ([ "RocqOfOCaml"; "OCamlChar" ], target)
       | _ -> None)
   | Some _, Some ([], _) | Some _, None | None, _ -> None
 
-let z_comparison_variable (name : string) : t =
+let base_comparison_variable (path, name : string list * string) : t =
   Variable
     ( MixedPath.PathName
-        (PathName.of_name [ Name.of_string_raw "Z" ] (Name.of_string_raw name)),
+        (PathName.of_name (List.map Name.of_string_raw path)
+           (Name.of_string_raw name)),
       [] )
 
 type constructor_equality = {
@@ -5268,8 +5288,8 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 | Texp_ident (path, _, _) -> is_partial_operation_path path
                 | _ -> false
               in
-              (match specialized_integer_comparison source_e_f with
-                | Some target -> return (z_comparison_variable target)
+              (match specialized_base_comparison source_e_f with
+                | Some target -> return (base_comparison_variable target)
                 | None -> of_expression typ_vars source_e_f)
               >>= fun e_f ->
               let rec peel_requirements requirements = function

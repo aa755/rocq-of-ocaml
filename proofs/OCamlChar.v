@@ -28,3 +28,21 @@ Definition compare (left right : t) : int :=
   | Eq => 0
   | Gt => 1
   end.
+
+Definition lt (left right : t) : bool :=
+  N.ltb (N_of_ascii left) (N_of_ascii right).
+
+Definition le (left right : t) : bool :=
+  N.leb (N_of_ascii left) (N_of_ascii right).
+
+Definition gt (left right : t) : bool :=
+  N.ltb (N_of_ascii right) (N_of_ascii left).
+
+Definition ge (left right : t) : bool :=
+  N.leb (N_of_ascii right) (N_of_ascii left).
+
+Definition min (left right : t) : t :=
+  if le left right then left else right.
+
+Definition max (left right : t) : t :=
+  if ge left right then left else right.

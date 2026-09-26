@@ -11,6 +11,14 @@ let b_ge = () >= ()
 let comp = compare 1 2
 let n_min = min 1 2
 let n_max = max 1 2
+let c_lt = 'a' < 'b'
+let c_le = 'a' <= 'b'
+let c_gt = 'b' > 'a'
+let c_ge = 'b' >= 'a'
+let c_comp = compare 'a' 'b'
+let c_min = min 'a' 'b'
+let c_max = max 'a' 'b'
+let generic_min x y = min x y
 (* let n_phys_eq = 1 == 2 *)
 (* let n_phys_neq = 1 != 2 *)
 
