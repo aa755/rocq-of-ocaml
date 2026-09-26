@@ -1,4 +1,4 @@
-From Stdlib Require Import Numbers.DecimalString.
+From Stdlib Require Import Numbers.DecimalString ZArith.Znumtheory Lia.
 Require Import RocqOfOCaml.Libraries.
 Require Import RocqOfOCaml.Basics.
 
@@ -125,8 +125,40 @@ Definition powm `{Unreachable Z} (base exponent modulus : Z) : Z :=
       unreachable
   end.
 
-(** Zarith delegates modular inversion and the Legendre symbol to GMP. *)
-Parameter invert : Z -> Z -> Z.
+(** [extgcd] computes Bezout coefficients. For coprime inputs, the first
+    coefficient reduced modulo [modulus] models Zarith's modular inverse.
+    The result on noninvertible inputs is only a total Gallina fallback:
+    Zarith raises [Division_by_zero] there. *)
+Definition invert (base modulus : Z) : Z :=
+  let '(coefficient, _, _) := Znumtheory.extgcd base modulus in
+  coefficient mod modulus.
+
+Lemma invert_range (base modulus : Z) :
+  0 < modulus -> 0 <= invert base modulus < modulus.
+Proof.
+  intros Hmodulus.
+  unfold invert.
+  destruct (Znumtheory.extgcd base modulus) as [[u v] d].
+  apply Z.mod_pos_bound. exact Hmodulus.
+Qed.
+
+Lemma invert_modular_inverse (base modulus : Z) :
+  1 < modulus -> Z.gcd base modulus = 1 ->
+  (base * invert base modulus) mod modulus = 1.
+Proof.
+  intros Hmodulus Hcoprime.
+  unfold invert.
+  destruct (Znumtheory.extgcd base modulus) as [[u v] d] eqn:Hext.
+  pose proof (Znumtheory.extgcd_correct base modulus Hext)
+    as [Hbezout Hgcd].
+  rewrite Hcoprime in Hgcd. subst d.
+  rewrite Z.mul_mod_idemp_r by lia.
+  replace (base * u) with (u * base) by ring.
+  symmetry.
+  apply Z.mod_unique_pos with (q := -v); [lia | nia].
+Qed.
+
+(** The Legendre symbol still depends on GMP's implementation. *)
 
 Parameter legendre : Z -> Z -> int.
 
