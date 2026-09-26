@@ -126,38 +126,60 @@ Definition powm `{Unreachable Z} (base exponent modulus : Z) : Z :=
       unreachable
   end.
 
-(** [extgcd] computes Bezout coefficients. For coprime inputs, the first
-    coefficient reduced modulo [modulus] models Zarith's modular inverse.
-    The result on noninvertible inputs is only a total Gallina fallback:
-    Zarith raises [Division_by_zero] there. *)
-Definition invert (base modulus : Z) : Z :=
-  let '(coefficient, _, _) := Znumtheory.extgcd base modulus in
-  coefficient mod modulus.
+(** [extgcd] computes Bezout coefficients. Sealing the executable model
+    keeps its reduction out of generated clients while retaining checked
+    specification lemmas. On noninvertible inputs this is only a total
+    Gallina fallback: Zarith raises [Division_by_zero] there. *)
+Module Type Invert_model_signature.
+  Parameter invert : Z -> Z -> Z.
+  Parameter invert_range : forall base modulus,
+    0 < modulus -> 0 <= invert base modulus < modulus.
+  Parameter invert_modular_inverse : forall base modulus,
+    1 < modulus -> Z.gcd base modulus = 1 ->
+    (base * invert base modulus) mod modulus = 1.
+End Invert_model_signature.
+
+Module Invert_model : Invert_model_signature.
+  Definition invert (base modulus : Z) : Z :=
+    let '(coefficient, _, _) := Znumtheory.extgcd base modulus in
+    coefficient mod modulus.
+
+  Lemma invert_range (base modulus : Z) :
+    0 < modulus -> 0 <= invert base modulus < modulus.
+  Proof.
+    intros Hmodulus.
+    unfold invert.
+    destruct (Znumtheory.extgcd base modulus) as [[u v] d].
+    apply Z.mod_pos_bound. exact Hmodulus.
+  Qed.
+
+  Lemma invert_modular_inverse (base modulus : Z) :
+    1 < modulus -> Z.gcd base modulus = 1 ->
+    (base * invert base modulus) mod modulus = 1.
+  Proof.
+    intros Hmodulus Hcoprime.
+    unfold invert.
+    destruct (Znumtheory.extgcd base modulus) as [[u v] d] eqn:Hext.
+    pose proof (Znumtheory.extgcd_correct base modulus Hext)
+      as [Hbezout Hgcd].
+    rewrite Hcoprime in Hgcd. subst d.
+    rewrite Z.mul_mod_idemp_r by lia.
+    replace (base * u) with (u * base) by ring.
+    symmetry.
+    apply Z.mod_unique_pos with (q := -v); [lia | nia].
+  Qed.
+End Invert_model.
+
+Definition invert : Z -> Z -> Z := Invert_model.invert.
 
 Lemma invert_range (base modulus : Z) :
   0 < modulus -> 0 <= invert base modulus < modulus.
-Proof.
-  intros Hmodulus.
-  unfold invert.
-  destruct (Znumtheory.extgcd base modulus) as [[u v] d].
-  apply Z.mod_pos_bound. exact Hmodulus.
-Qed.
+Proof. exact (Invert_model.invert_range base modulus). Qed.
 
 Lemma invert_modular_inverse (base modulus : Z) :
   1 < modulus -> Z.gcd base modulus = 1 ->
   (base * invert base modulus) mod modulus = 1.
-Proof.
-  intros Hmodulus Hcoprime.
-  unfold invert.
-  destruct (Znumtheory.extgcd base modulus) as [[u v] d] eqn:Hext.
-  pose proof (Znumtheory.extgcd_correct base modulus Hext)
-    as [Hbezout Hgcd].
-  rewrite Hcoprime in Hgcd. subst d.
-  rewrite Z.mul_mod_idemp_r by lia.
-  replace (base * u) with (u * base) by ring.
-  symmetry.
-  apply Z.mod_unique_pos with (q := -v); [lia | nia].
-Qed.
+Proof. exact (Invert_model.invert_modular_inverse base modulus). Qed.
 
 Lemma invert_prime_modular_inverse (base modulus : Z) :
   Znumtheory.prime modulus -> 0 < base < modulus ->
@@ -169,11 +191,6 @@ Proof.
   - apply (proj2 (Znumtheory.Zgcd_1_rel_prime base modulus)).
     apply Znumtheory.rel_prime_le_prime; [exact Hprime | lia].
 Qed.
-
-(** Keep generated clients from repeatedly reducing the extended Euclidean
-    computation during type checking. The specification lemmas above remain
-    available for proofs that need its behavior. *)
-Opaque invert.
 
 (** The Legendre symbol still depends on GMP's implementation. *)
 
