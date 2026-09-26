@@ -50,6 +50,16 @@ Definition c_max : ascii := RocqOfOCaml.OCamlChar.max "a" % char "b" % char.
 Definition generic_min {A : Set} (x_value : A) (y_value : A) : A :=
   RocqOfOCaml.Basics.Stdlib.min x_value y_value.
 
+Definition int_comparison_op (cmp : int -> int -> bool) : bool := cmp 1 2.
+
+Definition int_higher_order_lt : bool := int_comparison_op Z.ltb.
+
+Definition char_comparison_op (cmp : ascii -> ascii -> bool) : bool :=
+  cmp "a" % char "b" % char.
+
+Definition char_higher_order_lt : bool :=
+  char_comparison_op RocqOfOCaml.OCamlChar.lt.
+
 Definition b_not : bool := negb false.
 
 Definition b_and : bool := andb true false.

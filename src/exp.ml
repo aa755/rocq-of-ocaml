@@ -478,12 +478,10 @@ let specialized_base_comparison (e : expression) :
       | _ -> None)
   | Some _, Some ([], _) | Some _, None | None, _ -> None
 
-let base_comparison_variable (path, name : string list * string) : t =
-  Variable
-    ( MixedPath.PathName
-        (PathName.of_name (List.map Name.of_string_raw path)
-           (Name.of_string_raw name)),
-      [] )
+let base_comparison_path (path, name : string list * string) : MixedPath.t =
+  MixedPath.PathName
+    (PathName.of_name (List.map Name.of_string_raw path)
+       (Name.of_string_raw name))
 
 type constructor_equality = {
   negate : bool;
@@ -4865,7 +4863,11 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
           match e.exp_desc with
           | Texp_ident (path, _, description) ->
               let implicits = Attribute.get_implicits attributes in
-              let* x = MixedPath.of_path true path in
+              let* x =
+                match specialized_base_comparison e with
+                | Some target -> return (base_comparison_path target)
+                | None -> MixedPath.of_path true path
+              in
               let is_unsupported_equality =
                 String.equal (MixedPath.to_string x) "equiv_decb"
                 && not (equality_argument_has_rocq_eq_dec e)
@@ -5288,10 +5290,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 | Texp_ident (path, _, _) -> is_partial_operation_path path
                 | _ -> false
               in
-              (match specialized_base_comparison source_e_f with
-                | Some target -> return (base_comparison_variable target)
-                | None -> of_expression typ_vars source_e_f)
-              >>= fun e_f ->
+              of_expression typ_vars source_e_f >>= fun e_f ->
               let rec peel_requirements requirements = function
                 | RequiresAssumption (kind, typ, body)
                 | PropagatedAssumption (kind, typ, body) ->

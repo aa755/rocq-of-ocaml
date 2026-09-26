@@ -19,6 +19,10 @@ let c_comp = compare 'a' 'b'
 let c_min = min 'a' 'b'
 let c_max = max 'a' 'b'
 let generic_min x y = min x y
+let int_comparison_op (cmp : int -> int -> bool) = cmp 1 2
+let int_higher_order_lt = int_comparison_op Stdlib.( < )
+let char_comparison_op (cmp : char -> char -> bool) = cmp 'a' 'b'
+let char_higher_order_lt = char_comparison_op Stdlib.( < )
 (* let n_phys_eq = 1 == 2 *)
 (* let n_phys_neq = 1 != 2 *)
 
