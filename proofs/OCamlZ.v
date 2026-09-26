@@ -159,6 +159,17 @@ Proof.
   apply Z.mod_unique_pos with (q := -v); [lia | nia].
 Qed.
 
+Lemma invert_prime_modular_inverse (base modulus : Z) :
+  Znumtheory.prime modulus -> 0 < base < modulus ->
+  (base * invert base modulus) mod modulus = 1.
+Proof.
+  intros Hprime Hbase.
+  apply invert_modular_inverse.
+  - destruct Hprime as [Hmodulus _]. exact Hmodulus.
+  - apply (proj2 (Znumtheory.Zgcd_1_rel_prime base modulus)).
+    apply Znumtheory.rel_prime_le_prime; [exact Hprime | lia].
+Qed.
+
 (** Keep generated clients from repeatedly reducing the extended Euclidean
     computation during type checking. The specification lemmas above remain
     available for proofs that need its behavior. *)
