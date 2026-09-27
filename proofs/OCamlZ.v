@@ -203,60 +203,85 @@ Parameter hash : Z -> int.
 Definition to_string (value : Z) : string :=
   NilZero.string_of_int (Z.to_int value).
 
-(** Zarith accepts [0x] literals used by native U256 constants. Other
-    non-decimal Zarith prefixes and separator syntax remain outside this
-    executable model. *)
-Definition hex_digit (character : ascii) : option Z :=
+(** [Z.of_string] accepts signed decimal and base-prefixed literals. A leading
+    underscore is invalid, while separators after a digit are ignored. Even an
+    empty digit sequence denotes zero, including the empty string and a bare
+    sign. These cases follow the native Zarith parser. *)
+Definition digit_value (character : ascii) : option Z :=
   let code := Z.of_N (N_of_ascii character) in
   if andb (Z.leb 48 code) (Z.leb code 57) then Some (code - 48)
   else if andb (Z.leb 65 code) (Z.leb code 70) then Some (code - 55)
   else if andb (Z.leb 97 code) (Z.leb code 102) then Some (code - 87)
   else None.
 
-Fixpoint hex_digits_acc (digits : string) (accumulator : Z) : option Z :=
+Fixpoint parse_digits (base : Z) (digits : string) (accumulator : Z)
+    (seen_digit : bool) : option Z :=
   match digits with
   | EmptyString => Some accumulator
   | String character rest =>
-      match hex_digit character with
-      | Some digit => hex_digits_acc rest (16 * accumulator + digit)
-      | None => None
-      end
-  end.
-
-Definition hex_prefixed (value : string) : option Z :=
-  match value with
-  | String zero (String x digits) =>
-      if andb (Ascii.eqb zero "0"%char)
-          (orb (Ascii.eqb x "x"%char) (Ascii.eqb x "X"%char)) then
-        match digits with
-        | EmptyString => None
-        | _ => hex_digits_acc digits 0
+      if Ascii.eqb character "_"%char then
+        if seen_digit then parse_digits base rest accumulator seen_digit
+        else None
+      else
+        match digit_value character with
+        | Some digit =>
+            if Z.ltb digit base then
+              parse_digits base rest (base * accumulator + digit) true
+            else None
+        | None => None
         end
-      else None
-  | _ => None
   end.
 
-Definition decimal_of_string_opt (value : string) : option Z :=
-  match NilZero.int_of_string value with
-  | Some parsed => Some (Z.of_int parsed)
-  | None => None
+Definition base_and_digits (value : string) : Z * string :=
+  match value with
+  | String zero (String prefix digits) =>
+      if Ascii.eqb zero "0"%char then
+        if orb (Ascii.eqb prefix "x"%char) (Ascii.eqb prefix "X"%char) then
+          (16, digits)
+        else if orb (Ascii.eqb prefix "o"%char) (Ascii.eqb prefix "O"%char) then
+          (8, digits)
+        else if orb (Ascii.eqb prefix "b"%char) (Ascii.eqb prefix "B"%char) then
+          (2, digits)
+        else (10, value)
+      else (10, value)
+  | _ => (10, value)
   end.
 
-Definition of_string_opt (value : string) : option Z :=
+Definition sign_and_digits (value : string) : Z * string :=
   match value with
   | String sign rest =>
       if Ascii.eqb sign "-"%char then
-        match hex_prefixed rest with
-        | Some parsed => Some (- parsed)
-        | None => decimal_of_string_opt value
+        match rest with
+        | String plus digits =>
+            if Ascii.eqb plus "+"%char then (-1, digits) else (-1, rest)
+        | EmptyString => (-1, rest)
         end
-      else
-        match hex_prefixed value with
-        | Some parsed => Some parsed
-        | None => decimal_of_string_opt value
-        end
-  | EmptyString => None
+      else if Ascii.eqb sign "+"%char then (1, rest)
+      else (1, value)
+  | EmptyString => (1, value)
   end.
+
+Definition of_string_opt (value : string) : option Z :=
+  let '(sign, unsigned) := sign_and_digits value in
+  let '(base, digits) := base_and_digits unsigned in
+  match parse_digits base digits 0 false with
+  | Some parsed => Some (sign * parsed)
+  | None => None
+  end.
+
+Example of_string_opt_native_forms :
+  of_string_opt "" = Some 0 /\
+  of_string_opt "+" = Some 0 /\
+  of_string_opt "-0X" = Some 0 /\
+  of_string_opt "-+0xF" = Some (-15) /\
+  of_string_opt "0xF__F" = Some 255 /\
+  of_string_opt "0o7_7" = Some 63 /\
+  of_string_opt "0b1_0" = Some 2 /\
+  of_string_opt "-1__" = Some (-1) /\
+  of_string_opt "_1" = None /\
+  of_string_opt "0x_F" = None /\
+  of_string_opt "0o8" = None.
+Proof. repeat split; reflexivity. Qed.
 
 Definition of_string `{Unreachable Z} (value : string) : Z :=
   match of_string_opt value with
