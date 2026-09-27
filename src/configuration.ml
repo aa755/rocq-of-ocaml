@@ -143,6 +143,7 @@ type t = {
   operator_infix : Operator.t list;
   partial_monad_lifts : DefinitionExclusion.t list;
   partial_state_observers : PartialStateObserver.t list;
+  functor_value_rewrites : RenamingRule.t list;
   recursion_strategies : RecursionStrategy.t list;
   termination_certificates : TerminationCertificate.t list;
   renaming_rules : RenamingRule.t list;
@@ -185,6 +186,7 @@ let default (file_name : string) : t =
     operator_infix = [];
     partial_monad_lifts = [];
     partial_state_observers = [];
+    functor_value_rewrites = [];
     recursion_strategies = [];
     termination_certificates = [];
     renaming_rules =
@@ -938,6 +940,18 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                   | _ -> failwith error_message)
               in
               { configuration with termination_certificates = entry }
+          | "functor_value_rewrites" ->
+              let entry =
+                entry
+                |> get_string_couple_list "functor_value_rewrites"
+                |> List.map (fun (source, target) ->
+                    { RenamingRule.source; target })
+              in
+              {
+                configuration with
+                functor_value_rewrites =
+                  configuration.functor_value_rewrites @ entry;
+              }
           | "renaming_rules" ->
               let entry =
                 entry

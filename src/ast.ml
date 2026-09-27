@@ -10,6 +10,7 @@ type content =
 type t = {
   content : content;
   external_assumption_specs : Structure.qualified_assumption_call_specs;
+  functor_value_rewrites : Configuration.RenamingRule.t list;
   head_suffix : string;
   without_default_imports : bool;
   without_guard_checking : bool;
@@ -80,6 +81,7 @@ let of_typedtree
     {
       content;
       external_assumption_specs;
+      functor_value_rewrites = configuration.functor_value_rewrites;
       head_suffix = Configuration.get_head_suffix configuration;
       without_default_imports =
         Configuration.is_without_default_imports configuration;
@@ -157,5 +159,6 @@ let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
      | SignatureAxioms signature -> SignatureAxioms.to_coq signature
      | Structure structure ->
          Structure.to_coq
+           ~functor_value_rewrites:ast.functor_value_rewrites
            ~external_specs:ast.external_assumption_specs None structure)
   ^^ newline
