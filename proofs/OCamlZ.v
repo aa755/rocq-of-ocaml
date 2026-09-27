@@ -203,10 +203,59 @@ Parameter hash : Z -> int.
 Definition to_string (value : Z) : string :=
   NilZero.string_of_int (Z.to_int value).
 
-Definition of_string_opt (value : string) : option Z :=
+(** Zarith accepts [0x] literals used by native U256 constants. Other
+    non-decimal Zarith prefixes and separator syntax remain outside this
+    executable model. *)
+Definition hex_digit (character : ascii) : option Z :=
+  let code := Z.of_N (N_of_ascii character) in
+  if andb (Z.leb 48 code) (Z.leb code 57) then Some (code - 48)
+  else if andb (Z.leb 65 code) (Z.leb code 70) then Some (code - 55)
+  else if andb (Z.leb 97 code) (Z.leb code 102) then Some (code - 87)
+  else None.
+
+Fixpoint hex_digits_acc (digits : string) (accumulator : Z) : option Z :=
+  match digits with
+  | EmptyString => Some accumulator
+  | String character rest =>
+      match hex_digit character with
+      | Some digit => hex_digits_acc rest (16 * accumulator + digit)
+      | None => None
+      end
+  end.
+
+Definition hex_prefixed (value : string) : option Z :=
+  match value with
+  | String zero (String x digits) =>
+      if andb (Ascii.eqb zero "0"%char)
+          (orb (Ascii.eqb x "x"%char) (Ascii.eqb x "X"%char)) then
+        match digits with
+        | EmptyString => None
+        | _ => hex_digits_acc digits 0
+        end
+      else None
+  | _ => None
+  end.
+
+Definition decimal_of_string_opt (value : string) : option Z :=
   match NilZero.int_of_string value with
   | Some parsed => Some (Z.of_int parsed)
   | None => None
+  end.
+
+Definition of_string_opt (value : string) : option Z :=
+  match value with
+  | String sign rest =>
+      if Ascii.eqb sign "-"%char then
+        match hex_prefixed rest with
+        | Some parsed => Some (- parsed)
+        | None => decimal_of_string_opt value
+        end
+      else
+        match hex_prefixed value with
+        | Some parsed => Some parsed
+        | None => decimal_of_string_opt value
+        end
+  | EmptyString => None
   end.
 
 Definition of_string `{Unreachable Z} (value : string) : Z :=
