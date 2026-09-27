@@ -7344,7 +7344,7 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
     [available_assumption_providers] retains the corresponding field names so
     nested calls can pass those instances explicitly instead of repeating a
     potentially large type-class search. *)
-let rec to_coq ?(functor_value_rewrites = []) ?(external_specs = [])
+let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
     ?(available_assumptions = [])
     ?(available_assumption_providers = []) ?type_requirement_context
     ?direct_value_requirement_context ?signature_requirement_context
@@ -8547,6 +8547,24 @@ let rec to_coq ?(functor_value_rewrites = []) ?(external_specs = [])
       separate space
         (MixedPath.to_coq mixed_path :: projected_assumption_arguments)
     in
+    let projected_value =
+      let root =
+        match mixed_path with
+        | MixedPath.PathName root
+        | MixedPath.Access (root, _)
+        | MixedPath.AppliedAccess (root, _, _) ->
+            PathName.to_string root
+      in
+      match kind with
+      | IncludeType -> projected_value
+      | IncludeValue | IncludeProjectedValue | IncludeAppliedTypeValue ->
+          if List.mem root normalize_included_roots then
+            (* Reduce the concrete functor-result projection in Gallina.
+               Extraction can then use the selected operation directly
+               instead of rebuilding the result record for every call. *)
+            parens (!^"Eval cbn in" ^^ space ^^ projected_value)
+          else projected_value
+    in
     nest
       (!^"Definition" ^^ Name.to_coq name ^^ FArgs.to_coq fargs
       ^^ Name.to_coq_list_or_empty typ_vars (fun typ_vars ->
@@ -9016,7 +9034,7 @@ let rec to_coq ?(functor_value_rewrites = []) ?(external_specs = [])
                   ^^ context_assumption_instances
                   ^^ (if fargs_assumptions = [] then empty
                       else newline ^^ newline)
-                  ^^ to_coq ~functor_value_rewrites ~external_specs
+                  ^^ to_coq ~normalize_included_roots ~external_specs
                        ~available_assumptions:
                          (available_assumptions
                          @ (if is_functor then
@@ -9275,19 +9293,6 @@ let rec to_coq ?(functor_value_rewrites = []) ?(external_specs = [])
                   | _ -> MixedPath.AppliedAccess (root, applications, fields))
           | MixedPath.PathName _ -> None
         in
-        let rewrite_functor_value path =
-          match path with
-          | MixedPath.PathName path_name -> (
-              (* Rewrite only the emitted call. The original path still
-                 supplies [Build_FArgs] and the result signature. *)
-              match
-                Configuration.RenamingRule.find functor_value_rewrites
-                  (PathName.to_string path_name)
-              with
-              | Some target -> MixedPath.PathName (PathName.of_string target)
-              | None -> path)
-          | MixedPath.Access _ | MixedPath.AppliedAccess _ -> path
-        in
         let e =
           match application_fargs with
           | Some (fargs_name, fargs_value) -> (
@@ -9300,9 +9305,7 @@ let rec to_coq ?(functor_value_rewrites = []) ?(external_specs = [])
                   (* Requirement propagation above analyzed the source wrapper
                      call.  At emission time, reuse the named argument record
                      instead of constructing a second convertible record. *)
-                  Exp.Variable
-                    ( rewrite_functor_value path,
-                      [ ("_fargs", Name.to_string fargs_name) ] )
+                  Exp.Variable (path, [ ("_fargs", Name.to_string fargs_name) ])
               | None -> e)
           | None -> e
         in

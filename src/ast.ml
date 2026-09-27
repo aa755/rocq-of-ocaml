@@ -10,8 +10,8 @@ type content =
 type t = {
   content : content;
   external_assumption_specs : Structure.qualified_assumption_call_specs;
-  functor_value_rewrites : Configuration.RenamingRule.t list;
   head_suffix : string;
+  normalize_included_roots : string list;
   without_default_imports : bool;
   without_guard_checking : bool;
   without_positivity_checking : bool;
@@ -81,8 +81,8 @@ let of_typedtree
     {
       content;
       external_assumption_specs;
-      functor_value_rewrites = configuration.functor_value_rewrites;
       head_suffix = Configuration.get_head_suffix configuration;
+      normalize_included_roots = configuration.normalize_included_roots;
       without_default_imports =
         Configuration.is_without_default_imports configuration;
       without_guard_checking =
@@ -159,6 +159,6 @@ let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
      | SignatureAxioms signature -> SignatureAxioms.to_coq signature
      | Structure structure ->
          Structure.to_coq
-           ~functor_value_rewrites:ast.functor_value_rewrites
+           ~normalize_included_roots:ast.normalize_included_roots
            ~external_specs:ast.external_assumption_specs None structure)
   ^^ newline
