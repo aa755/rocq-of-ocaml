@@ -8562,7 +8562,7 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
             (* Reduce the concrete functor-result projection in Gallina.
                Extraction can then use the selected operation directly
                instead of rebuilding the result record for every call. *)
-            parens (!^"Eval cbn in" ^^ space ^^ projected_value)
+            !^"Eval cbn in" ^^ space ^^ projected_value
           else projected_value
     in
     nest
