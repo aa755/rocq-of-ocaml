@@ -37,7 +37,7 @@ Definition tl {A : Set} `{Unreachable (list A)}
 
 Definition nth {A : Set} `{Unreachable A}
   (l_value : t A) (n_value : int) : A :=
-  if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
+  if Z.ltb n_value 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "List.nth"
   else
     let fix nth_aux (l_value : t A) (n_value : int) {struct l_value}
@@ -54,7 +54,7 @@ Definition nth {A : Set} `{Unreachable A}
 
 Definition nth_opt {A : Set} `{Unreachable (option A)}
   (l_value : t A) (n_value : int) : option A :=
-  if RocqOfOCaml.Basics.Stdlib.lt n_value 0 then
+  if Z.ltb n_value 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "List.nth"
   else
     let fix nth_aux {B : Set} (l_value : t B) (n_value : int) {struct l_value}
