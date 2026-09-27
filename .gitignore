@@ -21,6 +21,7 @@ a.out
 .coqdeps.d
 .Makefile.d
 .lia.cache
+.nia.cache
 Makefile.conf
 _build/
 \#*\#
