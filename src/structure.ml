@@ -8567,19 +8567,23 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
       | IncludeType -> projected_value
       | IncludeValue | IncludeProjectedValue | IncludeAppliedTypeValue ->
           let selected_value =
-            match kind with
-            | IncludeValue ->
-                List.mem
-                  (root ^ "." ^ Name.to_string name)
-                  normalize_included_roots
-            | IncludeType | IncludeProjectedValue | IncludeAppliedTypeValue ->
+            match (kind, mixed_path) with
+            | IncludeValue, MixedPath.Access (_, [ field ])
+            | IncludeValue, MixedPath.AppliedAccess (_, _, [ field ]) ->
+                String.equal
+                  (PathName.to_string_base field)
+                  (Name.to_string name)
+                && List.mem
+                     (root ^ "." ^ Name.to_string name)
+                     normalize_included_roots
+            | _ ->
                 false
           in
           if List.mem root normalize_included_roots || selected_value then
             (* Reduce the concrete functor-result projection in Gallina.
                Extraction can then use the selected operation directly
                instead of rebuilding the result record for every call.
-               A root.field entry selects only a direct included value;
+               A root.field entry selects only a one-level included value;
                nested polymorphic Set/Map values may otherwise trigger
                OCaml's value restriction after extraction. *)
             !^"Eval cbn in" ^^ space ^^ projected_value
