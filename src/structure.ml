@@ -7398,7 +7398,8 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
     [available_assumption_providers] retains the corresponding field names so
     nested calls can pass those instances explicitly instead of repeating a
     potentially large type-class search. *)
-let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
+let rec to_coq ?(normalize_included_roots = []) ?(source_unit = "")
+    ?(external_specs = [])
     ?(available_assumptions = [])
     ?(available_assumption_providers = []) ?type_requirement_context
     ?direct_value_requirement_context ?signature_requirement_context
@@ -8563,6 +8564,12 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
         | MixedPath.AppliedAccess (root, _, _) ->
             PathName.to_string root
       in
+      let selected entry =
+        List.mem entry normalize_included_roots
+        ||
+        (source_unit <> ""
+        && List.mem (source_unit ^ ":" ^ entry) normalize_included_roots)
+      in
       match kind with
       | IncludeType -> projected_value
       | IncludeValue | IncludeProjectedValue | IncludeAppliedTypeValue ->
@@ -8573,13 +8580,11 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                 String.equal
                   (PathName.to_string_base field)
                   (Name.to_string name)
-                && List.mem
-                     (root ^ "." ^ Name.to_string name)
-                     normalize_included_roots
+                && selected (root ^ "." ^ Name.to_string name)
             | _ ->
                 false
           in
-          if List.mem root normalize_included_roots || selected_value then
+          if selected root || selected_value then
             (* Reduce the concrete functor-result projection in Gallina.
                Extraction can then use the selected operation directly
                instead of rebuilding the result record for every call.
@@ -9074,7 +9079,8 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                   ^^ context_assumption_instances
                   ^^ (if fargs_assumptions = [] then empty
                       else newline ^^ newline)
-                  ^^ to_coq ~normalize_included_roots ~external_specs
+                  ^^ to_coq ~normalize_included_roots ~source_unit
+                       ~external_specs
                        ~available_assumptions:
                          (available_assumptions
                          @ (if is_functor then

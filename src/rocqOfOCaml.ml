@@ -61,7 +61,7 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     exp context typedtree typedtree_errors source_file_name source_file_content
       external_assumption_specs json_mode
   in
-  let document = Ast.to_coq imports ast in
+  let document = Ast.to_coq source_file_name imports ast in
   let generated_file_name =
     match output_file_name with
     | None ->

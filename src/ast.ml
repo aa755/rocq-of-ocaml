@@ -99,7 +99,12 @@ let qualified_assumption_call_specs (prefix : string list) (ast : t) :
       @ Structure.module_override_assumption_call_specs definitions
   | SignatureAxioms _ -> []
 
-let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
+let to_coq (source_file_name : string) (imports : MonadEval.Import.t list)
+    (ast : t) : SmartPrint.t =
+  let source_unit =
+    source_file_name |> Filename.basename |> Filename.remove_extension
+    |> String.capitalize_ascii
+  in
   let uses_well_founded_recursion =
     match ast.content with
     | SignatureAxioms _ -> false
@@ -160,5 +165,6 @@ let to_coq (imports : MonadEval.Import.t list) (ast : t) : SmartPrint.t =
      | Structure structure ->
          Structure.to_coq
            ~normalize_included_roots:ast.normalize_included_roots
+           ~source_unit
            ~external_specs:ast.external_assumption_specs None structure)
   ^^ newline
