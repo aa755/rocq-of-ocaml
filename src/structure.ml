@@ -7398,7 +7398,8 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
     [available_assumption_providers] retains the corresponding field names so
     nested calls can pass those instances explicitly instead of repeating a
     potentially large type-class search. *)
-let rec to_coq ?(normalize_included_roots = []) ?(source_unit = "")
+let rec to_coq ?(normalize_included_roots = [])
+    ?(normalize_direct_monomorphic_function_roots = []) ?(source_unit = "")
     ?(external_specs = [])
     ?(available_assumptions = [])
     ?(available_assumption_providers = []) ?type_requirement_context
@@ -8584,7 +8585,31 @@ let rec to_coq ?(normalize_included_roots = []) ?(source_unit = "")
             | _ ->
                 false
           in
-          if selected root || selected_value then
+          let selected_direct_monomorphic_function =
+            (* A direct function projection can be reduced without
+               rebuilding its containing result record at extraction time.
+               Keep module-valued fields such as Comparable._Set intact:
+               their nested polymorphic values can violate OCaml's value
+               restriction when the whole field is normalized. *)
+            match (kind, typ_vars, typ, mixed_path) with
+            | IncludeValue, [], Some (Type.Arrow _),
+              MixedPath.Access (_, [ field ])
+            | IncludeValue, [], Some (Type.Arrow _),
+              MixedPath.AppliedAccess (_, _, [ field ]) ->
+                String.equal
+                  (PathName.to_string_base field)
+                  (Name.to_string name)
+                &&
+                (List.mem root normalize_direct_monomorphic_function_roots
+                ||
+                (source_unit <> ""
+                && List.mem
+                     (source_unit ^ ":" ^ root)
+                     normalize_direct_monomorphic_function_roots))
+            | _ -> false
+          in
+          if selected root || selected_value
+             || selected_direct_monomorphic_function then
             (* Reduce the concrete functor-result projection in Gallina.
                Extraction can then use the selected operation directly
                instead of rebuilding the result record for every call.
@@ -9079,7 +9104,8 @@ let rec to_coq ?(normalize_included_roots = []) ?(source_unit = "")
                   ^^ context_assumption_instances
                   ^^ (if fargs_assumptions = [] then empty
                       else newline ^^ newline)
-                  ^^ to_coq ~normalize_included_roots ~source_unit
+                  ^^ to_coq ~normalize_included_roots
+                       ~normalize_direct_monomorphic_function_roots ~source_unit
                        ~external_specs
                        ~available_assumptions:
                          (available_assumptions

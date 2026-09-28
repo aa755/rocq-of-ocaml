@@ -140,6 +140,7 @@ type t = {
   monadic_returns : Operator.t list;
   monadic_return_lets : MonadicOperators.t list;
   module_overrides : ModuleOverride.t list;
+  normalize_direct_monomorphic_function_roots : string list;
   normalize_included_roots : string list;
   operator_infix : Operator.t list;
   partial_monad_lifts : DefinitionExclusion.t list;
@@ -183,6 +184,7 @@ let default (file_name : string) : t =
     monadic_returns = [];
     monadic_return_lets = [];
     module_overrides = [];
+    normalize_direct_monomorphic_function_roots = [];
     normalize_included_roots = [];
     operator_infix = [];
     partial_monad_lifts = [];
@@ -946,6 +948,17 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 configuration with
                 normalize_included_roots =
                   configuration.normalize_included_roots @ entry;
+              }
+          | "normalize_direct_monomorphic_function_roots" ->
+              let entry =
+                get_string_list "normalize_direct_monomorphic_function_roots"
+                  entry
+              in
+              {
+                configuration with
+                normalize_direct_monomorphic_function_roots =
+                  configuration.normalize_direct_monomorphic_function_roots
+                  @ entry;
               }
           | "renaming_rules" ->
               let entry =

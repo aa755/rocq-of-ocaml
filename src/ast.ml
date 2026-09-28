@@ -11,6 +11,7 @@ type t = {
   content : content;
   external_assumption_specs : Structure.qualified_assumption_call_specs;
   head_suffix : string;
+  normalize_direct_monomorphic_function_roots : string list;
   normalize_included_roots : string list;
   without_default_imports : bool;
   without_guard_checking : bool;
@@ -82,6 +83,8 @@ let of_typedtree
       content;
       external_assumption_specs;
       head_suffix = Configuration.get_head_suffix configuration;
+      normalize_direct_monomorphic_function_roots =
+        configuration.normalize_direct_monomorphic_function_roots;
       normalize_included_roots = configuration.normalize_included_roots;
       without_default_imports =
         Configuration.is_without_default_imports configuration;
@@ -164,6 +167,8 @@ let to_coq (source_file_name : string) (imports : MonadEval.Import.t list)
      | SignatureAxioms signature -> SignatureAxioms.to_coq signature
      | Structure structure ->
          Structure.to_coq
+           ~normalize_direct_monomorphic_function_roots:
+             ast.normalize_direct_monomorphic_function_roots
            ~normalize_included_roots:ast.normalize_included_roots
            ~source_unit
            ~external_specs:ast.external_assumption_specs None structure)
