@@ -10255,7 +10255,8 @@ let to_coq_module_result ~(local_fargs : bool)
     ~(compact_aliases : int Name.Map.t) (e : t) : SmartPrint.t =
   to_coq_record_with_field_implicits ~local_fargs ~compact_aliases [] e
 
-let to_coq_record_constructor (constructor : SmartPrint.t)
+let to_coq_record_constructor ~(local_fargs : bool)
+    ~(compact_aliases : int Name.Map.t) (constructor : SmartPrint.t)
     (parameters : SmartPrint.t list) (e : t) : SmartPrint.t =
   let e = remove_selected_fargs e in
   match e with
@@ -10267,14 +10268,23 @@ let to_coq_record_constructor (constructor : SmartPrint.t)
         | _ -> expression
       in
       let render_field (_, arity, expression) =
-        let expression = to_coq false (unwrap_assumptions expression) in
-        if arity = 0 then expression
-        else
-          parens
-            (nest
-               (!^"fun"
-               ^^ separate space (Pp.n_underscores arity)
-               ^^ !^"=>" ^^ expression))
+        let first_class_alias =
+          if arity = 0 then None
+          else
+            to_coq_first_class_alias ~local_fargs ~compact_aliases ~arity
+              expression
+        in
+        match first_class_alias with
+        | Some alias -> parens alias
+        | None ->
+            let expression = to_coq false (unwrap_assumptions expression) in
+            if arity = 0 then expression
+            else
+              parens
+                (nest
+                   (!^"fun"
+                   ^^ separate space (Pp.n_underscores arity)
+                   ^^ !^"=>" ^^ expression))
       in
       parens
         (nest

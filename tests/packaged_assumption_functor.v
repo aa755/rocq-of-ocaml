@@ -114,7 +114,7 @@ Module Package.
   
   (* Package *)
   Definition functor `{_fargs : FArgs} :@Package_result _fargs :=
-    ((@Package_result.Build_signature _fargs Applied Checked (fun _ => get)) :
+    ((@Package_result.Build_signature _fargs Applied Checked (@get _)) :
       @Package_result _fargs).
 End Package.
 Definition Package (_rocq_fargs : Package.FArgs) := @Package.functor

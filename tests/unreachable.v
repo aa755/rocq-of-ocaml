@@ -120,7 +120,7 @@ Module Make_projected.
   
   (* Make_projected *)
   Definition functor `{_fargs : FArgs} :@Make_projected_result _fargs :=
-    ((@Make_projected_result.Build_signature _fargs (fun _ => failed_unit)) :
+    ((@Make_projected_result.Build_signature _fargs (@failed_unit _)) :
       @Make_projected_result _fargs).
 End Make_projected.
 Definition Make_projected (X : Make_projected_X_signature) :=
@@ -297,7 +297,7 @@ Module Scoped_value.
   
   (* Scoped_value *)
   Definition functor `{_fargs : FArgs} :@Scoped_value_result _fargs :=
-    ((@Scoped_value_result.Build_signature _fargs (fun _ => number)
+    ((@Scoped_value_result.Build_signature _fargs (@number _)
       (fun _ => Nested.copied_number)) : @Scoped_value_result _fargs).
 End Scoped_value.
 Definition Scoped_value (X : Scoped_value_X_signature) :=

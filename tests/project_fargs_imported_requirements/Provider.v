@@ -75,7 +75,7 @@ Module Make.
   
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
-    ((@Make_result.Build_signature _fargs Impl zero (fun _ => get)) :
+    ((@Make_result.Build_signature _fargs Impl zero (@get _)) :
       @Make_result _fargs).
 End Make.
 Definition Make (Seed : Make_Seed_signature) :=

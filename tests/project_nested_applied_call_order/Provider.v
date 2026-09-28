@@ -62,8 +62,8 @@ Module Fixed.
   
   (* Fixed *)
   Definition functor `{_fargs : FArgs} :@Fixed_result _fargs :=
-    ((@Fixed_result.Build_signature _fargs (fun _ _ => init) (fun _ => get)
-      (fun _ _ _ => reverse)) : @Fixed_result _fargs).
+    ((@Fixed_result.Build_signature _fargs (@init _) (@get _) (@reverse _)) :
+      @Fixed_result _fargs).
 End Fixed.
 Definition Fixed (Width : Fixed_Width_signature) :=
   @Fixed.functor (Fixed.Build_FArgs Width).

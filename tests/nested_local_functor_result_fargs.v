@@ -48,8 +48,8 @@ Module Wrap.
   
   (* Wrap *)
   Definition functor `{_fargs : FArgs} :@Wrap_result _fargs :=
-    ((@Wrap_result.Build_signature _fargs (fun _ => text) (fun _ => number)
-      marker) : @Wrap_result _fargs).
+    ((@Wrap_result.Build_signature _fargs (@text _) (@number _) marker) :
+      @Wrap_result _fargs).
 End Wrap.
 Definition Wrap (Values : VALUES) := @Wrap.functor (Wrap.Build_FArgs Values).
 

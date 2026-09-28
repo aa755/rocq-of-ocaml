@@ -8964,6 +8964,8 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
               parens
                 (nest
                    (Exp.to_coq_record_constructor
+                      ~local_fargs:true
+                      ~compact_aliases:compact_module_result_aliases
                       (!^"@" ^-^ PathName.to_coq path ^-^ !^".Build_signature")
                       (result_signature_dependencies @ [ !^"_fargs" ])
                       e

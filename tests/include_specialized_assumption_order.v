@@ -80,8 +80,8 @@ Module Fixed.
   
   (* Fixed *)
   Definition functor `{_fargs : FArgs} :@Fixed_result _fargs :=
-    ((@Fixed_result.Build_signature _fargs (fun _ => width) Impl
-      (fun _ _ => init)) : @Fixed_result _fargs).
+    ((@Fixed_result.Build_signature _fargs (@width _) Impl (@init _)) :
+      @Fixed_result _fargs).
 End Fixed.
 Definition Fixed (Width : Fixed_Width_signature) :=
   @Fixed.functor (Fixed.Build_FArgs Width).

@@ -60,8 +60,8 @@ Module Make_vm.
   
   (* Make_vm *)
   Definition functor `{_fargs : FArgs} :@Make_vm_result _fargs :=
-    ((@Make_vm_result.Build_signature _fargs (fun _ => invalid_address)
-      (fun _ => execute)) : @Make_vm_result _fargs).
+    ((@Make_vm_result.Build_signature _fargs (@invalid_address _) (@execute _))
+      : @Make_vm_result _fargs).
 End Make_vm.
 Definition Make_vm (Params : PARAMS) (Host : HOST) :=
   @Make_vm.functor (Make_vm.Build_FArgs Params Host).

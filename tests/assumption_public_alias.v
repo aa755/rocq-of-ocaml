@@ -33,8 +33,7 @@ Module Make.
   
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
-    ((@Make_result.Build_signature _fargs (fun _ => missing)) :
-      @Make_result _fargs).
+    ((@Make_result.Build_signature _fargs (@missing _)) : @Make_result _fargs).
 End Make.
 Definition Make (A : ARGUMENT) := @Make.functor (Make.Build_FArgs A).
 

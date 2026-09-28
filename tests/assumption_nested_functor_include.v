@@ -41,8 +41,8 @@ Module Make.
   
   (* Make *)
   Definition functor `{_fargs : FArgs} :@Make_result _fargs :=
-    ((@Make_result.Build_signature _fargs (fun _ => trigger)
-      (fun _ => Nested.use)) : @Make_result _fargs).
+    ((@Make_result.Build_signature _fargs (@trigger _) (fun _ => Nested.use)) :
+      @Make_result _fargs).
 End Make.
 Definition Make (Argument : ARG) := @Make.functor (Make.Build_FArgs Argument).
 
@@ -86,7 +86,7 @@ Module Instantiate.
   
   (* Instantiate *)
   Definition functor `{_fargs : FArgs} :@Instantiate_result _fargs :=
-    ((@Instantiate_result.Build_signature _fargs (fun _ => trigger)
+    ((@Instantiate_result.Build_signature _fargs (@trigger _)
       (fun _ => Nested.use)) : @Instantiate_result _fargs).
 End Instantiate.
 Definition Instantiate (Argument : ARG) :=
