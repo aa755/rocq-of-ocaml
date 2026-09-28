@@ -35,3 +35,11 @@ module Packaged (Element : ELEMENT) = struct
 
   include Applied
 end
+
+module M = struct
+  type t = int
+end
+
+module Shadowed (M : sig type t end) = struct
+  let missing : M.t = assert false
+end

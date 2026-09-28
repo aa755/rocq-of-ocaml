@@ -28,3 +28,10 @@ module NestedPackaged (Element : ELEMENT) = struct
 
   module Applied = Project.Provider.Packaged (Element)
 end
+
+module Boolean = struct
+  type t = bool
+end
+
+module ShadowedResult = Project.Provider.Shadowed (Boolean)
+let shadowed_result = ShadowedResult.missing

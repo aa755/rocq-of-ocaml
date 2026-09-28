@@ -149,3 +149,21 @@ Definition NestedPackaged {Element_t : Set}
   (Element : TestProject.Provider.ELEMENT (t := Element_t))
   `{_rocq_projection_assumption_0 : RocqOfOCaml.Basics.Unreachable bool} :=
   @NestedPackaged.functor Element_t (NestedPackaged.Build_FArgs Element).
+
+Module Boolean.
+  Definition t : Set := bool.
+End Boolean.
+
+Definition ShadowedResult_fargs :=
+  TestProject.Provider.Shadowed.Build_FArgs
+    ((ltac:(constructor) : Provider.Shadowed_M_signature (t := Boolean.t)) :
+      Provider.Shadowed_M_signature (t := Boolean.t)).
+
+Definition ShadowedResult :
+  Provider.Shadowed.Shadowed_result (_fargs := ShadowedResult_fargs) :=
+  (TestProject.Provider.Shadowed.functor (_fargs := (ShadowedResult_fargs ))).
+
+Definition shadowed_result
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Boolean.t} : Boolean.t :=
+  (ShadowedResult.(Provider.Shadowed.Shadowed_result.missing)
+    (_rocq_assumption_0 := _rocq_assumption_0)).

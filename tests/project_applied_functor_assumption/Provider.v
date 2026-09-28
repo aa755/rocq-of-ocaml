@@ -197,3 +197,48 @@ End Packaged.
 Definition Packaged {Element_t : Set} (Element : ELEMENT (t := Element_t))
   `{_rocq_projection_assumption_0 : RocqOfOCaml.Basics.Unreachable bool} :=
   @Packaged.functor Element_t (Packaged.Build_FArgs Element).
+
+Module M.
+  Definition t : Set := int.
+End M.
+
+Module Shadowed_M_signature.
+  Record signature {t : Set} : Type := {
+    t := t;
+  }.
+End Shadowed_M_signature.
+Definition Shadowed_M_signature := @Shadowed_M_signature.signature.
+Arguments Shadowed_M_signature {_}.
+
+Module Shadowed.
+  Class FArgs {M_t : Set} := {
+    M : Shadowed_M_signature (t := M_t);
+  }.
+  Arguments Build_FArgs {_}.
+
+  Definition missing `{_fargs : FArgs}
+    `{_rocq_assumption_0 :
+      RocqOfOCaml.Basics.Unreachable M.(Shadowed_M_signature.t)} : M.(Shadowed_M_signature.t) :=
+    let '_ := false in
+    (@RocqOfOCaml.Basics.unreachable M.(Shadowed_M_signature.t) _).
+
+  Module Shadowed_result.
+    Record signature `{_fargs : FArgs} : Type := {
+      missing :
+        forall
+          `{_rocq_assumption_0 :
+            RocqOfOCaml.Basics.Unreachable M.(Shadowed_M_signature.t)},
+          M.(Shadowed_M_signature.t);
+    }.
+  End Shadowed_result.
+  Definition Shadowed_result `{_fargs : FArgs} := @Shadowed_result.signature _
+    _.
+  Arguments Shadowed_result {_ _}.
+
+  (* Shadowed *)
+  Definition functor `{_fargs : FArgs} :@Shadowed_result M_t _fargs :=
+    ((@Shadowed_result.Build_signature M_t _fargs (fun _ => missing)) :
+      @Shadowed_result M_t _fargs).
+End Shadowed.
+Definition Shadowed {M_t : Set} (M : Shadowed_M_signature (t := M_t)) :=
+  @Shadowed.functor M_t (Shadowed.Build_FArgs M).

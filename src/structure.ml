@@ -1282,7 +1282,7 @@ let replace_scoped_requirements_with_module_context module_name scoped
 (** Export a call specification from its lexical module. Requirement types must
     be qualified along with the value path: a requirement on [t] inside
     [Numeric.U256] is [Numeric.U256.t] to a caller in another unit. *)
-let qualify_exported_assumption_spec prefix definitions spec =
+let qualify_exported_assumption_spec ~shadowed_modules prefix definitions spec =
   match List.rev prefix with
   | [] -> spec
   | compilation_unit :: parents ->
@@ -1290,7 +1290,9 @@ let qualify_exported_assumption_spec prefix definitions spec =
       let spec =
         prefix_assumption_spec compilation_unit
           (local_type_names definitions)
-          (local_module_names definitions)
+          (Name.Set.filter
+             (fun name -> not (Name.Set.mem name shadowed_modules))
+             (local_module_names definitions))
           spec
       in
       let _, spec =
@@ -1305,6 +1307,39 @@ let qualify_exported_assumption_spec prefix definitions spec =
       spec
 
 let qualified_assumption_call_specs prefix definitions =
+  (* A functor parameter belongs to its lexical module.  A same-named value
+     in the compilation unit must not capture that parameter while its call
+     specification is qualified for cross-unit metadata. *)
+  let rec shadowed_modules path definitions =
+    let rec find_module name = function
+      | Module (candidate, (_, parameters, _), nested, _) :: _
+        when Name.equal name candidate ->
+          Some (parameters, nested)
+      | Documentation (_, nested) :: rest -> (
+          match find_module name nested with
+          | Some _ as found -> found
+          | None -> find_module name rest)
+      | ErrorMessage (_, Documentation (_, nested)) :: rest -> (
+          match find_module name nested with
+          | Some _ as found -> found
+          | None -> find_module name rest)
+      | ErrorMessage (_, nested) :: rest -> (
+          match find_module name [ nested ] with
+          | Some _ as found -> found
+          | None -> find_module name rest)
+      | _ :: rest -> find_module name rest
+      | [] -> None
+    in
+    match path with
+    | [] -> Name.Set.empty
+    | name :: path -> (
+        match find_module name definitions with
+        | None -> Name.Set.empty
+        | Some (parameters, nested) ->
+            List.fold_left
+              (fun names (parameter, _) -> Name.Set.add parameter names)
+              (shadowed_modules path nested) parameters)
+  in
   let rec pure_include = function
     | [ ModuleInclude target ] -> Some target
     | [ Documentation (_, nested) ] -> pure_include nested
@@ -1802,7 +1837,11 @@ let qualified_assumption_call_specs prefix definitions =
   |> close_aliases (List.length aliases)
   |> List.map (fun (path, spec) ->
       let spec = normalize_assumption_spec_type_aliases definitions spec in
-      let spec = qualify_exported_assumption_spec prefix definitions spec in
+      let spec =
+        qualify_exported_assumption_spec
+          ~shadowed_modules:(shadowed_modules path definitions)
+          prefix definitions spec
+      in
       (String.concat "." (prefix @ List.map Name.to_string path), spec))
 
 (** Requirements of hand-written targets that replace translated modules.
