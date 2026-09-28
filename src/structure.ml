@@ -6442,6 +6442,9 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
           in
           let root_path, source_fields = root_and_fields path [] in
           let* root_signature = get_signature_hint root_path in
+          (* A nested alias may target a functor-result record even when its
+             outer module is an ordinary namespace. *)
+          let* target_signature = MixedPath.get_signature_path path in
           let* configuration = get_configuration in
           let* enclosing_path = get_definition_path in
           let definition_is_excluded prefix name =
@@ -7047,15 +7050,27 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
                 | _ -> false
                 | exception _ -> false
               in
+              let target_is_result_value =
+                match target_signature with
+                | Some signature ->
+                    String.ends_with ~suffix:"_result" (Path.last signature)
+                | None -> false
+              in
               if
-                (not is_functor) && source_fields = []
-                && Option.is_some root_signature
+                (not is_functor)
+                && ((source_fields = [] && Option.is_some root_signature)
+                   || target_is_result_value)
               then
                 let* module_exp =
                   Exp.of_module_expr Name.Map.empty module_expr None
                 in
+                let selected_signature =
+                  match target_signature with
+                  | Some _ -> target_signature
+                  | None -> root_signature
+                in
                 let* application_fargs =
-                  match root_signature with
+                  match selected_signature with
                   | Some signature
                     when String.ends_with ~suffix:"_result"
                            (Path.last signature) ->
@@ -9048,7 +9063,18 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                          direct_value_requirements
                        ~signature_requirement_context:
                          ordered_signature_requirements
-                       ~module_result_signature_context:module_result_signatures
+                       (* A functor parameter shadows an outer module value
+                          with the same printed name. Its projections must
+                          keep the parameter's own signature. *)
+                       ~module_result_signature_context:
+                         (Name.Map.filter
+                            (fun candidate _ ->
+                              not
+                                (List.exists
+                                   (fun (parameter, _) ->
+                                     Name.equal candidate parameter)
+                                   params))
+                            module_result_signatures)
                        ~flattened_namespace_context:flattened_namespace_fields
                        ~module_requirement_context:module_requirements
                        inner_fargs defs
