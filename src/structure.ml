@@ -8566,10 +8566,22 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
       match kind with
       | IncludeType -> projected_value
       | IncludeValue | IncludeProjectedValue | IncludeAppliedTypeValue ->
-          if List.mem root normalize_included_roots then
+          let selected_value =
+            match kind with
+            | IncludeValue ->
+                List.mem
+                  (root ^ "." ^ Name.to_string name)
+                  normalize_included_roots
+            | IncludeType | IncludeProjectedValue | IncludeAppliedTypeValue ->
+                false
+          in
+          if List.mem root normalize_included_roots || selected_value then
             (* Reduce the concrete functor-result projection in Gallina.
                Extraction can then use the selected operation directly
-               instead of rebuilding the result record for every call. *)
+               instead of rebuilding the result record for every call.
+               A root.field entry selects only a direct included value;
+               nested polymorphic Set/Map values may otherwise trigger
+               OCaml's value restriction after extraction. *)
             !^"Eval cbn in" ^^ space ^^ projected_value
           else projected_value
     in
