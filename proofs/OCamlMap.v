@@ -458,11 +458,67 @@ Module Make.
           (fun key_value _ => negb (key_before key_value lower_bound))
           map).
 
+    (** The source [Map.add_seq] accepts arbitrary key order and duplicate
+        keys. Only a strictly increasing sequence can use the linear merge;
+        every other sequence retains the original fold of [add]. The fast
+        path relies on the sorted-map invariant maintained by [Make]. *)
+    Fixpoint strictly_increasing_from {a : Set}
+        (previous : key) (updates : list (key * a)) : bool :=
+      match updates with
+      | [] => true
+      | (next, _) :: tail =>
+          key_before previous next && strictly_increasing_from next tail
+      end.
+
+    Definition strictly_increasing {a : Set}
+        (updates : list (key * a)) : bool :=
+      match updates with
+      | [] => true
+      | (first, _) :: tail => strictly_increasing_from first tail
+      end.
+
+    Fixpoint collect_before {a : Set}
+        (key_value : key) (remaining : t a)
+        (reversed : list (key * a)) : t a * list (key * a) :=
+      match remaining with
+      | [] => ([], reversed)
+      | (existing_key, _) as binding :: tail =>
+          if key_before existing_key key_value
+          then collect_before key_value tail (binding :: reversed)
+          else (remaining, reversed)
+      end.
+
+    Definition add_sorted_entry {a : Set}
+        (state : t a * list (key * a)) (binding : key * a)
+        : t a * list (key * a) :=
+      let '(remaining, reversed) := state in
+      let '(remaining, reversed) :=
+        collect_before (fst binding) remaining reversed in
+      match remaining with
+      | (existing_key, _) :: tail =>
+          if key_equal (fst binding) existing_key
+          then (tail, binding :: reversed)
+          else (remaining, binding :: reversed)
+      | [] => ([], binding :: reversed)
+      end.
+
+    Definition merge_sorted_updates {a : Set}
+        (updates : list (key * a)) (map : t a) : t a :=
+      let '(remaining, reversed) :=
+        List.fold_left add_sorted_entry updates (map, []) in
+      List.rev_append reversed remaining.
+
     Definition add_seq {a : Set}
         (sequence : OCamlSeq.t (key * a)) (map : t a) : t a :=
-      OCamlSeq.fold_left
+      let updates :=
+        List.rev
+          (OCamlSeq.fold_left
+            (fun reversed binding => binding :: reversed) [] sequence) in
+      if strictly_increasing updates
+      then merge_sorted_updates updates map
+      else List.fold_left
         (fun map '(key_value, value) => add key_value value map)
-        map sequence.
+        updates map.
 
     Definition of_seq {a : Set}
         (sequence : OCamlSeq.t (key * a)) : t a :=
