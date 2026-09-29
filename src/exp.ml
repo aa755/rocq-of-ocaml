@@ -2639,7 +2639,6 @@ let rec mark_module_reference = function
     type-class conversion through large generated module aliases. *)
 let materialize_direct_assumptions ?(projected_only = false)
     ?(excluded_heads = Name.Set.empty)
-    ?(projected_root_requirements = fun (_ : MixedPath.t) -> [])
     ?(projected_field_requirements = fun (_ : MixedPath.t) -> [])
     ?(order_source_requirements = fun (_ : t) requirements -> requirements)
     ?(requirements_match =
@@ -2706,11 +2705,6 @@ let materialize_direct_assumptions ?(projected_only = false)
            else existing @ [ (label, value) ])
          existing
   in
-  let requirement_is_in candidates (requirement, _) =
-    List.exists
-      (fun candidate -> requirements_match candidate requirement)
-      candidates
-  in
   let take_module_reference_marker implicits =
     let marked, implicits =
       List.partition
@@ -2719,17 +2713,7 @@ let materialize_direct_assumptions ?(projected_only = false)
     in
     (marked <> [], implicits)
   in
-  let projection_applications path requirements =
-    let inherited_requirements () =
-      let root_requirements = projected_root_requirements path in
-      let _, projected =
-        List.partition (requirement_is_in root_requirements) requirements
-      in
-      (* Rocq sections omit unused context variables, so the names and
-         positions of a module value's generalized arguments cannot be
-         reconstructed from its pre-generalization requirement list. *)
-      projected
-    in
+  let projection_applications path =
     let projected =
       match projected_field_requirements path with
       | _ :: _ as field_requirements -> (
@@ -2742,8 +2726,8 @@ let materialize_direct_assumptions ?(projected_only = false)
               field_requirements
           with
           | Some providers -> providers
-          | None -> inherited_requirements () )
-      | [] -> inherited_requirements ()
+          | None -> [] )
+      | [] -> []
     in
     applications_of ~module_reference:false projected
   in
@@ -2769,7 +2753,7 @@ let materialize_direct_assumptions ?(projected_only = false)
     | Variable (MixedPath.Access (root, fields), implicits) ->
         let path = MixedPath.Access (root, fields) in
         let projected_applications =
-          projection_applications path requirements
+          projection_applications path
         in
         Some
           (Variable
@@ -2779,7 +2763,7 @@ let materialize_direct_assumptions ?(projected_only = false)
       ->
         let path = MixedPath.AppliedAccess (root, existing, fields) in
         let projected_applications =
-          projection_applications path requirements
+          projection_applications path
         in
         Some
           (Variable
@@ -2794,7 +2778,7 @@ let materialize_direct_assumptions ?(projected_only = false)
               MixedPath.AppliedAccess (root, applications, fields @ [ field ])
         in
         let projected_applications =
-          projection_applications projected requirements
+          projection_applications projected
         in
         Some (Variable (projected, implicits @ projected_applications))
     | Variable (MixedPath.PathName _, _)

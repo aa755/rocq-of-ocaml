@@ -23,8 +23,7 @@ Module Result.
     TestProject.Provider.Extension.Build_FArgs Concrete
       (let modulus :=
         let opened_module_198 := TestProject.Provider.Operations Concrete in
-        (opened_module_198.(Provider.Operations.Operations_result.get)
-          (_rocq_assumption_0 := _rocq_module_assumption_0)) tt in
+        opened_module_198.(Provider.Operations.Operations_result.get) tt in
       ({|
         Provider.Extension_Modulus_signature.modulus := modulus
       |} : Provider.Extension_Modulus_signature)).

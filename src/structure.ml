@@ -7916,52 +7916,6 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
     then "_rocq_module_assumption_"
     else "_rocq_assumption_"
   in
-  let projected_root_requirements path =
-    let root =
-      match path with
-      | MixedPath.PathName root
-      | MixedPath.Access (root, _)
-      | MixedPath.AppliedAccess (root, _, _) ->
-          root
-    in
-    match Name.Map.find_opt root.PathName.base module_requirements with
-    | Some requirements -> requirements
-    | None ->
-        let projection = MixedPath.to_string path in
-        let contains_component_path value candidate =
-          let value_length = String.length value in
-          let candidate_length = String.length candidate in
-          let rec search index =
-            if index + candidate_length > value_length then false
-            else
-              let before = index = 0 || value.[index - 1] = '.' in
-              let after_index = index + candidate_length in
-              let after =
-                after_index = value_length || value.[after_index] = '.'
-              in
-              if
-                before && after
-                && String.sub value index candidate_length = candidate
-              then true
-              else search (index + 1)
-          in
-          search 0
-        in
-        let local =
-          projected_value_requirements
-          |> List.filter (fun (candidate, _) ->
-              contains_component_path projection candidate)
-          |> List.sort (fun (left, _) (right, _) ->
-              Int.compare (String.length right) (String.length left))
-          |> List.find_map (fun (_, requirements) -> Some requirements)
-          |> Option.value ~default:[]
-        in
-        if local <> [] then local
-        else
-          external_projected_spec path
-          |> Option.map (fun (_, spec) -> spec.Exp.requirements)
-          |> Option.value ~default:[]
-  in
   let assumption_applications prefix named_requirements requirements =
     let provider requirement =
       named_requirements
@@ -9311,7 +9265,7 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                 || same_available_assumption_shape left right)
               ~order_source_requirements all_named_requirements
               ~projected_field_requirements:signature_target_requirements
-              ~projected_root_requirements expression
+              expression
           else if all_named_requirements <> [] then
             Exp.materialize_direct_assumptions ~projected_only:true
               ~excluded_heads:local_module_expression_names
@@ -9320,7 +9274,7 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                 || same_available_assumption_shape left right)
               ~order_source_requirements all_named_requirements
               ~projected_field_requirements:signature_target_requirements
-              ~projected_root_requirements expression
+              expression
           else expression
         in
         let e = materialize e in

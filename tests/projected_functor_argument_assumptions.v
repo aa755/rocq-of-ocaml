@@ -146,11 +146,9 @@ Definition Result_fargs
   Use.Build_FArgs
     ({|
       FIELD.zero :=
-        ((Base (_rocq_module_assumption_0 := _rocq_module_assumption_0)).(MakeField.MakeField_result.zero)
-          (_rocq_assumption_0 := _rocq_module_assumption_1));
+        (Base (_rocq_module_assumption_0 := _rocq_module_assumption_0)).(MakeField.MakeField_result.zero);
       FIELD.sub :=
-        ((Base (_rocq_module_assumption_0 := _rocq_module_assumption_0)).(MakeField.MakeField_result.sub)
-          (_rocq_assumption_0 := _rocq_module_assumption_1))
+        (Base (_rocq_module_assumption_0 := _rocq_module_assumption_0)).(MakeField.MakeField_result.sub)
     |} :
       FIELD
         (t :=

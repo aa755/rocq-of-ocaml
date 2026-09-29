@@ -195,8 +195,7 @@ Module Result.
     Extension.Build_FArgs Concrete
       (let modulus :=
         let opened_module_911 := Operations Concrete in
-        (opened_module_911.(Operations.Operations_result.get)
-          (_rocq_assumption_0 := _rocq_module_assumption_0)) tt in
+        opened_module_911.(Operations.Operations_result.get) tt in
       ({|
         Extension_Modulus_signature.modulus := modulus
       |} : Extension_Modulus_signature)).
