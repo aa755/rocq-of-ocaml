@@ -25,7 +25,7 @@ OCamlZ.v
 OCamlInt64.v
 OCamlList.v
 OCamlMap.v
-OCamlMapBulkProbe.v
+OCamlMapBulkInt.v
 OCamlOption.v
 OCamlResult.v
 OCamlSeq.v

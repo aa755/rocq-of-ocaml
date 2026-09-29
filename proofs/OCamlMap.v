@@ -502,11 +502,15 @@ Module Make.
       | [] => ([], binding :: reversed)
       end.
 
+    Definition finish_sorted_update_state {a : Set}
+        (state : t a * list (key * a)) : t a :=
+      let '(remaining, reversed) := state in
+      List.rev_append reversed remaining.
+
     Definition merge_sorted_updates {a : Set}
         (updates : list (key * a)) (map : t a) : t a :=
-      let '(remaining, reversed) :=
-        List.fold_left add_sorted_entry updates (map, []) in
-      List.rev_append reversed remaining.
+      finish_sorted_update_state
+        (List.fold_left add_sorted_entry updates (map, [])).
 
     Definition add_seq {a : Set}
         (sequence : OCamlSeq.t (key * a)) (map : t a) : t a :=
