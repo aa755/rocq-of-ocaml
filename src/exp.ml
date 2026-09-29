@@ -2720,6 +2720,16 @@ let materialize_direct_assumptions ?(projected_only = false)
     (marked <> [], implicits)
   in
   let projection_applications path requirements =
+    let inherited_requirements () =
+      let root_requirements = projected_root_requirements path in
+      let _, projected =
+        List.partition (requirement_is_in root_requirements) requirements
+      in
+      (* Rocq sections omit unused context variables, so the names and
+         positions of a module value's generalized arguments cannot be
+         reconstructed from its pre-generalization requirement list. *)
+      projected
+    in
     let projected =
       match projected_field_requirements path with
       | _ :: _ as field_requirements -> (
@@ -2732,16 +2742,8 @@ let materialize_direct_assumptions ?(projected_only = false)
               field_requirements
           with
           | Some providers -> providers
-          | None -> [] )
-      | [] ->
-        let root_requirements = projected_root_requirements path in
-        let _, projected =
-          List.partition (requirement_is_in root_requirements) requirements
-        in
-        (* Rocq sections omit unused context variables, so the names and
-           positions of a module value's generalized arguments cannot be
-           reconstructed from its pre-generalization requirement list. *)
-        projected
+          | None -> inherited_requirements () )
+      | [] -> inherited_requirements ()
     in
     applications_of ~module_reference:false projected
   in
