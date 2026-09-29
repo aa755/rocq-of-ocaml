@@ -8746,7 +8746,21 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                          ~map_variable_implicits:
                            rematerialize_variable_implicits map_typ map_path
                   in
-                  List.hd singleton.Exp.Definition.cases);
+                  let header, body =
+                    List.hd singleton.Exp.Definition.cases
+                  in
+                  let body =
+                    Option.map
+                      (Exp.materialize_direct_assumptions ~projected_only:true
+                         ~requirements_match:(fun left right ->
+                           Exp.compare_assumption_requirement left right = 0
+                           || same_available_assumption_shape left right)
+                         ~projected_field_requirements:
+                           signature_target_requirements
+                         all_named_requirements)
+                      body
+                  in
+                  (header, body));
           }
         in
         Value.to_coq fargs { value with Value.definition }
@@ -9296,6 +9310,7 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                 Exp.compare_assumption_requirement left right = 0
                 || same_available_assumption_shape left right)
               ~order_source_requirements all_named_requirements
+              ~projected_field_requirements:signature_target_requirements
               ~projected_root_requirements expression
           else if all_named_requirements <> [] then
             Exp.materialize_direct_assumptions ~projected_only:true
@@ -9304,6 +9319,7 @@ let rec to_coq ?(normalize_included_roots = []) ?(external_specs = [])
                 Exp.compare_assumption_requirement left right = 0
                 || same_available_assumption_shape left right)
               ~order_source_requirements all_named_requirements
+              ~projected_field_requirements:signature_target_requirements
               ~projected_root_requirements expression
           else expression
         in

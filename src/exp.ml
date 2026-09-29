@@ -2640,6 +2640,7 @@ let rec mark_module_reference = function
 let materialize_direct_assumptions ?(projected_only = false)
     ?(excluded_heads = Name.Set.empty)
     ?(projected_root_requirements = fun (_ : MixedPath.t) -> [])
+    ?(projected_field_requirements = fun (_ : MixedPath.t) -> [])
     ?(order_source_requirements = fun (_ : t) requirements -> requirements)
     ?(requirements_match =
       fun left right -> compare_assumption_requirement left right = 0)
@@ -2650,11 +2651,27 @@ let materialize_direct_assumptions ?(projected_only = false)
     |> List.find_map (fun (name, candidate) ->
         if requirements_match candidate requirement then Some name else None)
   in
-  let requirements_with_providers requirements =
+  let field_provider requirement =
+    match
+      assumptions
+      |> List.find_opt (fun (_, candidate) ->
+          compare_assumption_requirement candidate requirement = 0)
+    with
+    | Some (name, _) -> Some name
+    | None -> (
+        match
+          assumptions
+          |> List.filter (fun (_, candidate) ->
+              requirements_match candidate requirement)
+        with
+        | [ (name, _) ] -> Some name
+        | [] | _ :: _ :: _ -> None)
+  in
+  let requirements_with_providers ?(find_provider = provider) requirements =
     requirements
     |> List.fold_left
          (fun result requirement ->
-           match (result, provider requirement) with
+           match (result, find_provider requirement) with
            | Some requirements, Some provider ->
                Some (requirements @ [ (requirement, provider) ])
            | Some _, None | None, _ -> None)
@@ -2680,6 +2697,15 @@ let materialize_direct_assumptions ?(projected_only = false)
         in
         (prefix ^ string_of_int index, Name.to_string provider))
   in
+  let append_missing_applications existing applications =
+    applications
+    |> List.fold_left
+         (fun existing (label, value) ->
+           if List.exists (fun (name, _) -> String.equal name label) existing
+           then existing
+           else existing @ [ (label, value) ])
+         existing
+  in
   let requirement_is_in candidates (requirement, _) =
     List.exists
       (fun candidate -> requirements_match candidate requirement)
@@ -2694,15 +2720,29 @@ let materialize_direct_assumptions ?(projected_only = false)
     (marked <> [], implicits)
   in
   let projection_applications path requirements =
-    let root_requirements = projected_root_requirements path in
-    let _, projected =
-      List.partition (requirement_is_in root_requirements) requirements
+    let projected =
+      match projected_field_requirements path with
+      | _ :: _ as field_requirements -> (
+          (* The emitted result field's telescope is authoritative. A parent
+             module may carry requirements of the same types, but its record
+             argument does not discharge the field's own binders. Prefer
+             exact providers and use shape matching only when unambiguous. *)
+          match
+            requirements_with_providers ~find_provider:field_provider
+              field_requirements
+          with
+          | Some providers -> providers
+          | None -> [] )
+      | [] ->
+        let root_requirements = projected_root_requirements path in
+        let _, projected =
+          List.partition (requirement_is_in root_requirements) requirements
+        in
+        (* Rocq sections omit unused context variables, so the names and
+           positions of a module value's generalized arguments cannot be
+           reconstructed from its pre-generalization requirement list. *)
+        projected
     in
-    (* Rocq sections omit unused context variables, so the names and positions
-       of a module value's generalized arguments cannot be reconstructed from
-       its pre-generalization requirement list.  Leave those arguments to
-       type-class inference and materialize only the selected field's own
-       telescope. *)
     applications_of ~module_reference:false projected
   in
   let add_applications requirements = function
@@ -2729,7 +2769,9 @@ let materialize_direct_assumptions ?(projected_only = false)
         let projected_applications =
           projection_applications path requirements
         in
-        Some (Variable (path, implicits @ projected_applications))
+        Some
+          (Variable
+             (path, append_missing_applications implicits projected_applications))
     | Variable
         (MixedPath.AppliedAccess (root, existing, (_ :: _ as fields)), implicits)
       ->
@@ -2737,7 +2779,9 @@ let materialize_direct_assumptions ?(projected_only = false)
         let projected_applications =
           projection_applications path requirements
         in
-        Some (Variable (path, implicits @ projected_applications))
+        Some
+          (Variable
+             (path, append_missing_applications implicits projected_applications))
     | Field (Variable (path, implicits), field) ->
         let projected =
           match path with
