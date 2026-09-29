@@ -1,4 +1,4 @@
-From Stdlib Require Import ZArith List.
+From Stdlib Require Import ZArith List Bool.
 Require Import RocqOfOCaml.OCamlMap RocqOfOCaml.OCamlSeq.
 Import ListNotations.
 Local Open Scope Z_scope.
@@ -42,4 +42,51 @@ Example descending_updates_use_reference_path :
     (reference_add_seq [(0, 0); (1, 1)] []) =
   reference_add_seq [(3, 30); (2, 20); (-1, 10)]
     (reference_add_seq [(0, 0); (1, 1)] []).
+Proof. vm_compute. reflexivity. Qed.
+
+Definition sample_bindings : list (Z * Z) :=
+  [(-1, 11); (0, 0); (0, 99); (1, 1); (2, 2)].
+
+Fixpoint lists_exact (count : nat) : list (list (Z * Z)) :=
+  match count with
+  | Datatypes.O => [[]]
+  | Datatypes.S previous =>
+      List.concat
+        (List.map
+          (fun binding =>
+            List.map (fun values => binding :: values) (lists_exact previous))
+          sample_bindings)
+  end.
+
+Definition initial_cases :=
+  lists_exact 0 ++ lists_exact 1 ++ lists_exact 2.
+Definition update_cases :=
+  initial_cases ++ lists_exact 3.
+
+Definition binding_eqb (left right : Z * Z) : bool :=
+  Z.eqb (fst left) (fst right) && Z.eqb (snd left) (snd right).
+
+Fixpoint bindings_eqb (left right : list (Z * Z)) : bool :=
+  match left, right with
+  | [], [] => true
+  | left_binding :: left_tail, right_binding :: right_tail =>
+      binding_eqb left_binding right_binding &&
+        bindings_eqb left_tail right_tail
+  | _, _ => false
+  end.
+
+Definition matches_reference
+    (initial_updates updates : list (Z * Z)) : bool :=
+  let initial := reference_add_seq initial_updates [] in
+  bindings_eqb
+    (bulk_add_seq updates initial)
+    (reference_add_seq updates initial).
+
+Definition finite_comparison : bool :=
+  List.forallb
+    (fun initial_updates =>
+      List.forallb (matches_reference initial_updates) update_cases)
+    initial_cases.
+
+Example finite_comparison_holds : finite_comparison = true.
 Proof. vm_compute. reflexivity. Qed.
