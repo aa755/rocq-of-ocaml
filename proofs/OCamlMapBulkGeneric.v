@@ -1,6 +1,6 @@
 From Stdlib Require Import ZArith List Bool Lia.
 Require Import RocqOfOCaml.OCamlMap RocqOfOCaml.OCamlSeq
-  RocqOfOCaml.OCamlMapBulkInt.
+  RocqOfOCaml.OCamlMapBulkInt RocqOfOCaml.OCamlZ.
 Import ListNotations.
 Local Open Scope Z_scope.
 
@@ -387,6 +387,54 @@ Section IntegerComparator.
     - exact integer_same_reflexive.
   Qed.
 End IntegerComparator.
+
+(** [OCamlZ.compare] and [OCamlInt.compare] have the same Gallina body.
+    The generic bulk law therefore applies to the numeric maps as well. *)
+Definition z_order : OCamlMap.OrderedType (t := Z) :=
+  {| OCamlMap.OrderedType.compare := OCamlZ.compare |}.
+
+Lemma z_order_is_int_order : z_order = int_order.
+Proof. reflexivity. Qed.
+
+Corollary z_add_seq_from_generic_law {A : Set}
+    (updates initial : list (Z * A)) :
+  @bulk_add_seq Z A z_order updates initial =
+  @reference_add_seq Z A z_order updates initial.
+Proof.
+  rewrite z_order_is_int_order.
+  apply int_add_seq_from_generic_law.
+Qed.
+
+(** Numeric's ordered key maps compare [to_z] images of abstract values.
+    The generic theorem permits distinct representations with the same
+    numeric image, so no injectivity premise is needed. *)
+Definition z_pullback_order {K : Set} (to_z : K -> Z) :
+    OCamlMap.OrderedType (t := K) :=
+  {| OCamlMap.OrderedType.compare :=
+       fun left right => OCamlZ.compare (to_z left) (to_z right) |}.
+
+Corollary z_pullback_add_seq_from_generic_law {K A : Set}
+    (to_z : K -> Z) (updates initial : list (K * A)) :
+  @bulk_add_seq K A (z_pullback_order to_z) updates initial =
+  @reference_add_seq K A (z_pullback_order to_z) updates initial.
+Proof.
+  apply ordered_add_seq_matches_original_fold.
+  - intros x y z xy yz.
+    exact (integer_before_transitive (to_z x) (to_z y) (to_z z) xy yz).
+  - intros x y xy.
+    exact (integer_before_asymmetric (to_z x) (to_z y) xy).
+  - intros x y xy.
+    exact (integer_before_excludes_reverse_same (to_z x) (to_z y) xy).
+  - intros x y equal.
+    exact (integer_same_excludes_before (to_z x) (to_z y) equal).
+  - intros x y not_before not_same.
+    exact (integer_reverse_when_distinct (to_z x) (to_z y)
+      not_before not_same).
+  - intros x y z equal.
+    exact (integer_same_respects_before (to_z x) (to_z y) (to_z z)
+      equal).
+  - intro x. exact (integer_same_reflexive (to_z x)).
+Qed.
 
 (** The raw [OrderedType] record cannot support an unconditional theorem:
     this comparison incorrectly puts either distinct key before the other. *)
