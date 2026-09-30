@@ -179,14 +179,35 @@ Definition mapi
     (function_value : int -> ascii -> ascii) (value : string) : string :=
   mapi_from function_value 0 value.
 
-Fixpoint fold_left {acc : Set}
+Fixpoint fold_left_structural {acc : Set}
     (function_value : acc -> ascii -> acc)
     (state : acc) (value : string) : acc :=
   match value with
   | EmptyString => state
   | String head tail =>
-      fold_left function_value (function_value state head) tail
+      fold_left_structural function_value (function_value state head) tail
   end.
+
+(** The list conversion is mapped to a linear native operation during
+    extraction.  Folding over it avoids repeated suffix copies from
+    [string_rect] while retaining the structural model's value. *)
+Definition fold_left {acc : Set}
+    (function_value : acc -> ascii -> acc)
+    (state : acc) (value : string) : acc :=
+  List.fold_left function_value
+    (Strings.String.list_ascii_of_string value) state.
+
+Lemma fold_left_matches_structural {acc : Set}
+    (function_value : acc -> ascii -> acc)
+    (state : acc) (value : string) :
+  fold_left function_value state value =
+    fold_left_structural function_value state value.
+Proof.
+  revert state.
+  induction value as [|head tail IH]; intro state; simpl.
+  - reflexivity.
+  - apply IH.
+Qed.
 
 Fixpoint fold_right {acc : Set}
     (function_value : ascii -> acc -> acc)
