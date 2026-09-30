@@ -3,6 +3,7 @@ Require Import RocqOfOCaml.Libraries.
 Require Import RocqOfOCaml.Basics.
 Require Import RocqOfOCaml.Bigstring.
 Require Import RocqOfOCaml.OCamlBigarray.
+Require Import RocqOfOCaml.Libsecp256k1.
 
 (** [Array1.get] is executable and has the same typed exceptional branch as
     [OCamlString.get].  In-range reads reduce to the byte at that index. *)
@@ -45,3 +46,27 @@ Proof.
 Qed.
 
 Print Assumptions bigarray_get_in_bounds_fallback_irrelevant.
+
+Lemma uncompressed_public_key_read_fallback_irrelevant
+    (left right : Unreachable ascii)
+    (context : Libsecp256k1.External.Context.t)
+    (key : Libsecp256k1.External.Key.t
+      Libsecp256k1.External.Key.public)
+    (index : int) :
+  (0 <= index < 64)%Z ->
+  @OCamlBigarray.Array1.get left
+    (Libsecp256k1.External.Key.to_bytes (Some false) context key)
+    (index + 1)%Z =
+  @OCamlBigarray.Array1.get right
+    (Libsecp256k1.External.Key.to_bytes (Some false) context key)
+    (index + 1)%Z.
+Proof.
+  intro bounded.
+  apply bigarray_get_in_bounds_fallback_irrelevant.
+  pose proof
+    (Libsecp256k1.External.Key.to_bytes_uncompressed_length context key)
+    as key_length.
+  lia.
+Qed.
+
+Print Assumptions uncompressed_public_key_read_fallback_irrelevant.
