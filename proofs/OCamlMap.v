@@ -515,9 +515,9 @@ Module Make.
     Definition add_seq {a : Set}
         (sequence : OCamlSeq.t (key * a)) (map : t a) : t a :=
       let updates :=
-        List.rev
+        List.rev_append
           (OCamlSeq.fold_left
-            (fun reversed binding => binding :: reversed) [] sequence) in
+            (fun reversed binding => binding :: reversed) [] sequence) [] in
       if strictly_increasing updates
       then merge_sorted_updates updates map
       else List.fold_left

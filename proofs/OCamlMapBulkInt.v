@@ -238,14 +238,14 @@ Proof.
 Qed.
 
 Lemma collect_sequence_restores_list {A : Set} (values : list A) :
-  List.rev
+  List.rev_append
     (OCamlSeq.fold_left
       (fun reversed value => value :: reversed)
-      [] (OCamlSeq.of_list values)) = values.
+      [] (OCamlSeq.of_list values)) [] = values.
 Proof.
   rewrite collect_sequence_reverses_into_accumulator.
-  rewrite List.rev_append_rev.
-  rewrite List.app_nil_r.
+  rewrite !List.rev_append_rev.
+  rewrite !List.app_nil_r.
   apply List.rev_involutive.
 Qed.
 
