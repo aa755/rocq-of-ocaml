@@ -452,7 +452,10 @@ Lemma string_key_before (left right : string) :
   before string_order left right = Basics.String.ltb left right.
 Proof.
   unfold before, OCamlMap.Make.key_before, OCamlMap.Make.key_compare,
-    string_order, OCamlString.compare.
+    string_order.
+  cbn [OCamlMap.OrderedType.compare].
+  rewrite OCamlString.compare_matches_structural.
+  unfold OCamlString.compare_structural.
   simpl.
   destruct (Strings.String.eqb left right) eqn:equal.
   - apply Strings.String.eqb_eq in equal. subst.
@@ -464,7 +467,10 @@ Lemma string_key_same (left right : string) :
   same string_order left right = Strings.String.eqb left right.
 Proof.
   unfold same, OCamlMap.Make.key_equal, OCamlMap.Make.key_compare,
-    string_order, OCamlString.compare.
+    string_order.
+  cbn [OCamlMap.OrderedType.compare].
+  rewrite OCamlString.compare_matches_structural.
+  unfold OCamlString.compare_structural.
   simpl.
   destruct (Strings.String.eqb left right); simpl; [reflexivity|].
   destruct (Basics.String.ltb left right); reflexivity.

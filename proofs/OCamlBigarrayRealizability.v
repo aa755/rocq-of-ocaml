@@ -136,7 +136,7 @@ Lemma ecrecover_public_key_bytes_fallback_irrelevant
       (Libsecp256k1.External.Key.to_bytes (Some false) context key)
       (index + 1)%Z).
 Proof.
-  unfold OCamlString.init.
+  rewrite !OCamlString.init_matches_structural.
   cbn.
   apply init_nat_ext.
   intros offset bounded.

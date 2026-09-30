@@ -40,7 +40,27 @@ Definition make `{Unreachable string}
     (count : int) (character : ascii) : string :=
   if Z.ltb count 0
   then unreachable
+  else Strings.String.string_of_list_ascii
+    (List.repeat character (Z.to_nat count)).
+
+Lemma make_list_matches_structural (count : nat) (character : ascii) :
+  Strings.String.string_of_list_ascii (List.repeat character count) =
+  make_nat count character.
+Proof.
+  induction count as [|count IH]; cbn; [reflexivity|].
+  now rewrite IH.
+Qed.
+
+Lemma make_matches_structural `{Unreachable string}
+    (count : int) (character : ascii) :
+  make count character =
+  if Z.ltb count 0 then unreachable
   else make_nat (Z.to_nat count) character.
+Proof.
+  unfold make.
+  destruct (Z.ltb count 0); [reflexivity|].
+  apply make_list_matches_structural.
+Qed.
 
 Fixpoint init_nat
     (remaining : nat) (index : int) (element : int -> ascii) : string :=
@@ -50,11 +70,43 @@ Fixpoint init_nat
       String (element index) (init_nat remaining' (index + 1) element)
   end.
 
+Fixpoint init_chars
+    (remaining : nat) (index : int) (element : int -> ascii) : list ascii :=
+  match remaining with
+  | O => []
+  | S remaining' => element index ::
+      init_chars remaining' (index + 1) element
+  end.
+
+Lemma init_chars_match_structural (remaining : nat)
+    (index : int) (element : int -> ascii) :
+  Strings.String.string_of_list_ascii
+    (init_chars remaining index element) =
+  init_nat remaining index element.
+Proof.
+  revert index.
+  induction remaining as [|remaining IH]; intro index;
+    cbn; [reflexivity|].
+  now rewrite IH.
+Qed.
+
 Definition init `{Unreachable string}
     (count : int) (element : int -> ascii) : string :=
   if Z.ltb count 0
   then unreachable
+  else Strings.String.string_of_list_ascii
+    (init_chars (Z.to_nat count) 0 element).
+
+Lemma init_matches_structural `{Unreachable string}
+    (count : int) (element : int -> ascii) :
+  init count element =
+  if Z.ltb count 0 then unreachable
   else init_nat (Z.to_nat count) 0 element.
+Proof.
+  unfold init.
+  destruct (Z.ltb count 0); [reflexivity|].
+  apply init_chars_match_structural.
+Qed.
 
 Definition of_bytes (value : bytes) : string := value.
 
@@ -536,10 +588,70 @@ Parameter unsafe_blit : string -> int -> bytes -> int -> int -> unit.
 
 Definition equal : t -> t -> bool := Strings.String.eqb.
 
-Definition compare (left right : t) : int :=
+Definition compare_structural (left right : t) : int :=
   if Strings.String.eqb left right then
     0
   else if RocqOfOCaml.Basics.String.ltb left right then
     -1
   else
     1.
+
+Fixpoint chars_eqb (left right : list ascii) : bool :=
+  match left, right with
+  | [], [] => true
+  | left_head :: left_tail, right_head :: right_tail =>
+      Ascii.eqb left_head right_head && chars_eqb left_tail right_tail
+  | _, _ => false
+  end.
+
+Fixpoint chars_ltb (left right : list ascii) : bool :=
+  match left, right with
+  | [], [] => false
+  | [], _ :: _ => true
+  | _ :: _, [] => false
+  | left_head :: left_tail, right_head :: right_tail =>
+      let left_code := N_of_ascii left_head in
+      let right_code := N_of_ascii right_head in
+      (N.ltb left_code right_code ||
+       (N.eqb left_code right_code && chars_ltb left_tail right_tail))%bool
+  end.
+
+Definition compare (left right : t) : int :=
+  let left_chars := Strings.String.list_ascii_of_string left in
+  let right_chars := Strings.String.list_ascii_of_string right in
+  if chars_eqb left_chars right_chars then
+    0
+  else if chars_ltb left_chars right_chars then
+    -1
+  else
+    1.
+
+Lemma chars_eqb_matches_string (left right : string) :
+  chars_eqb (Strings.String.list_ascii_of_string left)
+    (Strings.String.list_ascii_of_string right) =
+  Strings.String.eqb left right.
+Proof.
+  revert right.
+  induction left as [|left_head left_tail IH];
+    intros [|right_head right_tail]; cbn; try reflexivity.
+  now rewrite IH.
+Qed.
+
+Lemma chars_ltb_matches_string (left right : string) :
+  chars_ltb (Strings.String.list_ascii_of_string left)
+    (Strings.String.list_ascii_of_string right) =
+  RocqOfOCaml.Basics.String.ltb left right.
+Proof.
+  revert right.
+  induction left as [|left_head left_tail IH];
+    intros [|right_head right_tail]; cbn; try reflexivity.
+  now rewrite IH.
+Qed.
+
+Lemma compare_matches_structural (left right : t) :
+  compare left right = compare_structural left right.
+Proof.
+  unfold compare, compare_structural.
+  rewrite chars_eqb_matches_string, chars_ltb_matches_string.
+  reflexivity.
+Qed.
