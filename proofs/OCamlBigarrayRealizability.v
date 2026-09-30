@@ -5,12 +5,35 @@ Require Import RocqOfOCaml.Bigstring.
 Require Import RocqOfOCaml.OCamlBigarray.
 Require Import RocqOfOCaml.Libsecp256k1.
 
-(** [Array1.get] is executable and has the same typed exceptional branch as
-    [OCamlString.get].  In-range reads reduce to the byte at that index. *)
+(** The upper-bound guard prevents the default extraction from converting a
+    huge invalid [Z] index into a Peano [nat]. It preserves the result and
+    exceptional branch of [OCamlString.get] for every index. *)
+Lemma string_get_out_of_bounds (value : string) (index : nat) :
+  (Strings.String.length value <= index)%nat ->
+  Strings.String.get index value = None.
+Proof.
+  revert index.
+  induction value as [|character rest IH]; intros [|index] bounded;
+    cbn in *; try reflexivity; try lia.
+  apply IH. lia.
+Qed.
+
 Lemma bigarray_get_is_string_get `{Unreachable ascii}
     (value : Bigstring.t) (index : int) :
   OCamlBigarray.Array1.get value index = OCamlString.get value index.
-Proof. reflexivity. Qed.
+Proof.
+  unfold OCamlBigarray.Array1.get.
+  destruct (Z.leb (OCamlString.length value) index) eqn:too_large;
+    [|reflexivity].
+  apply Z.leb_le in too_large.
+  unfold OCamlString.get.
+  assert (index <? 0 = false)%Z as nonnegative.
+  { apply Z.ltb_ge. unfold OCamlString.length in too_large. lia. }
+  rewrite nonnegative.
+  rewrite string_get_out_of_bounds.
+  - reflexivity.
+  - unfold OCamlString.length in too_large. lia.
+Qed.
 
 Print Assumptions bigarray_get_is_string_get.
 
@@ -33,7 +56,11 @@ Lemma bigarray_get_in_bounds_fallback_irrelevant
     @OCamlBigarray.Array1.get right value index.
 Proof.
   intro bounded.
-  unfold OCamlBigarray.Array1.get, OCamlString.get.
+  unfold OCamlBigarray.Array1.get.
+  assert (OCamlString.length value <=? index = false)%Z as in_bounds.
+  { apply Z.leb_gt. lia. }
+  rewrite in_bounds.
+  unfold OCamlString.get.
   assert (index <? 0 = false)%Z as nonnegative.
   { apply Z.ltb_ge. lia. }
   rewrite nonnegative.
