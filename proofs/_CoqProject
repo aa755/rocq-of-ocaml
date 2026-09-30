@@ -14,6 +14,7 @@ Libsecp256k1.v
 Ppx_deriving_runtime.v
 Ppx_deriving_yojson_runtime.v
 OCamlBigarray.v
+OCamlBigarrayRealizability.v
 OCamlChar.v
 OCamlFormat.v
 OCamlFun.v

@@ -39,12 +39,15 @@ Proof.
     apply Z.eqb_neq in different. rewrite different. reflexivity.
 Qed.
 
-Definition add_int (key_value value : Z) (map : list (Z * Z)) :
-    list (Z * Z) :=
-  @OCamlMap.Make.add Z int_order Z key_value value map.
+Section ArbitraryValues.
+Context {V : Set}.
+
+Definition add_int (key_value : Z) (value : V) (map : list (Z * V)) :
+    list (Z * V) :=
+  @OCamlMap.Make.add Z int_order V key_value value map.
 
 Lemma add_after_lower_prefix
-    (key_value value : Z) (prefix remaining : list (Z * Z)) :
+    (key_value : Z) (value : V) (prefix remaining : list (Z * V)) :
   Forall (fun binding => fst binding < key_value) prefix ->
   add_int key_value value (prefix ++ remaining) =
     prefix ++ add_int key_value value remaining.
@@ -65,10 +68,10 @@ Proof.
 Qed.
 
 Lemma sorted_entry_matches_add
-    (key_value value : Z) (remaining reversed : list (Z * Z)) :
+    (key_value : Z) (value : V) (remaining reversed : list (Z * V)) :
   Forall (fun binding => fst binding < key_value) reversed ->
   let '(next_remaining, next_reversed) :=
-    @OCamlMap.Make.add_sorted_entry Z int_order Z
+    @OCamlMap.Make.add_sorted_entry Z int_order V
       (remaining, reversed) (key_value, value) in
   List.rev_append next_reversed next_remaining =
     add_int key_value value (List.rev_append reversed remaining).
@@ -123,12 +126,12 @@ Proof.
 Qed.
 
 Lemma sorted_entry_prefix_below_later
-    (key_value value later : Z)
-    (remaining reversed : list (Z * Z)) :
+    (key_value : Z) (value : V) (later : Z)
+    (remaining reversed : list (Z * V)) :
   key_value < later ->
   Forall (fun binding => fst binding < key_value) reversed ->
   let '(_, next_reversed) :=
-    @OCamlMap.Make.add_sorted_entry Z int_order Z
+    @OCamlMap.Make.add_sorted_entry Z int_order V
       (remaining, reversed) (key_value, value) in
   Forall (fun binding => fst binding < later) next_reversed.
 Proof.
@@ -160,14 +163,14 @@ Proof.
 Qed.
 
 Lemma fold_increasing_updates_matches_add
-    (updates : list (Z * Z)) :
-  forall (previous : Z) (remaining reversed : list (Z * Z)),
-    @OCamlMap.Make.strictly_increasing_from Z int_order Z
+    (updates : list (Z * V)) :
+  forall (previous : Z) (remaining reversed : list (Z * V)),
+    @OCamlMap.Make.strictly_increasing_from Z int_order V
       previous updates = true ->
     Forall (fun binding => fst binding <= previous) reversed ->
-    @OCamlMap.Make.finish_sorted_update_state Z Z
+    @OCamlMap.Make.finish_sorted_update_state Z V
       (List.fold_left
-        (@OCamlMap.Make.add_sorted_entry Z int_order Z)
+        (@OCamlMap.Make.add_sorted_entry Z int_order V)
         updates (remaining, reversed)) =
       List.fold_left
         (fun current '(key_value, value) =>
@@ -186,7 +189,7 @@ Proof.
     { eapply List.Forall_impl; [|exact bounded].
       intros [binding_key binding_value] lower_key.
       cbn [fst] in *. lia. }
-    remember (@OCamlMap.Make.add_sorted_entry Z int_order Z
+    remember (@OCamlMap.Make.add_sorted_entry Z int_order V
       (remaining, reversed) (key_value, value)) as next_state
       eqn:next_state_eq.
     destruct next_state as [next_remaining next_reversed].
@@ -213,15 +216,15 @@ Proof.
 Qed.
 
 Definition reference_add_seq
-    (updates initial : list (Z * Z)) : list (Z * Z) :=
+    (updates initial : list (Z * V)) : list (Z * V) :=
   List.fold_left
     (fun current '(key_value, value) =>
-      @OCamlMap.Make.add Z int_order Z key_value value current)
+      @OCamlMap.Make.add Z int_order V key_value value current)
     updates initial.
 
 Definition bulk_add_seq
-    (updates initial : list (Z * Z)) : list (Z * Z) :=
-  @OCamlMap.Make.add_seq Z int_order Z
+    (updates initial : list (Z * V)) : list (Z * V) :=
+  @OCamlMap.Make.add_seq Z int_order V
     (OCamlSeq.of_list updates) initial.
 
 Lemma collect_sequence_reverses_into_accumulator {A : Set}
@@ -250,8 +253,8 @@ Proof.
 Qed.
 
 Lemma unsorted_updates_use_original_fold
-    (updates initial : list (Z * Z)) :
-  @OCamlMap.Make.strictly_increasing Z int_order Z updates = false ->
+    (updates initial : list (Z * V)) :
+  @OCamlMap.Make.strictly_increasing Z int_order V updates = false ->
   bulk_add_seq updates initial = reference_add_seq updates initial.
 Proof.
   intro not_increasing.
@@ -262,9 +265,9 @@ Proof.
 Qed.
 
 Lemma fold_sorted_updates_into_empty
-    (updates reversed : list (Z * Z)) :
+    (updates reversed : list (Z * V)) :
   List.fold_left
-    (@OCamlMap.Make.add_sorted_entry Z int_order Z)
+    (@OCamlMap.Make.add_sorted_entry Z int_order V)
     updates ([], reversed) =
   ([], List.rev_append updates reversed).
 Proof.
@@ -274,8 +277,8 @@ Proof.
   - apply IH.
 Qed.
 
-Lemma merge_sorted_updates_into_empty (updates : list (Z * Z)) :
-  @OCamlMap.Make.merge_sorted_updates Z int_order Z updates [] = updates.
+Lemma merge_sorted_updates_into_empty (updates : list (Z * V)) :
+  @OCamlMap.Make.merge_sorted_updates Z int_order V updates [] = updates.
 Proof.
   unfold OCamlMap.Make.merge_sorted_updates.
   rewrite fold_sorted_updates_into_empty.
@@ -286,17 +289,17 @@ Proof.
 Qed.
 
 Theorem int_add_seq_matches_original_fold
-    (updates initial : list (Z * Z)) :
+    (updates initial : list (Z * V)) :
   bulk_add_seq updates initial = reference_add_seq updates initial.
 Proof.
   unfold bulk_add_seq, OCamlMap.Make.add_seq, reference_add_seq.
   rewrite collect_sequence_restores_list.
   destruct updates as [|[first_key first_value] tail].
   - reflexivity.
-  - destruct (@OCamlMap.Make.strictly_increasing Z int_order Z
+  - destruct (@OCamlMap.Make.strictly_increasing Z int_order V
       ((first_key, first_value) :: tail)) eqn:ordered.
     + assert (from_predecessor :
-        @OCamlMap.Make.strictly_increasing_from Z int_order Z
+        @OCamlMap.Make.strictly_increasing_from Z int_order V
           (first_key - 1) ((first_key, first_value) :: tail) = true).
       { cbn [OCamlMap.Make.strictly_increasing_from].
         rewrite int_key_before.
@@ -311,6 +314,8 @@ Proof.
       * constructor.
     + reflexivity.
 Qed.
+
+End ArbitraryValues.
 
 Example sorted_updates_merge_and_replace :
   bulk_add_seq [(0, 10); (3, 30); (4, 40); (6, 60)]
