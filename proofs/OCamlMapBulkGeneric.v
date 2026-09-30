@@ -1,6 +1,7 @@
-From Stdlib Require Import ZArith List Bool Lia.
+From Stdlib Require Import ZArith List Bool Lia String.
 Require Import RocqOfOCaml.OCamlMap RocqOfOCaml.OCamlSeq
-  RocqOfOCaml.OCamlMapBulkInt RocqOfOCaml.OCamlZ.
+  RocqOfOCaml.OCamlMapBulkInt RocqOfOCaml.OCamlZ
+  RocqOfOCaml.OCamlString RocqOfOCaml.Basics.
 Import ListNotations.
 Local Open Scope Z_scope.
 
@@ -434,6 +435,157 @@ Proof.
     exact (integer_same_respects_before (to_z x) (to_z y) (to_z z)
       equal).
   - intro x. exact (integer_same_reflexive (to_z x)).
+Qed.
+
+Definition string_order : OCamlMap.OrderedType (t := string) :=
+  {| OCamlMap.OrderedType.compare := OCamlString.compare |}.
+
+Lemma string_ltb_irreflexive (value : string) :
+  Basics.String.ltb value value = false.
+Proof.
+  destruct (Basics.String.ltb_spec value value) as [less|not_less].
+  - exfalso. exact (@Basics.String.Lt.irreflexivity value less).
+  - reflexivity.
+Qed.
+
+Lemma string_key_before (left right : string) :
+  before string_order left right = Basics.String.ltb left right.
+Proof.
+  unfold before, OCamlMap.Make.key_before, OCamlMap.Make.key_compare,
+    string_order, OCamlString.compare.
+  simpl.
+  destruct (Strings.String.eqb left right) eqn:equal.
+  - apply Strings.String.eqb_eq in equal. subst.
+    rewrite string_ltb_irreflexive. reflexivity.
+  - destruct (Basics.String.ltb left right); reflexivity.
+Qed.
+
+Lemma string_key_same (left right : string) :
+  same string_order left right = Strings.String.eqb left right.
+Proof.
+  unfold same, OCamlMap.Make.key_equal, OCamlMap.Make.key_compare,
+    string_order, OCamlString.compare.
+  simpl.
+  destruct (Strings.String.eqb left right); simpl; [reflexivity|].
+  destruct (Basics.String.ltb left right); reflexivity.
+Qed.
+
+Lemma string_ltb_true_lt (left right : string) :
+  Basics.String.ltb left right = true -> Basics.String.Lt.t left right.
+Proof.
+  intro ordered.
+  destruct (Basics.String.ltb_spec left right) as [less|not_less].
+  - exact less.
+  - discriminate.
+Qed.
+
+Lemma string_lt_ltb_true (left right : string) :
+  Basics.String.Lt.t left right -> Basics.String.ltb left right = true.
+Proof.
+  intro less.
+  destruct (Basics.String.ltb_spec left right) as [ordered|not_ordered].
+  - reflexivity.
+  - contradiction.
+Qed.
+
+Lemma string_before_transitive :
+  forall x y z : string,
+    before string_order x y = true ->
+    before string_order y z = true ->
+    before string_order x z = true.
+Proof.
+  intros x y z xy yz.
+  rewrite string_key_before in *.
+  apply string_lt_ltb_true.
+  eapply Basics.String.Lt.transitivity.
+  - apply string_ltb_true_lt. exact xy.
+  - apply string_ltb_true_lt. exact yz.
+Qed.
+
+Lemma string_before_asymmetric :
+  forall x y : string,
+    before string_order x y = true ->
+    before string_order y x = false.
+Proof.
+  intros x y xy.
+  rewrite string_key_before in *.
+  destruct (Basics.String.ltb y x) eqn:yx; [|reflexivity].
+  exfalso.
+  apply (@Basics.String.Lt.irreflexivity x).
+  eapply Basics.String.Lt.transitivity.
+  - apply string_ltb_true_lt. exact xy.
+  - apply string_ltb_true_lt. exact yx.
+Qed.
+
+Lemma string_before_excludes_reverse_same :
+  forall x y : string,
+    before string_order x y = true ->
+    same string_order y x = false.
+Proof.
+  intros x y xy.
+  rewrite string_key_before in xy.
+  rewrite string_key_same.
+  destruct (Strings.String.eqb y x) eqn:equal; [|reflexivity].
+  apply Strings.String.eqb_eq in equal. subst.
+  rewrite string_ltb_irreflexive in xy. discriminate.
+Qed.
+
+Lemma string_same_excludes_before :
+  forall x y : string,
+    same string_order x y = true ->
+    before string_order x y = false.
+Proof.
+  intros x y equal.
+  rewrite string_key_same in equal.
+  apply Strings.String.eqb_eq in equal. subst.
+  rewrite string_key_before. apply string_ltb_irreflexive.
+Qed.
+
+Lemma string_reverse_when_distinct :
+  forall x y : string,
+    before string_order x y = false ->
+    same string_order y x = false ->
+    before string_order y x = true.
+Proof.
+  intros x y not_before not_same.
+  rewrite string_key_before in *.
+  rewrite string_key_same in not_same.
+  assert (different : Strings.String.eqb x y = false).
+  { destruct (Strings.String.eqb x y) eqn:equal; [|reflexivity].
+    apply Strings.String.eqb_eq in equal. subst.
+    rewrite Strings.String.eqb_refl in not_same. discriminate. }
+  exact (Basics.String.ltb_or_eqb_or_gtb x y not_before different).
+Qed.
+
+Lemma string_same_respects_before :
+  forall x y z : string,
+    same string_order x y = true ->
+    before string_order x z = before string_order y z.
+Proof.
+  intros x y z equal.
+  rewrite string_key_same in equal.
+  apply Strings.String.eqb_eq in equal. subst. reflexivity.
+Qed.
+
+Lemma string_same_reflexive :
+  forall x : string, same string_order x x = true.
+Proof.
+  intro x. rewrite string_key_same. apply Strings.String.eqb_refl.
+Qed.
+
+Corollary string_add_seq_from_generic_law {A : Set}
+    (updates initial : list (string * A)) :
+  @bulk_add_seq string A string_order updates initial =
+  @reference_add_seq string A string_order updates initial.
+Proof.
+  apply ordered_add_seq_matches_original_fold.
+  - exact string_before_transitive.
+  - exact string_before_asymmetric.
+  - exact string_before_excludes_reverse_same.
+  - exact string_same_excludes_before.
+  - exact string_reverse_when_distinct.
+  - exact string_same_respects_before.
+  - exact string_same_reflexive.
 Qed.
 
 (** The raw [OrderedType] record cannot support an unconditional theorem:
