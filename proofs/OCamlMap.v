@@ -461,7 +461,9 @@ Module Make.
     (** The source [Map.add_seq] accepts arbitrary key order and duplicate
         keys. Only a strictly increasing sequence can use the linear merge;
         every other sequence retains the original fold of [add]. The fast
-        path relies on the sorted-map invariant maintained by [Make]. *)
+        path relies on the comparator defining an order; the conditional
+        generic theorem in [OCamlMapBulkGeneric] also covers arbitrary
+        initial lists and comparator-equivalent key representations. *)
     Fixpoint strictly_increasing_from {a : Set}
         (previous : key) (updates : list (key * a)) : bool :=
       match updates with
