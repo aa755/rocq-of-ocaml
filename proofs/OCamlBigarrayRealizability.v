@@ -70,3 +70,51 @@ Proof.
 Qed.
 
 Print Assumptions uncompressed_public_key_read_fallback_irrelevant.
+
+Lemma init_nat_ext (count : nat) (start : int)
+    (left right : int -> ascii) :
+  (forall offset, (0 <= offset < Z.of_nat count)%Z ->
+    left (start + offset)%Z = right (start + offset)%Z) ->
+  OCamlString.init_nat count start left =
+    OCamlString.init_nat count start right.
+Proof.
+  revert start.
+  induction count as [|count IH]; intros start equal_at; cbn;
+    [reflexivity|].
+  f_equal.
+  - replace start with (start + 0)%Z at 1 by lia.
+    replace start with (start + 0)%Z at 2 by lia.
+    apply equal_at. lia.
+  - apply IH. intros offset bounded.
+    replace (start + 1 + offset)%Z with (start + (offset + 1))%Z
+      by lia.
+    apply equal_at. lia.
+Qed.
+
+(** This is the 64-byte [Bytes.init] expression inside generated ecrecover.
+    It isolates the new Bigarray read site; other uses of the shared
+    [Unreachable ascii] binder in ecrecover require separate analysis. *)
+Lemma ecrecover_public_key_bytes_fallback_irrelevant
+    (left right : Unreachable ascii)
+    (string_fallback : Unreachable string)
+    (context : Libsecp256k1.External.Context.t)
+    (key : Libsecp256k1.External.Key.t
+      Libsecp256k1.External.Key.public) :
+  @OCamlString.init string_fallback 64%Z
+    (fun index => @OCamlBigarray.Array1.get left
+      (Libsecp256k1.External.Key.to_bytes (Some false) context key)
+      (index + 1)%Z) =
+  @OCamlString.init string_fallback 64%Z
+    (fun index => @OCamlBigarray.Array1.get right
+      (Libsecp256k1.External.Key.to_bytes (Some false) context key)
+      (index + 1)%Z).
+Proof.
+  unfold OCamlString.init.
+  cbn.
+  apply init_nat_ext.
+  intros offset bounded.
+  apply uncompressed_public_key_read_fallback_irrelevant.
+  lia.
+Qed.
+
+Print Assumptions ecrecover_public_key_bytes_fallback_irrelevant.
