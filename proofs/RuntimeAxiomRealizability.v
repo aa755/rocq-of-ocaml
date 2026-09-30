@@ -11,8 +11,9 @@ Local Open Scope Z_scope.
     realisability, not the behaviour of the native cryptographic, hashing,
     formatting, or physical-equality implementations. The actual bundle
     below checks these signatures against the translator's declarations.
-    The current 696-theorem census uses 19 axiom names; this bundle also
-    includes [Context.t], needed by the dependent secp256k1 signatures. *)
+    The current 697-theorem census uses 18 axiom names; this bundle also
+    includes [Context.t] and the public-key length contract, needed by the
+    dependent secp256k1 signatures and the byte-read bounds proof. *)
 Record axiom_bundle : Type := {
   model_physical_equal : forall {A : Set}, A -> A -> bool;
   model_polymorphic_compare : forall {A : Set}, A -> A -> int;
