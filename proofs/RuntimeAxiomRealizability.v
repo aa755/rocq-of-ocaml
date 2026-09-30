@@ -37,7 +37,6 @@ Record axiom_bundle : Type := {
   model_recover :
     model_context_type -> model_sign_type model_sign_recoverable ->
     Bigstring.t -> sum (model_key_type model_key_public) string;
-  model_bigarray_get : Bigstring.t -> int -> ascii;
   model_z_legendre : Z -> Z -> int;
   model_z_hash : Z -> int;
   model_z_format : string -> Z -> string;
@@ -61,7 +60,6 @@ Definition actual_bundle : axiom_bundle :=
     model_recoverable_bytes := Libsecp256k1.External.Sign.recoverable_bytes;
     model_read_recoverable := Libsecp256k1.External.Sign.read_recoverable;
     model_recover := Libsecp256k1.External.Sign.recover;
-    model_bigarray_get := OCamlBigarray.Array1.get;
     model_z_legendre := OCamlZ.legendre;
     model_z_hash := OCamlZ.hash;
     model_z_format := OCamlZ.format;
@@ -91,7 +89,6 @@ Definition closed_bundle : axiom_bundle :=
     model_recoverable_bytes := 0;
     model_read_recoverable := fun _ _ => inr EmptyString;
     model_recover := fun _ _ _ => inr EmptyString;
-    model_bigarray_get := fun _ _ => Ascii.ascii_of_nat 0;
     model_z_legendre := fun _ _ => 0;
     model_z_hash := fun _ => 0;
     model_z_format := fun format _ => format;
