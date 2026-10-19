@@ -22,7 +22,8 @@ Module Runner.
           RocqOfOCaml.Partial.Delay.Done
             (Config.(Runner_Config_signature.offset), n_value)
         else
-          RocqOfOCaml.Partial.Delay.Tau (fun _ => run (Z.sub n_value 1))).
+          RocqOfOCaml.Partial.Delay.Tau
+            (fun _ => run (RocqOfOCaml.OCamlInt.sub n_value 1))).
 
   CoFixpoint finished `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Delay.t bool :=
@@ -31,7 +32,8 @@ Module Runner.
         if equiv_decb n_value 0 then
           RocqOfOCaml.Partial.Delay.Done true
         else
-          RocqOfOCaml.Partial.Delay.Tau (fun _ => finished (Z.sub n_value 1))).
+          RocqOfOCaml.Partial.Delay.Tau
+            (fun _ => finished (RocqOfOCaml.OCamlInt.sub n_value 1))).
 
   Module Runner_result.
     Record signature `{_fargs : FArgs} : Type := {
@@ -60,7 +62,8 @@ Definition execute (n_value : int) : RocqOfOCaml.Partial.Delay.t int :=
   RocqOfOCaml.Partial.Delay.bind (Local.(Runner.Runner_result.run) n_value)
     (fun _rocq_partial_scrutinee =>
       let '(result_value, state) := _rocq_partial_scrutinee in
-      RocqOfOCaml.Partial.Delay.Done (Z.add result_value state)).
+      RocqOfOCaml.Partial.Delay.Done
+        (RocqOfOCaml.OCamlInt.add result_value state)).
 
 Module Total.
   Module Runner.
@@ -72,7 +75,7 @@ End Total.
 
 Definition total (n_value : int) : int :=
   let '(result_value, state) := Total.Runner.Runner_result.run n_value in
-  Z.add result_value state.
+  RocqOfOCaml.OCamlInt.add result_value state.
 
 Definition execute_bound (n_value : int) : RocqOfOCaml.Partial.Delay.t int :=
   let Local :=
@@ -84,7 +87,8 @@ Definition execute_bound (n_value : int) : RocqOfOCaml.Partial.Delay.t int :=
   RocqOfOCaml.Partial.Delay.bind (Local.(Runner.Runner_result.run) n_value)
     (fun pair_value =>
       let '(result_value, state) := pair_value in
-      RocqOfOCaml.Partial.Delay.Done (Z.add result_value state)).
+      RocqOfOCaml.Partial.Delay.Done
+        (RocqOfOCaml.OCamlInt.add result_value state)).
 
 Definition execute_condition (n_value : int)
   : RocqOfOCaml.Partial.Delay.t int :=
@@ -110,7 +114,7 @@ Definition execute_mixed (n_value : int)
         Runner_Config_signature.offset := offset
       |} : Runner_Config_signature)) in
   let '(result_value, state) := Total.Runner.Runner_result.run n_value in
-  Local.(Runner.Runner_result.run) (Z.add result_value state).
+  Local.(Runner.Runner_result.run) (RocqOfOCaml.OCamlInt.add result_value state).
 
 Definition execute_hygienic (n_value : int) (_rocq_partial_scrutinee : int)
   : RocqOfOCaml.Partial.Delay.t int :=
@@ -124,4 +128,5 @@ Definition execute_hygienic (n_value : int) (_rocq_partial_scrutinee : int)
     (fun _rocq_partial_scrutinee_ =>
       let '(result_value, state) := _rocq_partial_scrutinee_ in
       RocqOfOCaml.Partial.Delay.Done
-        (Z.add (Z.add result_value state) _rocq_partial_scrutinee)).
+        (RocqOfOCaml.OCamlInt.add (RocqOfOCaml.OCamlInt.add result_value state)
+          _rocq_partial_scrutinee)).

@@ -161,6 +161,29 @@ let partial_operation_names =
     "Z.powm";
     "Z.of_string";
     "Int64.of_string";
+    "Int.of_string";
+    "Int32.of_string";
+    "Nativeint.of_string";
+    "Stdlib.int_of_string";
+    "Stdlib./";
+    "Stdlib.op_div";
+    "Stdlib.mod";
+    "Stdlib.\\#mod";
+    "Stdlib._mod";
+    "Int.div";
+    "Int.rem";
+    "Int32.div";
+    "Int32.rem";
+    "Int32.unsigned_div";
+    "Int32.unsigned_rem";
+    "Int64.div";
+    "Int64.rem";
+    "Int64.unsigned_div";
+    "Int64.unsigned_rem";
+    "Nativeint.div";
+    "Nativeint.rem";
+    "Nativeint.unsigned_div";
+    "Nativeint.unsigned_rem";
     "Seq.init";
     "Seq.take";
     "Seq.drop";
@@ -203,6 +226,9 @@ let target_partial_operation_name (name : string) : string =
   |> replace_prefix "Result." "OCamlResult."
   |> replace_prefix "Z." "OCamlZ."
   |> replace_prefix "Int64." "OCamlInt64."
+  |> replace_prefix "Int32." "OCamlInt32."
+  |> replace_prefix "Int." "OCamlInt."
+  |> replace_prefix "Nativeint." "OCamlNativeint."
   |> replace_prefix "Seq." "OCamlSeq."
   |> replace_prefix "Hashtbl." "OCamlHashtbl."
 

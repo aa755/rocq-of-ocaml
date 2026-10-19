@@ -33,6 +33,8 @@ let rules =
     ("Stdlib.Int32.*", "RocqOfOCaml.OCamlInt32");
     ("Stdlib.Int64", "RocqOfOCaml.OCamlInt64");
     ("Stdlib.Int64.*", "RocqOfOCaml.OCamlInt64");
+    ("Stdlib.Nativeint", "RocqOfOCaml.OCamlNativeint");
+    ("Stdlib.Nativeint.*", "RocqOfOCaml.OCamlNativeint");
     ("Stdlib.Result", "RocqOfOCaml.OCamlResult");
     ("Stdlib.Result.*", "RocqOfOCaml.OCamlResult");
     ("Stdlib.Bigarray", "RocqOfOCaml.OCamlBigarray");
@@ -91,24 +93,28 @@ let rules =
     ("Stdlib.op_pipepipe", "orb");
     ("Stdlib.or", "orb");
     (* Integer arithmetic *)
-    ("Stdlib.op_tildeminus", "Z.opp");
+    ("Stdlib.op_tildeminus", "RocqOfOCaml.OCamlInt.neg");
     ("Stdlib.op_tildeplus", "");
-    ("Stdlib.succ", "Z.succ");
-    ("Stdlib.pred", "Z.pred");
-    ("Stdlib.op_plus", "Z.add");
-    ("Stdlib.op_minus", "Z.sub");
-    ("Stdlib.op_star", "Z.mul");
-    ("Stdlib.op_div", "Z.quot");
-    ("Stdlib._mod", "Z.rem");
-    ("Stdlib.abs", "Z.abs");
+    ("Stdlib.succ", "RocqOfOCaml.OCamlInt.succ");
+    ("Stdlib.pred", "RocqOfOCaml.OCamlInt.pred");
+    ("Stdlib.op_plus", "RocqOfOCaml.OCamlInt.add");
+    ("Stdlib.op_minus", "RocqOfOCaml.OCamlInt.sub");
+    ("Stdlib.op_star", "RocqOfOCaml.OCamlInt.mul");
+    ("Stdlib.op_div", "RocqOfOCaml.OCamlInt.div");
+    ("Stdlib._mod", "RocqOfOCaml.OCamlInt.rem");
+    ("Stdlib.abs", "RocqOfOCaml.OCamlInt.abs");
+    ("Stdlib.max_int", "RocqOfOCaml.OCamlInt.max_int");
+    ("Stdlib.min_int", "RocqOfOCaml.OCamlInt.min_int");
+    ("Stdlib.Sys.int_size", "RocqOfOCaml.OCamlInt.size");
+    ("Stdlib.Sys.word_size", "RocqOfOCaml.OCamlNativeint.size");
     (* Bitwise operations *)
-    ("Stdlib.land", "Z.land");
-    ("Stdlib.lor", "Z.lor");
-    ("Stdlib.lxor", "Z.lxor");
-    ("Stdlib.lnot", "Z.lnot");
-    ("Stdlib.lsl", "Z.shiftl");
-    ("Stdlib.lsr", "Z.shiftr");
-    ("Stdlib.asr", "Z.shiftr");
+    ("Stdlib.land", "RocqOfOCaml.OCamlInt.logand");
+    ("Stdlib.lor", "RocqOfOCaml.OCamlInt.logor");
+    ("Stdlib.lxor", "RocqOfOCaml.OCamlInt.logxor");
+    ("Stdlib.lnot", "RocqOfOCaml.OCamlInt.lognot");
+    ("Stdlib.lsl", "RocqOfOCaml.OCamlInt.shift_left");
+    ("Stdlib.lsr", "RocqOfOCaml.OCamlInt.shift_right_logical");
+    ("Stdlib.asr", "RocqOfOCaml.OCamlInt.shift_right");
     (* Floating-point arithmetic *)
     (* String operations *)
     ("Stdlib.op_caret", "String.append");
@@ -120,8 +126,9 @@ let rules =
     (* String conversion functions *)
     ("Stdlib.string_of_bool", "RocqOfOCaml.Basics.Stdlib.string_of_bool");
     ("Stdlib.bool_of_string", "RocqOfOCaml.Basics.Stdlib.bool_of_string");
-    ("Stdlib.string_of_int", "RocqOfOCaml.Basics.Stdlib.string_of_int");
-    ("Stdlib.int_of_string", "RocqOfOCaml.Basics.Stdlib.int_of_string");
+    ("Stdlib.string_of_int", "RocqOfOCaml.OCamlInt.to_string");
+    ("Stdlib.int_of_string", "RocqOfOCaml.OCamlInt.of_string");
+    ("Stdlib.int_of_string_opt", "RocqOfOCaml.OCamlInt.of_string_opt");
     (* Pair operations *)
     ("Stdlib.fst", "fst");
     ("Stdlib.snd", "snd");

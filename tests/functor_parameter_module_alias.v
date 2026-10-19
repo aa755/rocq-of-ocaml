@@ -18,7 +18,8 @@ Module Make.
   Definition Alias `{_fargs : FArgs} := P.
   
   Definition sum `{_fargs : FArgs} : int :=
-    Z.add Alias.(Make_P_signature._left) Alias.(Make_P_signature._right).
+    RocqOfOCaml.OCamlInt.add Alias.(Make_P_signature._left)
+      Alias.(Make_P_signature._right).
   
   Module Make_result.
     Record signature `{_fargs : FArgs} : Type := {

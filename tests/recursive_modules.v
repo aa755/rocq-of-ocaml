@@ -69,7 +69,8 @@ Module MakeA.
   }.
   
   Fixpoint even `{_fargs : FArgs} (n_value : int) : bool :=
-    orb (equiv_decb n_value 0) (Other.(B.odd) (Z.sub n_value 1)).
+    orb (equiv_decb n_value 0)
+      (Other.(B.odd) (RocqOfOCaml.OCamlInt.sub n_value 1)).
   
   (* MakeA *)
   Definition functor `{_fargs : FArgs} :A :=
@@ -85,7 +86,8 @@ Module MakeB.
   }.
   
   Fixpoint odd `{_fargs : FArgs} (n_value : int) : bool :=
-    andb (nequiv_decb n_value 0) (Other.(A.even) (Z.sub n_value 1)).
+    andb (nequiv_decb n_value 0)
+      (Other.(A.even) (RocqOfOCaml.OCamlInt.sub n_value 1)).
   
   (* MakeB *)
   Definition functor `{_fargs : FArgs} :B :=

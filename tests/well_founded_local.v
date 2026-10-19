@@ -20,9 +20,10 @@ Program Definition count_selected (get : int -> ascii) (limit : int) : int :=
         match selected with
         | ("a" % char | "b" % char) =>
           _rocq_recurse
-            ((Z.add index 1),
-              (Z.add count (RocqOfOCaml.OCamlChar.code selected))) _
-        | _ => _rocq_recurse ((Z.add index 1), count) _
+            ((RocqOfOCaml.OCamlInt.add index 1),
+              (RocqOfOCaml.OCamlInt.add count
+                (RocqOfOCaml.OCamlChar.code selected))) _
+        | _ => _rocq_recurse ((RocqOfOCaml.OCamlInt.add index 1), count) _
         end) in
   let _rocq_fix := @Fix (int * int) (ltof (int * int) _rocq_measure)
     (well_founded_ltof (int * int) _rocq_measure) (fun _ => int) _rocq_body in

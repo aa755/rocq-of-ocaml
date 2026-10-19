@@ -35,14 +35,14 @@ Module Host.
           (RocqOfOCaml.Partial.Resumption.Done (M := HostState.t)) n_value
         else
           (RocqOfOCaml.Partial.Resumption.Bind (M := HostState.t))
-            (HostState._return (Z.sub n_value 1))
+            (HostState._return (RocqOfOCaml.OCamlInt.sub n_value 1))
             (fun (value : int) =>
               (RocqOfOCaml.Partial.Resumption.Tau (M := HostState.t))
                 (fun _ => run value))).
 End Host.
 
 Module Other.
-  Definition lift (n_value : int) : int := Z.add n_value 1.
+  Definition lift (n_value : int) : int := RocqOfOCaml.OCamlInt.add n_value 1.
 End Other.
 
 Module Use_Config_signature.

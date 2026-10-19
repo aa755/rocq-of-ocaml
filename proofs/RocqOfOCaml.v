@@ -19,6 +19,7 @@ Require OCamlIarray.
 Require OCamlInt.
 Require OCamlInt32.
 Require OCamlInt64.
+Require OCamlNativeint.
 Require OCamlList.
 Require OCamlMap.
 Require OCamlOption.

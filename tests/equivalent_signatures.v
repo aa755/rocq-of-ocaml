@@ -63,7 +63,7 @@ Module Int_ordered.
   Definition t : Set := int.
   
   Definition compare (x_value : int) (y_value : int) : int :=
-    Z.sub x_value y_value.
+    RocqOfOCaml.OCamlInt.sub x_value y_value.
   
   (* Int_ordered *)
   Definition module :Ordered (t := t) :=

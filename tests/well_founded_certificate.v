@@ -15,6 +15,6 @@ Program Definition count_up (value : int) : int :=
       with
     | true => fun _rocq_guard_eq => value
     | false => fun _rocq_guard_eq =>
-      _rocq_recurse (Z.add value 1)
-        ltac:(subst value; unfold ltof; match goal with | [ measure := _ : _ -> nat |- _ ] => unfold measure; cbn beta zeta end; apply RocqOfOCaml.Termination.IncreasingIndex.increasing_index_positive_step_decreases; [match goal with | guard : Z.geb ?left ?right = false |- _ => destruct (Z.geb_spec left right); congruence end | lia])
+      _rocq_recurse (RocqOfOCaml.OCamlInt.add value 1)
+        ltac:(subst value; unfold ltof; match goal with | [ measure := _ : _ -> nat |- _ ] => unfold measure; cbn beta zeta end; match goal with | guard : Z.geb ?left ?right = false |- _ => destruct (Z.geb_spec left right); [congruence |] end; apply RocqOfOCaml.Termination.IncreasingIndex.increasing_index_machine_step_decreases; [assumption | lia | change (_rocq_state + 1 <= 4611686018427387903)%Z; lia])
     end eq_refl) value.

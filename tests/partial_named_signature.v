@@ -116,7 +116,8 @@ Module Engine.
         if equiv_decb n_value 0 then
           RocqOfOCaml.Partial.Delay.Done n_value
         else
-          RocqOfOCaml.Partial.Delay.Tau (fun _ => run (Z.sub n_value 1))).
+          RocqOfOCaml.Partial.Delay.Tau
+            (fun _ => run (RocqOfOCaml.OCamlInt.sub n_value 1))).
   
   Definition execute `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Resumption.t
@@ -274,7 +275,8 @@ Module UsePure.
   Definition consume `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Delay.t int :=
     RocqOfOCaml.Partial.Delay.bind (P.(PURE.step) n_value)
-      (fun answer => RocqOfOCaml.Partial.Delay.Done (Z.add answer 1)).
+      (fun answer =>
+        RocqOfOCaml.Partial.Delay.Done (RocqOfOCaml.OCamlInt.add answer 1)).
   
   Module UsePure_result.
     Record signature `{_fargs : FArgs} : Type := {

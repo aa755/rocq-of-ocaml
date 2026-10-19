@@ -10,7 +10,8 @@ Definition unavailable
 Definition use_unavailable
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (x_value : int)
   : int :=
-  Z.add x_value ((unavailable (_rocq_assumption_0 := _rocq_assumption_0))).
+  RocqOfOCaml.OCamlInt.add x_value
+    ((unavailable (_rocq_assumption_0 := _rocq_assumption_0))).
 
 Definition callbacks
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : list (int -> int) :=

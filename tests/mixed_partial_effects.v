@@ -32,7 +32,8 @@ Module Runner.
           RocqOfOCaml.Partial.Delay.Done
             (Config.(Runner_Config_signature.offset), n_value)
         else
-          RocqOfOCaml.Partial.Delay.Tau (fun _ => run (Z.sub n_value 1))).
+          RocqOfOCaml.Partial.Delay.Tau
+            (fun _ => run (RocqOfOCaml.OCamlInt.sub n_value 1))).
 
   Module Runner_result.
     Record signature `{_fargs : FArgs} : Type := {
@@ -57,7 +58,7 @@ CoFixpoint pure_pair {A : Set} (_left : int) (_right : A)
         RocqOfOCaml.Partial.Delay.Done _right
       else
         RocqOfOCaml.Partial.Delay.Tau
-          (fun _ => pure_pair (Z.sub _left 1) _right)).
+          (fun _ => pure_pair (RocqOfOCaml.OCamlInt.sub _left 1) _right)).
 
 Module Effectful.
   Class FArgs {M_t : Set -> Set} := {
@@ -73,7 +74,7 @@ Module Effectful.
           (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t))) 0
         else
           (RocqOfOCaml.Partial.Resumption.Bind (M := M.(MONAD.t)))
-            ((M.(MONAD._return) (a := int)) (Z.sub value 1))
+            ((M.(MONAD._return) (a := int)) (RocqOfOCaml.OCamlInt.sub value 1))
             (fun (next : int) =>
               (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
                 (fun _ => resumed_countdown next))).
@@ -133,7 +134,7 @@ Module Use.
                     reduced)
                   (fun (answer : int) =>
                     (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t)))
-                      (Z.add answer state))))).
+                      (RocqOfOCaml.OCamlInt.add answer state))))).
 
   Definition pure_tail `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) int :=

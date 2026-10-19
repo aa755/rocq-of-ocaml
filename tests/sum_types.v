@@ -31,7 +31,7 @@ Fixpoint of_list {A : Set} (l_value : list A) : t2 A :=
 Fixpoint sum (l_value : t2 int) : int :=
   match l_value with
   | D1 => 0
-  | D2 x_value xs => Z.add x_value (sum xs)
+  | D2 x_value xs => RocqOfOCaml.OCamlInt.add x_value (sum xs)
   end.
 
 Definition s_value {A : Set} (function_parameter : A) : int :=

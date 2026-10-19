@@ -29,7 +29,7 @@ Definition m_value (x_value : t) : int :=
   | (_, true, _, _) => 3
   | (Bar n_value, _, true, _) => n_value
   | (Bar k_value, _, _, true) => k_value
-  | (Bar n_value, _, _, _) => Z.opp n_value
+  | (Bar n_value, _, _, _) => RocqOfOCaml.OCamlInt.neg n_value
   | (Foo _ _, _, _, _) => 0
   end.
 

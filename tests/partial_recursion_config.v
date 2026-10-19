@@ -7,7 +7,8 @@ Definition consume (bound : int) : RocqOfOCaml.Partial.Delay.t int :=
     RocqOfOCaml.Partial.Delay.Tau
       (fun _ =>
         if Z.ltb value bound then
-          RocqOfOCaml.Partial.Delay.Tau (fun _ => loop (Z.add value 1))
+          RocqOfOCaml.Partial.Delay.Tau
+            (fun _ => loop (RocqOfOCaml.OCamlInt.add value 1))
         else
           RocqOfOCaml.Partial.Delay.Done value) in
   loop 0.

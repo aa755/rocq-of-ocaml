@@ -1,19 +1,14 @@
 Require Import RocqOfOCaml.Libraries.
 Require Import RocqOfOCaml.Basics.
+Require Import RocqOfOCaml.OCamlMachineInt.
+Require Import RocqOfOCaml.OCamlInt.
 
-Local Open Scope Z_scope.
-
-Definition t : Set := int32.
-
-Definition modulus : Z := 2 ^ 32.
-Definition sign_bit : Z := 2 ^ 31.
-
-Definition repr (value : Z) : t :=
-  let unsigned := value mod modulus in
-  if Z.leb sign_bit unsigned then unsigned - modulus else unsigned.
+Module Width <: OCamlMachineInt.Width.
+  Definition bits := 32%Z.
+End Width.
+Include OCamlMachineInt.Make Width.
 
 Definition of_int : int -> t := repr.
-
-(** The Gallina compatibility type for OCaml [int] is unbounded [Z], so this
-    conversion itself cannot overflow. *)
+(** Sign extension into a 63-bit [int] loses no bits for canonical inputs. *)
 Definition to_int (value : t) : int := value.
+Definition unsigned_to_int (value : t) : option int := Some (unsigned value).

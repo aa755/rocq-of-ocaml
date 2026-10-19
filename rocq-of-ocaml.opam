@@ -32,6 +32,7 @@ depends: [
   "rocq-stdlib" {>= "9.0" & < "9.1"}
   "smart-print"
   "yojson" {>= "1.6.0"}
+  "zarith" {with-test}
 ]
 tags: [
   "keyword:compilation"

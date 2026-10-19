@@ -13,7 +13,8 @@ Module M.
     let '(value, state) := action state in
     next value state.
 
-  Definition advance (state : int) : unit * int := (tt, (Z.add state 1)).
+  Definition advance (state : int) : unit * int :=
+    (tt, (RocqOfOCaml.OCamlInt.add state 1)).
 End M.
 
 Module N.
@@ -45,7 +46,7 @@ Module Make.
             (fun (function_parameter : unit) =>
               let '_ := function_parameter in
               (RocqOfOCaml.Partial.Resumption.Tau (M := M.t))
-                (fun _ => step (Z.sub n_value 1)))).
+                (fun _ => step (RocqOfOCaml.OCamlInt.sub n_value 1)))).
 
   Definition current `{_fargs : FArgs}
     : RocqOfOCaml.Partial.Resumption.t M.t int :=

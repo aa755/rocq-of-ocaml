@@ -120,6 +120,6 @@ Module Included.
   End Nested.
 End Included.
 
-Definition included_result : int := Included.map (Z.add 1) 2.
+Definition included_result : int := Included.map (RocqOfOCaml.OCamlInt.add 1) 2.
 
 Definition inherited_nested_result : int := Included.Nested.apply 3.

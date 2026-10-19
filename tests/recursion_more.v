@@ -13,7 +13,8 @@ Definition n_value : int :=
   let fix sum (l_value : list int) : int :=
     match l_value with
     | [] => 0
-    | Datatypes.cons x_value l_value => Z.add x_value (sum l_value)
+    | Datatypes.cons x_value l_value =>
+      RocqOfOCaml.OCamlInt.add x_value (sum l_value)
     end in
   sum (Datatypes.cons 1 (Datatypes.cons 2 (Datatypes.cons 3 nil))).
 
@@ -27,7 +28,7 @@ Fixpoint double_list (l_value : list int) : list int :=
     Datatypes.cons (double n_value) (double_list l_value)
   end
 
-where "'double" := (fun (n_value : int) => Z.mul 2 n_value).
+where "'double" := (fun (n_value : int) => RocqOfOCaml.OCamlInt.mul 2 n_value).
 
 Definition double := 'double.
 
@@ -59,7 +60,8 @@ and "'sums" :=
     let zero := 'zero in
     match ts with
     | [] => zero tt
-    | Datatypes.cons t_value ts => Z.add (sum t_value) (sums ts)
+    | Datatypes.cons t_value ts =>
+      RocqOfOCaml.OCamlInt.add (sum t_value) (sums ts)
     end).
 
 Definition zero := 'zero.
@@ -81,7 +83,8 @@ where "'counts" :=
   (fun (A : Set) => fix counts (ts : list (tree (list A))) {struct ts} : int :=
     match ts with
     | [] => 0
-    | Datatypes.cons t_value ts => Z.add (count t_value) (counts ts)
+    | Datatypes.cons t_value ts =>
+      RocqOfOCaml.OCamlInt.add (count t_value) (counts ts)
     end)
 
 and "'length" :=
@@ -96,4 +99,5 @@ Fixpoint factorial (n_value : int) {struct n_value} : int :=
   if equiv_decb n_value 0 then
     1
   else
-    Z.mul n_value (factorial (Z.sub n_value 1)).
+    RocqOfOCaml.OCamlInt.mul n_value
+      (factorial (RocqOfOCaml.OCamlInt.sub n_value 1)).

@@ -6,4 +6,5 @@ Definition apply {A B : Set} (converter : A -> B) : A -> B :=
   let __0 := converter in
   fun (value : A) => __0 value.
 
-Definition result_value : int := apply (fun (value : int) => Z.add value 1) 41.
+Definition result_value : int :=
+  apply (fun (value : int) => RocqOfOCaml.OCamlInt.add value 1) 41.

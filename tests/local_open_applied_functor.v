@@ -53,7 +53,7 @@ Definition read (function_parameter : unit) : int :=
   let opened_module_253 := Operations Concrete in
   opened_module_253.(Operations.Operations_result.op_letdollar)
     opened_module_253.(Operations.Operations_result.get)
-    (fun value => Z.add value 1).
+    (fun value => RocqOfOCaml.OCamlInt.add value 1).
 
 Definition read_via_local_module (function_parameter : unit) : int :=
   let '_ := function_parameter in

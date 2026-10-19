@@ -13,7 +13,7 @@ Module List2.
   Fixpoint sum (l_value : t int) : int :=
     match l_value with
     | Nil => 0
-    | Cons x_value xs => Z.add x_value (sum xs)
+    | Cons x_value xs => RocqOfOCaml.OCamlInt.add x_value (sum xs)
     end.
   
   Fixpoint of_list {A : Set} (function_parameter : list A) : t A :=

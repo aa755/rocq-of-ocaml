@@ -471,7 +471,8 @@ Module Operator_result.
     Definition op_plus `{_fargs : FArgs}
       `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (_left : int)
       (_right : int) : int :=
-      (checked (_rocq_assumption_0 := _rocq_assumption_0)) (Z.add _left _right).
+      (checked (_rocq_assumption_0 := _rocq_assumption_0))
+        (RocqOfOCaml.OCamlInt.add _left _right).
   End Nested.
   
   Module Operator_result_result.

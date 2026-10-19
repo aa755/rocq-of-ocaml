@@ -70,7 +70,7 @@ Definition app1 : int := (fun (x_value : int) => x_value) 12.
 
 Definition app2 : int := (fun (x_value : int) => x_value) 12.
 
-Definition n_neg1 : int := Z.opp 12.
+Definition n_neg1 : int := RocqOfOCaml.OCamlInt.neg 12.
 
 Definition n_neg2 : int := (-12).
 
@@ -78,33 +78,37 @@ Definition n_pos1 : int := 12.
 
 Definition n_pos2 : int := 12.
 
-Definition n_succ : int := Z.succ 1.
+Definition n_succ : int := RocqOfOCaml.OCamlInt.succ 1.
 
-Definition n_pred : int := Z.pred 1.
+Definition n_pred : int := RocqOfOCaml.OCamlInt.pred 1.
 
-Definition n_plus : int := Z.add 1 2.
+Definition n_plus : int := RocqOfOCaml.OCamlInt.add 1 2.
 
-Definition n_minus : int := Z.sub 1 2.
+Definition n_minus : int := RocqOfOCaml.OCamlInt.sub 1 2.
 
-Definition n_times : int := Z.mul 1 2.
+Definition n_times : int := RocqOfOCaml.OCamlInt.mul 1 2.
 
-Definition n_div : int := Z.quot 1 2.
+Definition n_div
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  RocqOfOCaml.OCamlInt.div 1 2.
 
-Definition n_mod : int := Z.rem 1 2.
+Definition n_mod
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  RocqOfOCaml.OCamlInt.rem 1 2.
 
-Definition n_abs : int := Z.abs 1.
+Definition n_abs : int := RocqOfOCaml.OCamlInt.abs 1.
 
-Definition n_land : int := Z.land 12 13.
+Definition n_land : int := RocqOfOCaml.OCamlInt.logand 12 13.
 
-Definition n_lor : int := Z.lor 12 13.
+Definition n_lor : int := RocqOfOCaml.OCamlInt.logor 12 13.
 
-Definition n_lxor : int := Z.lxor 12 13.
+Definition n_lxor : int := RocqOfOCaml.OCamlInt.logxor 12 13.
 
-Definition n_lnot : int := Z.lnot 13.
+Definition n_lnot : int := RocqOfOCaml.OCamlInt.lognot 13.
 
-Definition n_lsl : int := Z.shiftl 12 13.
+Definition n_lsl : int := RocqOfOCaml.OCamlInt.shift_left 12 13.
 
-Definition n_lsr : int := Z.shiftr 12 13.
+Definition n_lsr : int := RocqOfOCaml.OCamlInt.shift_right_logical 12 13.
 
 Definition ss : string := String.append "begin" "end".
 
@@ -116,9 +120,11 @@ Definition s_bool : string := RocqOfOCaml.Basics.Stdlib.string_of_bool false.
 
 Definition bool_s : bool := RocqOfOCaml.Basics.Stdlib.bool_of_string "false".
 
-Definition s_n : string := RocqOfOCaml.Basics.Stdlib.string_of_int 12.
+Definition s_n : string := RocqOfOCaml.OCamlInt.to_string 12.
 
-Definition n_s : int := RocqOfOCaml.Basics.Stdlib.int_of_string "12".
+Definition n_s
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  RocqOfOCaml.OCamlInt.of_string "12".
 
 Definition n1 : int := fst (12, 13).
 

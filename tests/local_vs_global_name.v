@@ -8,4 +8,4 @@ Module M.
   Definition n_value : int := 12.
 End M.
 
-Definition n_value : int := Z.add M.n_value 2.
+Definition n_value : int := RocqOfOCaml.OCamlInt.add M.n_value 2.

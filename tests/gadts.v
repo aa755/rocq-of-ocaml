@@ -22,7 +22,7 @@ Fixpoint proj_int
   : int :=
   match e_value with
   | Int n_value => n_value
-  | Sum e1 e2 => Z.add (proj_int e1) (proj_int e2)
+  | Sum e1 e2 => RocqOfOCaml.OCamlInt.add (proj_int e1) (proj_int e2)
   | _ => (@RocqOfOCaml.Basics.unreachable _ _)
   end.
 
@@ -35,7 +35,8 @@ Fixpoint get_int (e_value : term int_tag) : int :=
   match e_value in term t0 return t0 = int_tag -> int with
   | T_Int n_value => fun eq0 => ltac:(subst; exact n_value)
   | T_Sum e1 e2 =>
-    fun eq0 => ltac:(subst; exact (Z.add (get_int e1) (get_int e2)))
+    fun eq0 => ltac:(subst; exact
+      (RocqOfOCaml.OCamlInt.add (get_int e1) (get_int e2)))
   | _ => ltac:(discriminate)
   end eq_refl.
 
@@ -43,7 +44,7 @@ Fixpoint interp {a : vtag} (function_parameter : term a) : decode_vtag a :=
   match function_parameter with
   | T_Int n_value => n_value
   | T_String s_value => s_value
-  | T_Sum s1 s2 => Z.add (interp s1) (interp s2)
+  | T_Sum s1 s2 => RocqOfOCaml.OCamlInt.add (interp s1) (interp s2)
   end.
 
 Inductive one_case : Set :=

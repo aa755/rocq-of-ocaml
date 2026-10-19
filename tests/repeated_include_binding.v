@@ -3,7 +3,7 @@ Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
 Module Source.
-  Definition map (value : int) : int := Z.add value 1.
+  Definition map (value : int) : int := RocqOfOCaml.OCamlInt.add value 1.
 End Source.
 
 Module Uses_include.

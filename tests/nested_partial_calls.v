@@ -48,7 +48,8 @@ Module Outer.
               ((Config (FArgs := _fargs)).(Runner_Config_signature.offset),
                 n_value)
           else
-            RocqOfOCaml.Partial.Delay.Tau (fun _ => run (Z.sub n_value 1))).
+            RocqOfOCaml.Partial.Delay.Tau
+              (fun _ => run (RocqOfOCaml.OCamlInt.sub n_value 1))).
     
     Module Runner_result.
       Record signature `{_fargs : FArgs} : Type := {
@@ -75,7 +76,7 @@ Module Outer.
           (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t))) n_value
         else
           (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
-            (fun _ => countdown (Z.sub n_value 1))).
+            (fun _ => countdown (RocqOfOCaml.OCamlInt.sub n_value 1))).
   
   Definition execute `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) int :=
@@ -98,13 +99,14 @@ Module Outer.
               (countdown _left)
               (fun (answer : int) =>
                 (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t)))
-                  (Z.add (Z.add answer _right) state)))).
+                  (RocqOfOCaml.OCamlInt.add
+                    (RocqOfOCaml.OCamlInt.add answer _right) state)))).
   
   Definition execute_shadow `{_fargs : FArgs} (n_value : int)
     : RocqOfOCaml.Partial.Resumption.t M.(MONAD.t) int :=
     (RocqOfOCaml.Partial.Resumption.Bind (M := M.(MONAD.t)))
       (let countdown (value : int) : M.(MONAD.t) int :=
-        (M.(MONAD._return) (a := int)) (Z.add value 1) in
+        (M.(MONAD._return) (a := int)) (RocqOfOCaml.OCamlInt.add value 1) in
       (M.(MONAD.bind) (b := int) (a := int)) (countdown n_value)
         (fun (answer : int) => (M.(MONAD._return) (a := int)) answer))
       (fun _rocq_partial_value =>
@@ -136,8 +138,10 @@ CoFixpoint annotated (n_value : int) : RocqOfOCaml.Partial.Delay.t int :=
       if equiv_decb n_value 0 then
         RocqOfOCaml.Partial.Delay.Done 0
       else
-        RocqOfOCaml.Partial.Delay.Tau (fun _ => annotated (Z.sub n_value 1))).
+        RocqOfOCaml.Partial.Delay.Tau
+          (fun _ => annotated (RocqOfOCaml.OCamlInt.sub n_value 1))).
 
 Definition annotated_caller (n_value : int) : RocqOfOCaml.Partial.Delay.t int :=
   RocqOfOCaml.Partial.Delay.bind (annotated n_value)
-    (fun result_value => RocqOfOCaml.Partial.Delay.Done (Z.add result_value 1)).
+    (fun result_value =>
+      RocqOfOCaml.Partial.Delay.Done (RocqOfOCaml.OCamlInt.add result_value 1)).

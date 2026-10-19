@@ -153,7 +153,7 @@ Module Produce.
     Input.(Provider.INPUT.value).
   
   Definition extra `{_fargs : FArgs} : int :=
-    Z.add Input.(Provider.INPUT.value) 1.
+    RocqOfOCaml.OCamlInt.add Input.(Provider.INPUT.value) 1.
   
   Module Produce_result.
     Record signature `{_fargs : FArgs} : Type := {

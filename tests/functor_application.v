@@ -86,7 +86,7 @@ Module Sum.
   Definition t `{_fargs : FArgs} : Set := int.
   
   Definition y_value `{_fargs : FArgs} : int :=
-    Z.add X.(Source.x_value) Y.(Source.x_value).
+    RocqOfOCaml.OCamlInt.add X.(Source.x_value) Y.(Source.x_value).
   
   (* Sum *)
   Definition functor `{_fargs : FArgs} :Target (t := t) :=

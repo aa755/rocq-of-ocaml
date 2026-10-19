@@ -120,6 +120,8 @@ let exit (context : MonadEval.Context.t) (output : Output.t) : unit =
 (** The main function. *)
 let main () =
   Printexc.record_backtrace true;
+  if Sys.word_size <> 64 then
+    failwith "The compatibility runtime models 64-bit OCaml (63-bit int) only";
   let file_name = ref None in
   let json_mode = ref false in
   let configuration_file_name = ref None in

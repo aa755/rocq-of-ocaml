@@ -86,7 +86,8 @@ Module Outer.
               ((Config (FArgs := _fargs)).(Runner_Config_signature.offset),
                 n_value)
           else
-            RocqOfOCaml.Partial.Delay.Tau (fun _ => run (Z.sub n_value 1))).
+            RocqOfOCaml.Partial.Delay.Tau
+              (fun _ => run (RocqOfOCaml.OCamlInt.sub n_value 1))).
     
     Module Runner_result.
       Record signature `{_fargs : FArgs} : Type := {
@@ -132,7 +133,7 @@ Module Outer.
             let '(result_value, state) := _rocq_partial_scrutinee in
             (RocqOfOCaml.Partial.Resumption.Done
               (M := (HostState (_fargs := _fargs)).(State.State_result.t)))
-              (Z.add result_value state))).
+              (RocqOfOCaml.OCamlInt.add result_value state))).
   
   Module Outer_result.
     Record signature `{_fargs : FArgs} : Type := {

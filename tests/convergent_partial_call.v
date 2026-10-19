@@ -35,7 +35,8 @@ Module Use.
               M.(RUNTIME.op_letdollar) _rocq_partial_action
                 _rocq_partial_continuation)
       (M.(RUNTIME.Seq_mapM)
-        (fun (value : int) => (M.(RUNTIME._return) (a := int)) (Z.add value 1))
+        (fun (value : int) =>
+          (M.(RUNTIME._return) (a := int)) (RocqOfOCaml.OCamlInt.add value 1))
         values) _.
   
   Admit Obligations.

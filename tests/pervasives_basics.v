@@ -13,16 +13,25 @@ Definition b_value : bool :=
         (let '_ := tt in
         true)) (negb true)).
 
-Definition n1 : int := Z.add 1 (Z.mul 2 3).
+Definition n1 : int :=
+  RocqOfOCaml.OCamlInt.add 1 (RocqOfOCaml.OCamlInt.mul 2 3).
 
-Definition n2 : int :=
-  Z.sub (Z.add (Z.abs (-1)) 1) (Z.mul (Z.rem (Z.quot 5 23) 4) 3).
+Definition n2
+  `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
+  RocqOfOCaml.OCamlInt.sub
+    (RocqOfOCaml.OCamlInt.add (RocqOfOCaml.OCamlInt.abs (-1)) 1)
+    (RocqOfOCaml.OCamlInt.mul
+      (RocqOfOCaml.OCamlInt.rem (RocqOfOCaml.OCamlInt.div 5 23) 4) 3).
 
-Definition n3 : int := Z.pred (Z.succ 12).
+Definition n3 : int := RocqOfOCaml.OCamlInt.pred (RocqOfOCaml.OCamlInt.succ 12).
 
-Definition n4 : int := Z.lxor (Z.lor (Z.land 5 7) 3) 9.
+Definition n4 : int :=
+  RocqOfOCaml.OCamlInt.logxor
+    (RocqOfOCaml.OCamlInt.logor (RocqOfOCaml.OCamlInt.logand 5 7) 3) 9.
 
-Definition n5 : int := Z.add (Z.shiftl 156 4) (Z.shiftr 12 1).
+Definition n5 : int :=
+  RocqOfOCaml.OCamlInt.add (RocqOfOCaml.OCamlInt.shift_left 156 4)
+    (RocqOfOCaml.OCamlInt.shift_right_logical 12 1).
 
 Definition s_value : string := String.append "ghj" "klm".
 
@@ -30,10 +39,11 @@ Definition c_value : int := RocqOfOCaml.Basics.Stdlib.int_of_char "c" % char.
 
 Definition x_value : unit := RocqOfOCaml.Basics.Stdlib.ignore 23.
 
-Definition p_value : int := Z.add (fst (1, 2)) (snd (3, 4)).
+Definition p_value : int := RocqOfOCaml.OCamlInt.add (fst (1, 2)) (snd (3, 4)).
 
 Definition l_value : list int :=
   RocqOfOCaml.Basics.Stdlib.app (Datatypes.cons 1 (Datatypes.cons 2 nil))
     (Datatypes.cons 3 nil).
 
-Definition y_value : int := (fun (n_value : int) => Z.add n_value 1) 12.
+Definition y_value : int :=
+  (fun (n_value : int) => RocqOfOCaml.OCamlInt.add n_value 1) 12.

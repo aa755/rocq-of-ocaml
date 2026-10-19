@@ -14,7 +14,7 @@ Program Definition search (bound : int) : int :=
     (fun _rocq_state _rocq_recurse =>
       let value := _rocq_state in
       if Z.ltb value bound then
-        _rocq_recurse (Z.add value 1) _
+        _rocq_recurse (RocqOfOCaml.OCamlInt.add value 1) _
       else
         value) in
   let _rocq_fix := @Fix int (ltof int _rocq_measure) (well_founded_ltof int

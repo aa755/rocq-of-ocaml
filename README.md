@@ -52,30 +52,21 @@ Arguments Node {_}.
 Fixpoint sum (tree : tree int) : int :=
   match tree with
   | Leaf n => n
-  | Node tree1 tree2 => Z.add (sum tree1) (sum tree2)
+  | Node tree1 tree2 => OCamlInt.add (sum tree1) (sum tree2)
   end.
 ```
-You can now write proofs by induction over the `sum` function using Rocq. To see how you can write proofs, you can simply look at the [Rocq documentation](https://rocq-prover.org/doc/v9.0/refman/). Learning to write proofs is like learning a new programming paradigm. It can take time, but it can be worthwhile! Here is an example of proof:
+Arithmetic now follows 64-bit OCaml's 63-bit `int` semantics. In particular,
+the sum of positive integers need not be positive: native overflow wraps.
+Rocq can check the same behavior in the translation:
 ```rocq
-(** Definition of a tree with only positive integers *)
-Inductive positive : tree int -> Prop :=
-| Positive_leaf : forall n, n > 0 -> positive (Leaf n)
-| Positive_node : forall tree1 tree2,
-  positive tree1 -> positive tree2 -> positive (Node tree1 tree2).
-
-From Stdlib Require Import micromega.Lia.
-
-Lemma positive_plus n m : n > 0 -> m > 0 -> n + m > 0.
-  lia.
-Qed.
-
-(** Proof that if a tree is positive, then its sum is positive too *)
-Fixpoint positive_sum (tree : tree int) (H : positive tree)
-  : sum tree > 0.
-  destruct tree; simpl; inversion H; trivial.
-  apply positive_plus; now apply positive_sum.
-Qed.
+Example sum_wraps :
+  sum (Node (Leaf OCamlInt.max_int) (Leaf 1)) = OCamlInt.min_int.
+Proof. vm_compute. reflexivity. Qed.
 ```
+
+The carriers remain `Z`/`N`; no new numeric wrapper types are required.
+See [machine-integer semantics](doc/machine-integers.md) for widths, narrowing
+conversions, no-overflow proof lemmas, tests, and the precise supported boundary.
 
 ## Install
 Using the OCaml package manager [opam](https://opam.ocaml.org/), run:

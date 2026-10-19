@@ -93,7 +93,7 @@ Module Impl.
           (RocqOfOCaml.Partial.Resumption.Done (M := M.t)) n_value
         else
           (RocqOfOCaml.Partial.Resumption.Bind (M := M.t))
-            (M._return (Z.sub n_value 1))
+            (M._return (RocqOfOCaml.OCamlInt.sub n_value 1))
             (fun (n_value : int) =>
               (RocqOfOCaml.Partial.Resumption.Tau (M := M.t))
                 (fun _ => execute n_value))).

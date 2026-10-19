@@ -26,4 +26,4 @@ Definition sum_first_elements (l1 : list int) (l2 : list (int * int))
       op_letstar (get_head l2)
         (fun function_parameter =>
           let '(x2, x3) := function_parameter in
-          _return (Z.add (Z.add x1 x2) x3))).
+          _return (RocqOfOCaml.OCamlInt.add (RocqOfOCaml.OCamlInt.add x1 x2) x3))).

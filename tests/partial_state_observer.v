@@ -18,7 +18,7 @@ Module M.
     end.
 
   Definition fail {A B : Set} (_error : A) (state : int) : sum B A * int :=
-    (((inr _error) : sum B A), (Z.add state 1)).
+    (((inr _error) : sum B A), (RocqOfOCaml.OCamlInt.add state 1)).
 End M.
 
 Module Other.
@@ -52,7 +52,7 @@ Module Machine.
             (RocqOfOCaml.Partial.Resumption.Done (M := M.t)) false
           else
             (RocqOfOCaml.Partial.Resumption.Bind (M := M.t))
-              (M._return (Z.sub n_value 1))
+              (M._return (RocqOfOCaml.OCamlInt.sub n_value 1))
               (fun (value : int) =>
                 (RocqOfOCaml.Partial.Resumption.Tau (M := M.t))
                   (fun _ => step value))).

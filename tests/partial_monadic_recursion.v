@@ -26,7 +26,7 @@ Module Make.
           (RocqOfOCaml.Partial.Resumption.Done (M := M.(MONAD.t))) 0
         else
           (RocqOfOCaml.Partial.Resumption.Bind (M := M.(MONAD.t)))
-            ((M.(MONAD._return) (a := int)) (Z.sub value 1))
+            ((M.(MONAD._return) (a := int)) (RocqOfOCaml.OCamlInt.sub value 1))
             (fun (value : int) =>
               (RocqOfOCaml.Partial.Resumption.Tau (M := M.(MONAD.t)))
                 (fun _ => count_down value))).

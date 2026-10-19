@@ -17,7 +17,7 @@ Module Operations.
   Definition get `{_fargs : FArgs} : int := Argument.(ARGUMENT.value).
   
   Definition increment `{_fargs : FArgs} (x_value : int) : int :=
-    Z.add x_value 1.
+    RocqOfOCaml.OCamlInt.add x_value 1.
   
   Module Operations_result.
     Record signature `{_fargs : FArgs} : Type := {

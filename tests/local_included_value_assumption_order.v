@@ -47,20 +47,24 @@ Module Container.
                 (RocqOfOCaml.OCamlIarray.get values i_value)
                 Value.(VALUE.zero))
           then
-            _rocq_recurse (Z.sub i_value 1) _
+            _rocq_recurse (RocqOfOCaml.OCamlInt.sub i_value 1) _
           else
             i_value) in
       let _rocq_fix := @Fix int (ltof int _rocq_measure) (well_founded_ltof int
         _rocq_measure) (fun _ => int) _rocq_body in
       let last_nonzero (i_value : int) : int := _rocq_fix i_value in
-      let last := last_nonzero (Z.sub (RocqOfOCaml.OCamlIarray.length values) 1)
+      let last :=
+        last_nonzero
+          (RocqOfOCaml.OCamlInt.sub (RocqOfOCaml.OCamlIarray.length values) 1)
         in
       if
-        equiv_decb last (Z.sub (RocqOfOCaml.OCamlIarray.length values) 1)
+        equiv_decb last
+          (RocqOfOCaml.OCamlInt.sub (RocqOfOCaml.OCamlIarray.length values)
+            1)
       then
         values
       else
-        RocqOfOCaml.OCamlIarray.init (Z.add last 1)
+        RocqOfOCaml.OCamlIarray.init (RocqOfOCaml.OCamlInt.add last 1)
           (fun (i_value : int) => RocqOfOCaml.OCamlIarray.get values i_value).
     
     Admit Obligations.

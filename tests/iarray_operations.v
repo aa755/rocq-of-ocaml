@@ -7,7 +7,7 @@ Definition inspect
   (_left : RocqOfOCaml.OCamlIarray.t int)
   (_right : RocqOfOCaml.OCamlIarray.t int) : int * int * bool * list int :=
   ((RocqOfOCaml.OCamlIarray.length _left),
-    (RocqOfOCaml.OCamlIarray.fold_right Z.add _left 0),
+    (RocqOfOCaml.OCamlIarray.fold_right RocqOfOCaml.OCamlInt.add _left 0),
     (RocqOfOCaml.OCamlIarray._exists2 equiv_decb _left _right),
     (RocqOfOCaml.OCamlIarray.to_list
       (RocqOfOCaml.OCamlIarray.of_list

@@ -40,7 +40,8 @@ Definition Outer {T_t : Set} (T : RocqOfOCaml.OCamlSet.OrderedType (t := T_t))
 Module Int_order.
   Definition t : Set := int.
   
-  Definition compare (_left : int) (_right : int) : int := Z.sub _left _right.
+  Definition compare (_left : int) (_right : int) : int :=
+    RocqOfOCaml.OCamlInt.sub _left _right.
   
   (* Int_order *)
   Definition module :RocqOfOCaml.OCamlMap.OrderedType (t := int) :=

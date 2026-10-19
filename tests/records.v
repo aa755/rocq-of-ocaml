@@ -23,7 +23,7 @@ Definition r' : SizedString.t :=
   {| SizedString.t.name := "haha"; SizedString.t.size := 4; |}.
 
 Definition s_value : int :=
-  Z.add r_value.(SizedString.t.size) r'.(SizedString.t.size).
+  RocqOfOCaml.OCamlInt.add r_value.(SizedString.t.size) r'.(SizedString.t.size).
 
 Definition f_value (function_parameter : SizedString.t) : bool :=
   match function_parameter with

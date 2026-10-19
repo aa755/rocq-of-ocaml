@@ -59,7 +59,7 @@ Definition mapped (n_value : int) : RocqOfOCaml.Partial.Resumption.t N.t int :=
 
 Module Make.
   Definition step {A : Set} (n_value : int) (state : A) : int * A :=
-    ((Z.add n_value 1), state).
+    ((RocqOfOCaml.OCamlInt.add n_value 1), state).
 End Make.
 
 Definition total {A : Set} (n_value : int) (state : A) : int * A :=

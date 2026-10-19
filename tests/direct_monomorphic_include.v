@@ -5,7 +5,8 @@ Require Import RocqOfOCaml.Settings.
 Module Impl.
   Definition value : int := 7.
   
-  Definition double (x_value : int) : int := Z.add x_value x_value.
+  Definition double (x_value : int) : int :=
+    RocqOfOCaml.OCamlInt.add x_value x_value.
   
   Definition identity {A : Set} (x_value : A) : A := x_value.
   

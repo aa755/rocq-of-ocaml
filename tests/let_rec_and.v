@@ -18,5 +18,5 @@ Definition local_let_and_variables (x_value : int) : int :=
   let y_value : int :=
     12
   in let z_value : int :=
-    Z.mul 2 x_value in
-  Z.add y_value z_value.
+    RocqOfOCaml.OCamlInt.mul 2 x_value in
+  RocqOfOCaml.OCamlInt.add y_value z_value.

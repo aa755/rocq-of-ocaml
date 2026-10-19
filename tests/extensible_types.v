@@ -63,7 +63,8 @@ Definition match_ex
             let '{| Re.v := v_value; Re.n := n_value |} :=
               (let '_ := payload in
               (@RocqOfOCaml.Basics.unreachable Re _)) in
-            Z.add n_value (RocqOfOCaml.OCamlString.length v_value)
+            RocqOfOCaml.OCamlInt.add n_value
+              (RocqOfOCaml.OCamlString.length v_value)
           else
             (-1)
   end.

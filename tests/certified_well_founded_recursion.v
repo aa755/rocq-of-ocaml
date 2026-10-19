@@ -24,7 +24,7 @@ Module Through_view.
         (_rocq_match_scrutinee = _rocq_match_view -> _) with
       | None => fun _rocq_match_eq => 0
       | Some (_, tail) => fun _rocq_match_eq =>
-        Z.add 1
+        RocqOfOCaml.OCamlInt.add 1
           (_rocq_recurse tail
             ltac:(unfold ltof; unfold _rocq_measure; cbn beta iota zeta; destruct _rocq_state as [|head rest]; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia))
       end eq_refl) values.
@@ -51,7 +51,7 @@ Module Mutual.
           (_rocq_match_scrutinee = _rocq_match_view -> _) with
         | [] => fun _rocq_match_eq => 0
         | Datatypes.cons _ values => fun _rocq_match_eq =>
-          Z.add 1
+          RocqOfOCaml.OCamlInt.add 1
             (_rocq_recurse (inr values)
               ltac:(inversion _rocq_call_eq; subst; unfold ltof; unfold _rocq_measure; cbn beta iota zeta in *; destruct _rocq_state; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia))
         end eq_refl
@@ -62,7 +62,7 @@ Module Mutual.
           (_rocq_match_scrutinee = _rocq_match_view -> _) with
         | [] => fun _rocq_match_eq => 0
         | Datatypes.cons _ values => fun _rocq_match_eq =>
-          Z.add 1
+          RocqOfOCaml.OCamlInt.add 1
             (_rocq_recurse (inl values)
               ltac:(inversion _rocq_call_eq; subst; unfold ltof; unfold _rocq_measure; cbn beta iota zeta in *; destruct _rocq_state; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia))
         end eq_refl

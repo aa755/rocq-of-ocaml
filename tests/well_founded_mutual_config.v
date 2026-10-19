@@ -35,7 +35,7 @@ Section _rocq_wf_first.
         if equiv_decb value 0 then
           (unwrap (_rocq_assumption_0 := _rocq_assumption_0)) (Some true)
         else
-          equiv_decb (second (Z.sub value 1)) 0
+          equiv_decb (second (RocqOfOCaml.OCamlInt.sub value 1)) 0
       | inr (_rocq_state) => fun _rocq_call_eq =>
         let value := _rocq_state in
         let first (value : int) : bool := _rocq_recurse (inl value) _ in
@@ -43,7 +43,7 @@ Section _rocq_wf_first.
         if equiv_decb value 0 then
           0
         else
-          if first (Z.sub value 1) then
+          if first (RocqOfOCaml.OCamlInt.sub value 1) then
             value
           else
             0

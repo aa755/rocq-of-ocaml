@@ -17,6 +17,6 @@ Program Definition countdown {A : Set}
       let '_ := false in
       (@RocqOfOCaml.Basics.unreachable A _)
     else
-      countdown (Z.sub value 1)) value.
+      countdown (RocqOfOCaml.OCamlInt.sub value 1)) value.
 
 Admit Obligations.

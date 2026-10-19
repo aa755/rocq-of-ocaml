@@ -4,10 +4,11 @@ Require Import RocqOfOCaml.Settings.
 
 Definition with_default (x_optional : option int) : int -> int :=
   match x_optional with
-  | Some x_value => fun (y_value : int) => Z.add x_value y_value
+  | Some x_value =>
+    fun (y_value : int) => RocqOfOCaml.OCamlInt.add x_value y_value
   | None =>
     let 'x_value := 1 in
-    fun (y_value : int) => Z.add x_value y_value
+    fun (y_value : int) => RocqOfOCaml.OCamlInt.add x_value y_value
   end.
 
 Definition omitted : int := with_default None 5.

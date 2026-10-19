@@ -18,4 +18,7 @@ Fixpoint run `{_rocq_guard : GeneralRecursionGuard} (current : state)
   if equiv_decb current.(state.remaining) 0 then
     current
   else
-    run {| state.remaining := Z.sub current.(state.remaining) 1; |}.
+    run
+      {|
+        state.remaining := RocqOfOCaml.OCamlInt.sub current.(state.remaining) 1;
+        |}.

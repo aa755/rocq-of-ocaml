@@ -5,10 +5,11 @@ Require Import RocqOfOCaml.Settings.
 Fixpoint sum_shadow1 (values : list int) : int :=
   match values with
   | [] => 0
-  | Datatypes.cons value values => Z.add value (sum_shadow1 values)
+  | Datatypes.cons value values =>
+    RocqOfOCaml.OCamlInt.add value (sum_shadow1 values)
   end.
 
 Definition sum (initial : int) (values : list int) : int :=
-  Z.add initial (sum_shadow1 values).
+  RocqOfOCaml.OCamlInt.add initial (sum_shadow1 values).
 
 Definition example : int := sum 10 (Datatypes.cons 1 (Datatypes.cons 2 nil)).

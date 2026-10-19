@@ -12,6 +12,7 @@
 
 Require Import RocqOfOCaml.Libraries.
 Require Import RocqOfOCaml.Basics.
+Require Import RocqOfOCaml.OCamlInt.
 Require Import RocqOfOCaml.Settings.
 
 Import ListNotations.
@@ -339,7 +340,7 @@ Fixpoint init_nat {A : Set}
 
 Definition init {A : Set} `{Unreachable (t A)}
     (count : int) (function_value : int -> A) : t A :=
-  if RocqOfOCaml.Basics.Stdlib.lt count 0
+  if Z.ltb count 0
   then RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.init"
   else init_nat (Z.to_nat count) 0 function_value.
 
@@ -454,7 +455,7 @@ Definition product {A B : Set} (left : t A) (right : t B) : t (A * B) :=
 
 (** A finite replacement for [take count (ints start)]. *)
 Definition range `{Unreachable (t int)} (count start : int) : t int :=
-  init count (fun index => Z.add start index).
+  init count (fun index => OCamlInt.add start index).
 
 (** A finite replacement for [take count (iterate step start)]. *)
 Fixpoint iterate_take_nat {A : Set}

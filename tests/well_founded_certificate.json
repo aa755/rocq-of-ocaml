@@ -8,7 +8,7 @@
       "tests/well_founded_certificate.ml",
       "count_up",
       "RocqOfOCaml.Termination.IncreasingIndex.increasing_index_rank 3 _rocq_state",
-      "subst value; unfold ltof; match goal with | [ measure := _ : _ -> nat |- _ ] => unfold measure; cbn beta zeta end; apply RocqOfOCaml.Termination.IncreasingIndex.increasing_index_positive_step_decreases; [match goal with | guard : Z.geb ?left ?right = false |- _ => destruct (Z.geb_spec left right); congruence end | lia]"
+      "subst value; unfold ltof; match goal with | [ measure := _ : _ -> nat |- _ ] => unfold measure; cbn beta zeta end; match goal with | guard : Z.geb ?left ?right = false |- _ => destruct (Z.geb_spec left right); [congruence |] end; apply RocqOfOCaml.Termination.IncreasingIndex.increasing_index_machine_step_decreases; [assumption | lia | change (_rocq_state + 1 <= 4611686018427387903)%Z; lia]"
     ]
   ]
 }

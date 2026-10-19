@@ -52,7 +52,8 @@ Module Produce.
       (@RocqOfOCaml.Basics.unreachable Memory.(Memory.Memory_signature.t) _) in
     Input.(INPUT.value).
   
-  Definition extra `{_fargs : FArgs} : int := Z.add Input.(INPUT.value) 1.
+  Definition extra `{_fargs : FArgs} : int :=
+    RocqOfOCaml.OCamlInt.add Input.(INPUT.value) 1.
   
   Module Produce_result.
     Record signature `{_fargs : FArgs} {Memory_t : Set} : Type := {

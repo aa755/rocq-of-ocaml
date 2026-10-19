@@ -38,7 +38,9 @@ Module Fixed.
       (_rocq_assumption_1 := _rocq_assumption_1))
       (fun (index : int) =>
         (get (_rocq_assumption_0 := _rocq_assumption_2)) value
-          (Z.sub (Z.sub Width.(Fixed_Width_signature.value) index) 1)).
+          (RocqOfOCaml.OCamlInt.sub
+            (RocqOfOCaml.OCamlInt.sub Width.(Fixed_Width_signature.value) index)
+            1)).
   
   Module Fixed_result.
     Record signature `{_fargs : FArgs} : Type := {

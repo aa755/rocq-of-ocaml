@@ -118,7 +118,7 @@ Definition Base_fargs
         let '_ := "unreachable" in
         (@RocqOfOCaml.Basics.unreachable int _) in
     let sub (x_value : int) (y_value : int) : int :=
-      Z.sub x_value y_value in
+      RocqOfOCaml.OCamlInt.sub x_value y_value in
     ({|
       MakeField_Seed_signature.seed := seed;
       MakeField_Seed_signature.sub := sub

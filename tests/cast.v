@@ -5,7 +5,7 @@ Require Import RocqOfOCaml.Settings.
 Definition f_value
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (x_value : int)
   : int :=
-  Z.add
+  RocqOfOCaml.OCamlInt.add
     (let '_ := x_value in
     (@RocqOfOCaml.Basics.unreachable int _)) 1.
 
@@ -16,6 +16,6 @@ Definition g_value {a : Set}
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} (kind : t)
   (x_value : a) : int :=
   let 'Int := kind in
-  Z.add
+  RocqOfOCaml.OCamlInt.add
     (let '_ := x_value in
     (@RocqOfOCaml.Basics.unreachable int _)) 1.

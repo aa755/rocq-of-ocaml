@@ -156,10 +156,10 @@ Definition set_update {a : Set} (v_value : a) (b_value : bool) (Box : set a)
         if b_value then
           Box.(Boxed_set.size)
         else
-          Z.sub Box.(Boxed_set.size) 1
+          RocqOfOCaml.OCamlInt.sub Box.(Boxed_set.size) 1
       else
         if b_value then
-          Z.add Box.(Boxed_set.size) 1
+          RocqOfOCaml.OCamlInt.add Box.(Boxed_set.size) 1
         else
           Box.(Boxed_set.size) in
     {|

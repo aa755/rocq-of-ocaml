@@ -3,6 +3,7 @@
 
 From Stdlib Require Import ZArith Lia.
 From RocqOfOCaml.Termination Require Import Common.
+Require Import RocqOfOCaml.OCamlInt.
 
 Local Open Scope Z_scope.
 
@@ -17,6 +18,24 @@ Lemma increasing_index_positive_step_decreases
    increasing_index_rank limit index)%nat.
 Proof.
   intros Hindex Hstep.
+  unfold increasing_index_rank.
+  apply z_rank_strict_from_positive; lia.
+Qed.
+
+(** Native addition can wrap. A positive step is decreasing for this rank
+    only if it cannot cross the signed upper bound. No source range invariant
+    is needed for indices below [min_int]: wrapping those still increases them. *)
+Lemma increasing_index_machine_step_decreases (limit index step : Z) :
+  index < limit -> 0 < step -> index + step <= OCamlInt.max_int ->
+  (increasing_index_rank limit (OCamlInt.add index step) <
+   increasing_index_rank limit index)%nat.
+Proof.
+  intros Hindex Hstep Hupper.
+  assert (Hprogress : index < OCamlInt.add index step).
+  { destruct (Z_le_gt_dec OCamlInt.min_int (index + step)).
+    - rewrite OCamlInt.add_no_overflow by lia. lia.
+    - pose proof (OCamlInt.repr_range (index + step)).
+      unfold OCamlInt.add. lia. }
   unfold increasing_index_rank.
   apply z_rank_strict_from_positive; lia.
 Qed.
