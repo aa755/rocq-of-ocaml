@@ -5,8 +5,14 @@ open Angstrom
 open SmartPrint
 open Monad.Notations
 
-(** A constant can be an integer, a natural number (used for the non-termination monad) *)
-type t = Int of int | Char of char | String of string | Warn of t * string
+(** A constant can be an integer, a natural number (used for the non-termination
+    monad) *)
+type t =
+  | Int of int
+  | WideInt of string
+  | Char of char
+  | String of string
+  | Warn of t * string
 
 let warn (c : t) (message : string) : t Monad.t =
   let* configuration = get_configuration in
@@ -25,22 +31,17 @@ let of_constant (c : constant) : t Monad.t =
         Printf.sprintf "Float constant %s is approximated by the integer %d" s n
       in
       warn (Int n) message
-  | Const_int32 n ->
-      let message = "Constant of type int32 is converted to int" in
-      warn (Int (Int32.to_int n)) message
-  | Const_int64 n ->
-      let message = "Constant of type int64 is converted to int" in
-      warn (Int (Int64.to_int n)) message
-  | Const_nativeint n ->
-      let message = "Constant of type nativeint is converted to int" in
-      warn (Int (Nativeint.to_int n)) message
+  (* Do not pass these literals through [int]: the host's tagged integer is
+     narrower than [int64] and [nativeint]. Gallina's Z notation is exact. *)
+  | Const_int32 n -> return (WideInt (Int32.to_string n))
+  | Const_int64 n -> return (WideInt (Int64.to_string n))
+  | Const_nativeint n -> return (WideInt (Nativeint.to_string n))
 
 (** Parsed string (for Rocq) is
     - either a usual ocaml string with Rocq printable characters
     - or a Rocq non-printable character
     - or double quotes (a special case for Rocq)
-    https://rocq-prover.org/doc/v9.0/stdlib/Stdlib.Strings.String.html
- *)
+      https://rocq-prover.org/doc/v9.0/stdlib/Stdlib.Strings.String.html *)
 type parsed_string = PString of string | PChar of char | PDQuote
 
 (** Kind of "good" printable characters (according to the Rocq documentation).
@@ -89,6 +90,7 @@ let rec to_coq_s (need_parens : bool) (xs : parsed_string list) : SmartPrint.t =
 let rec to_coq (need_parens : bool) (c : t) : SmartPrint.t =
   match c with
   | Int n -> if n >= 0 then OCaml.int n else parens @@ OCaml.int n
+  | WideInt n -> if n.[0] = '-' then parens !^n else !^n
   | Char c ->
       let s =
         if Char.code c < 32 then Printf.sprintf "%03d" (Char.code c)
