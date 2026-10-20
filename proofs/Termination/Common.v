@@ -1,7 +1,7 @@
 (** Reusable facts for ranking recursion by a nonnegative integer
     expression. *)
 
-From Stdlib Require Import ZArith Lia.
+From Stdlib Require Import ZArith Lia Arith.Wf_nat.
 
 Local Open Scope Z_scope.
 
@@ -18,6 +18,46 @@ Proof.
   unfold z_rank.
   assert (Hcurrent : 0 <= current) by lia.
   exact ((proj1 (Z2Nat.inj_lt next current Hnext Hcurrent)) Hlt).
+Qed.
+
+(** Well-founded recursion on the states satisfying an invariant. Each
+    recursive call must prove both preservation and strict decrease. The
+    public entry also requires a proof: this helper does not manufacture an
+    inhabitant, discard failed obligations, or decide an invalid-input policy. *)
+Polymorphic Definition invariant_fix {State Result : Type}
+    (valid : State -> Prop) (measure : State -> nat)
+    (body : forall state, valid state ->
+      (forall next, valid next /\ (measure next < measure state)%nat -> Result) ->
+      Result)
+    (state : State) (Hvalid : valid state) : Result :=
+  @Fix { state : State | valid state }
+    (ltof _ (fun state => measure (proj1_sig state)))
+    (well_founded_ltof _ (fun state => measure (proj1_sig state)))
+    (fun _ => Result)
+    (fun state recurse =>
+      body (proj1_sig state) (proj2_sig state)
+        (fun next certificate =>
+          recurse (exist _ next (proj1 certificate)) (proj2 certificate)))
+    (exist _ state Hvalid).
+
+Polymorphic Lemma invariant_fix_eq {State Result : Type}
+    (valid : State -> Prop) (measure : State -> nat)
+    (body : forall state, valid state ->
+      (forall next, valid next /\ (measure next < measure state)%nat -> Result) ->
+      Result)
+    (body_ext : forall state Hvalid recurse1 recurse2,
+      (forall next certificate, recurse1 next certificate = recurse2 next certificate) ->
+      body state Hvalid recurse1 = body state Hvalid recurse2)
+    state Hvalid :
+  invariant_fix valid measure body state Hvalid =
+  body state Hvalid
+    (fun next certificate =>
+      invariant_fix valid measure body next (proj1 certificate)).
+Proof.
+  unfold invariant_fix.
+  rewrite Fix_eq.
+  - reflexivity.
+  - intros. apply body_ext. intros. apply H.
 Qed.
 
 (** A clamped next rank may be negative.  It still decreases whenever the
