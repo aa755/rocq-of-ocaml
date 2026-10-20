@@ -543,7 +543,7 @@ type constructor_equality = {
   exhaustive : bool;
 }
 
-let constructor_equality_application (path : Path.t)
+let constructor_equality_application ~(strict : bool) (path : Path.t)
     (arguments : (Asttypes.arg_label * apply_arg) list) :
     constructor_equality option =
   let negate =
@@ -570,7 +570,7 @@ let constructor_equality_application (path : Path.t)
             if
               List.for_all
                 (fun payload ->
-                  has_rocq_eq_dec payload.exp_env payload.exp_type)
+                  has_rocq_eq_dec ~strict payload.exp_env payload.exp_type)
                 payloads
             then Some (constructor, payloads)
             else None)
@@ -4939,13 +4939,13 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
   set_env e.exp_env
     (set_loc e.exp_loc
        (let* attributes = Attribute.of_attributes e.exp_attributes in
+        let* configuration = get_configuration in
         let typ = e.exp_type in
         (* We do not indent here to preserve the diff. *)
         let* e =
           match e.exp_desc with
           | Texp_ident (path, _, description) ->
               let implicits = Attribute.get_implicits attributes in
-              let* configuration = get_configuration in
               let strict = configuration.forbid_polymorphic_comparison in
               let* x =
                 match specialized_base_comparison e with
@@ -5304,9 +5304,14 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               in
               return (Assumption (kind, typ, arguments))
           | Texp_apply ({ exp_desc = Texp_ident (path, _, _); _ }, e_xs)
-            when Option.is_some (constructor_equality_application path e_xs)
+            when Option.is_some
+                   (constructor_equality_application
+                      ~strict:configuration.forbid_polymorphic_comparison path e_xs)
             -> (
-              match constructor_equality_application path e_xs with
+              match
+                constructor_equality_application
+                  ~strict:configuration.forbid_polymorphic_comparison path e_xs
+              with
               | Some { negate; scrutinee; constructor; payloads; exhaustive } ->
                   let* scrutinee = of_expression typ_vars scrutinee in
                   let* payloads =

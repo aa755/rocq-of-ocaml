@@ -61,7 +61,9 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     exp context typedtree typedtree_errors source_file_name source_file_content
       external_assumption_specs json_mode
   in
-  let document = Ast.to_coq source_file_name imports ast in
+  let rejected =
+    has_errors && context.configuration.forbid_polymorphic_comparison
+  in
   let generated_file_name =
     match output_file_name with
     | None ->
@@ -82,9 +84,11 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
         ^ new_extension
     | Some output_file_name -> output_file_name
   in
-  let generated_file_content = SmartPrint.to_string 80 2 document in
-  let rejected =
-    has_errors && context.configuration.forbid_polymorphic_comparison
+  let generated_file_content =
+    if rejected then ""
+    else
+      Ast.to_coq source_file_name imports ast
+      |> SmartPrint.to_string 80 2
   in
   let success_message =
     if rejected then
@@ -100,7 +104,7 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
   in
   {
     assumption_specs =
-      assumption_prefixes
+      (if rejected then [] else assumption_prefixes)
       |> List.concat_map (fun prefix ->
              Ast.qualified_assumption_call_specs prefix ast)
       |> List.sort_uniq compare

@@ -5,7 +5,7 @@ require 'open3'
 require 'tmpdir'
 
 root = File.expand_path('../..', __dir__)
-translator = File.join(root, '_build/default/src/rocqOfOCaml.exe')
+translator = ENV.fetch('TRANSLATOR', File.join(root, '_build/default/src/rocqOfOCaml.exe'))
 cases = {
   'int_equal' => ['let test (x : int) y = x = y', true],
   'int_order' => ['let test (x : int) y = x < y', true],
@@ -23,6 +23,9 @@ cases = {
   'physical_not_equal' => ['let test (x : int) y = x != y', false],
   'float_equal' => ['let test (x : float) y = x = y', false],
   'nested_float_equal' => ['let test (x : float list) y = x = y', false],
+  'constructor_float_equal' => ['let test (x : float option) = x = Some 0.0', false],
+  'constructor_int_equal' => ['let test (x : int option) = x = Some 1', true],
+  'constructor_none' => ['let test (x : float option) = x = None', true],
   'shadowed_int' => ['type int = A | B\nlet test (x : int) y = x = y', false],
   'value_alias' => ['let comparison = compare\nlet test x y = comparison x y', false],
   'module_alias' => ['module S = Stdlib\nlet test x y = S.compare x y', false],
