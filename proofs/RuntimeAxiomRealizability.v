@@ -8,12 +8,12 @@ Local Open Scope Z_scope.
 
 (** The signatures used by the project theorem census can be instantiated
     simultaneously by closed Gallina terms. This establishes logical
-    realisability, not the behaviour of the native cryptographic, hashing,
+    realisability, not the behaviour of the native cryptographic,
     formatting, or physical-equality implementations. The actual bundle
     below checks these signatures against the translator's declarations.
     The bundle also includes [Context.t] and the public-key length contract,
     needed by the dependent secp256k1 signatures and the byte-read bounds
-    proof. [Bigstring.init] is executable and no longer an axiom. *)
+    proof. [Bigstring.init] and [OCamlZ.hash] are executable, not axioms. *)
 Record axiom_bundle : Type := {
   model_physical_equal : forall {A : Set}, A -> A -> bool;
   model_polymorphic_compare : forall {A : Set}, A -> A -> int;
@@ -43,7 +43,6 @@ Record axiom_bundle : Type := {
     model_context_type -> model_sign_type model_sign_recoverable ->
     Bigstring.t -> sum (model_key_type model_key_public) string;
   model_z_legendre : Z -> Z -> int;
-  model_z_hash : Z -> int;
   model_z_format : string -> Z -> string;
 }.
 
@@ -67,7 +66,6 @@ Definition actual_bundle : axiom_bundle :=
     model_read_recoverable := Libsecp256k1.External.Sign.read_recoverable;
     model_recover := Libsecp256k1.External.Sign.recover;
     model_z_legendre := OCamlZ.legendre;
-    model_z_hash := OCamlZ.hash;
     model_z_format := OCamlZ.format;
   |}.
 
@@ -108,7 +106,6 @@ Definition closed_bundle : axiom_bundle :=
     model_read_recoverable := fun _ _ => inr EmptyString;
     model_recover := fun _ _ _ => inr EmptyString;
     model_z_legendre := fun _ _ => 0;
-    model_z_hash := fun _ => 0;
     model_z_format := fun format _ => format;
   |}.
 

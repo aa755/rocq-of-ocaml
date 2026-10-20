@@ -228,6 +228,7 @@ let rules =
     ("Z.invert", "RocqOfOCaml.OCamlZ.invert");
     ("Z.legendre", "RocqOfOCaml.OCamlZ.legendre");
     ("Z.hash", "RocqOfOCaml.OCamlZ.hash");
+    ("Z.seeded_hash", "RocqOfOCaml.OCamlZ.seeded_hash");
     ("Z.to_string", "RocqOfOCaml.OCamlZ.to_string");
     ("Z.of_string", "RocqOfOCaml.OCamlZ.of_string");
     ("Z.format", "RocqOfOCaml.OCamlZ.format");

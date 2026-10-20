@@ -21,10 +21,12 @@ OCamlFormat.v
 OCamlFun.v
 OCamlHashtbl.v
 OCamlIarray.v
+OCamlHash.v
 OCamlMachineInt.v
 OCamlInt.v
 OCamlInt32.v
 OCamlZ.v
+OCamlZBits.v
 OCamlInt64.v
 OCamlNativeint.v
 OCamlList.v

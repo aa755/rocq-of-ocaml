@@ -23,11 +23,11 @@ Definition to_int32 : t -> int32 := OCamlInt32.repr.
 Definition of_nativeint : nativeint -> t := repr.
 Definition to_nativeint (value : t) : nativeint := value.
 
-(** Existing float/hash compatibility approximations are not fixed by the
+(** Existing float compatibility approximations are not fixed by the
     machine-integer arithmetic model. They are outside its equivalence claim. *)
 Definition of_float : float -> t := repr.
 Definition to_float (value : t) : float := value.
 Parameter bits_of_float : float -> t.
 Parameter float_of_bits : t -> float.
-Definition hash (value : t) : int := value.
-Definition seeded_hash (seed : int) (value : t) : int := Z.lxor seed value.
+Definition seeded_hash : int -> t -> int := OCamlHash.seeded_int64.
+Definition hash : t -> int := seeded_hash 0.

@@ -68,8 +68,9 @@ Division by zero and invalid throwing parsers use the existing typed
 assigned a fabricated successful result, and this work does not model caught
 exceptions or prove exception avoidance. Shifts with counts outside the range
 specified by OCaml have no equivalence claim. Existing float conversions,
-floating-point bit casts, and representation-dependent hashing are outside
-this arithmetic correction. This is not a whole-translator soundness proof or
+floating-point bit casts, and general polymorphic hashing remain outside
+this arithmetic correction. The separate [runtime correspondence work](runtime-correspondence.md)
+implements native-compatible `Int64` and Zarith hashes. This is not a whole-translator soundness proof or
 an assertion that all compatibility-library behavior has been verified.
 
 ## Reproduction

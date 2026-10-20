@@ -2,6 +2,7 @@ From Stdlib Require Import Numbers.DecimalString Lia.
 From Stdlib Require ZArith.Znumtheory.
 Require Import RocqOfOCaml.Libraries.
 Require Import RocqOfOCaml.Basics.
+Require Import RocqOfOCaml.OCamlHash.
 
 Local Open Scope Z_scope.
 
@@ -93,10 +94,21 @@ Fixpoint to_bits_bytes (count : nat) (value : Z) : string :=
         (to_bits_bytes count (Z.div value 256))
   end.
 
-Definition to_bits (value : Z) : string :=
+Definition to_bits_minimal (value : Z) : string :=
   let value := Z.abs value in
   let byte_count := Z.div (Z.add (numbits value) 7) 8 in
   to_bits_bytes (Z.to_nat byte_count) value.
+
+(** [caml_z.c:ml_z_to_bits] serializes the absolute value in whole GMP
+    limbs. On the supported 64-bit host each limb occupies eight bytes;
+    zero has no limbs. [to_bits_minimal] is a separate canonical encoding,
+    not the implementation of the native [Z.to_bits] API.
+    Source: https://github.com/ocaml/Zarith/blob/release-1.14/caml_z.c *)
+Definition limb_count (value : Z) : nat :=
+  Z.to_nat ((numbits value + 63) / 64).
+
+Definition to_bits (value : Z) : string :=
+  to_bits_bytes (8 * limb_count value)%nat (Z.abs value).
 
 Fixpoint of_bits (value : string) : Z :=
   match value with
@@ -200,13 +212,31 @@ Proof.
     apply Znumtheory.rel_prime_le_prime; [exact Hprime | lia].
 Qed.
 
-(** The Legendre symbol still depends on GMP's implementation. *)
+(** Foreign primitive: match Zarith/GMP's Legendre symbol on its documented
+    odd positive prime domain. This declaration alone states no such law. *)
 
 Parameter legendre : Z -> Z -> int.
 
-(** Zarith delegates this operation to OCaml's representation-sensitive
-    generic hash. *)
-Parameter hash : Z -> int.
+(** Zarith's custom hash mixes both halves of every absolute-value limb,
+    including a zero high half, then increments the accumulator for a
+    negative value. [caml_hash] mixes that custom result once more. Small
+    integers instead use OCaml's tagged immediate representation. *)
+Fixpoint hash_limbs (count : nat) (value accumulator : Z) : Z :=
+  match count with
+  | O => accumulator
+  | S count =>
+      let accumulator := OCamlHash.mix accumulator value in
+      let accumulator := OCamlHash.mix accumulator (Z.shiftr value 32) in
+      hash_limbs count (Z.shiftr value 64) accumulator
+  end.
+
+Definition seeded_hash (seed : int) (value : Z) : int :=
+  if fits_int value then OCamlHash.seeded_int seed value else
+  let accumulator := hash_limbs (limb_count value) (Z.abs value) 0 in
+  let accumulator := if value <? 0 then accumulator + 1 else accumulator in
+  OCamlHash.finish (OCamlHash.mix seed accumulator).
+
+Definition hash : Z -> int := seeded_hash 0.
 
 Definition to_string (value : Z) : string :=
   NilZero.string_of_int (Z.to_int value).
@@ -297,8 +327,10 @@ Definition of_string `{Unreachable Z} (value : string) : Z :=
   | None => unreachable
   end.
 
-(** Zarith supports a printf-like formatting language.  Numeric formatting is
-    currently used for JSON/debug rendering, not VM state transitions. *)
+(** Foreign primitive: the exact Zarith/GMP printf-style formatting result,
+    including flags, width, prefixes and sign. It is not an arbitrary pretty
+    printer. Callers observing JSON/debug output rely on that correspondence;
+    this declaration alone does not prove it. *)
 Parameter format : string -> Z -> string.
 
 Example numbits_zero : numbits 0 = 0 := eq_refl.
