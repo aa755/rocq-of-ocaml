@@ -92,7 +92,7 @@ Fixpoint init_nat_aux {A : Set}
 
 Definition init {A : Set} `{Unreachable (t A)}
   (len : int) (f_value : int -> A) : t A :=
-  if RocqOfOCaml.Basics.Stdlib.lt len 0 then
+  if Z.ltb len 0 then
     RocqOfOCaml.Basics.Stdlib.invalid_arg "List.init"
   else
     init_nat_aux (Z.to_nat len) 0 f_value.
@@ -520,7 +520,7 @@ Definition take {A : Set} (n_value : int) (l_value : t A) : t A :=
     | (n_value, Datatypes.cons x_value l_value) =>
       Datatypes.cons x_value (aux (Z.sub n_value 1) l_value)
     end in
-  if RocqOfOCaml.Basics.Stdlib.le n_value 0 then
+  if Z.leb n_value 0 then
     nil
   else
     aux n_value l_value.
@@ -532,13 +532,13 @@ Definition drop {A : Set} (n_value : int) (l_value : t A) : t A :=
       (function_parameter,
         match function_parameter with
         | Datatypes.cons _x l_value =>
-          RocqOfOCaml.Basics.Stdlib.lt i_value n_value
+          Z.ltb i_value n_value
         | _ => false
         end) with
     | (Datatypes.cons _x l_value, true) => aux (Z.add i_value 1) l_value
     | (rest, _) => rest
     end in
-  if RocqOfOCaml.Basics.Stdlib.le n_value 0 then
+  if Z.leb n_value 0 then
     l_value
   else
     aux 0 l_value.
@@ -637,7 +637,7 @@ Fixpoint merge_fuel {A : Set} (fuel : nat)
       | ([], l2) => l2
       | (l1, []) => l1
       | (Datatypes.cons h1 t1, Datatypes.cons h2 t2) =>
-          if RocqOfOCaml.Basics.Stdlib.le (cmp h1 h2) 0 then
+          if Z.leb (cmp h1 h2) 0 then
             Datatypes.cons h1 (merge_fuel fuel cmp t1 l2)
           else
             Datatypes.cons h2 (merge_fuel fuel cmp l1 t2)
@@ -658,7 +658,7 @@ Definition stable_sort {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
     | ([], l2) => rev_append l2 accu
     | (l1, []) => rev_append l1 accu
     | (Datatypes.cons h1 t1, Datatypes.cons h2 t2) =>
-      if RocqOfOCaml.Basics.Stdlib.le (cmp h1 h2) 0 then
+      if Z.leb (cmp h1 h2) 0 then
         rev_merge t1 l2 (Datatypes.cons h1 accu)
       else
         rev_merge l1 t2 (Datatypes.cons h2 accu)
@@ -668,7 +668,7 @@ Definition stable_sort {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
     | ([], l2) => rev_append l2 accu
     | (l1, []) => rev_append l1 accu
     | (Datatypes.cons h1 t1, Datatypes.cons h2 t2) =>
-      if RocqOfOCaml.Basics.Stdlib.gt (cmp h1 h2) 0 then
+      if Z.gtb (cmp h1 h2) 0 then
         rev_merge_rev t1 l2 (Datatypes.cons h1 accu)
       else
         rev_merge_rev l1 t2 (Datatypes.cons h2 accu)
@@ -678,26 +678,26 @@ Definition stable_sort {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
     match (n_value, l_value) with
     | (2, Datatypes.cons x1 (Datatypes.cons x2 tl)) =>
       let s_value :=
-        if RocqOfOCaml.Basics.Stdlib.le (cmp x1 x2) 0 then
+        if Z.leb (cmp x1 x2) 0 then
           Datatypes.cons x1 (Datatypes.cons x2 nil)
         else
           Datatypes.cons x2 (Datatypes.cons x1 nil) in
       (s_value, tl)
     | (3, Datatypes.cons x1 (Datatypes.cons x2 (Datatypes.cons x3 tl))) =>
       let s_value :=
-        if RocqOfOCaml.Basics.Stdlib.le (cmp x1 x2) 0 then
-          if RocqOfOCaml.Basics.Stdlib.le (cmp x2 x3) 0 then
+        if Z.leb (cmp x1 x2) 0 then
+          if Z.leb (cmp x2 x3) 0 then
             Datatypes.cons x1 (Datatypes.cons x2 (Datatypes.cons x3 nil))
           else
-            if RocqOfOCaml.Basics.Stdlib.le (cmp x1 x3) 0 then
+            if Z.leb (cmp x1 x3) 0 then
               Datatypes.cons x1 (Datatypes.cons x3 (Datatypes.cons x2 nil))
             else
               Datatypes.cons x3 (Datatypes.cons x1 (Datatypes.cons x2 nil))
         else
-          if RocqOfOCaml.Basics.Stdlib.le (cmp x1 x3) 0 then
+          if Z.leb (cmp x1 x3) 0 then
             Datatypes.cons x2 (Datatypes.cons x1 (Datatypes.cons x3 nil))
           else
-            if RocqOfOCaml.Basics.Stdlib.le (cmp x2 x3) 0 then
+            if Z.leb (cmp x2 x3) 0 then
               Datatypes.cons x2 (Datatypes.cons x3 (Datatypes.cons x1 nil))
             else
               Datatypes.cons x3 (Datatypes.cons x2 (Datatypes.cons x1 nil)) in
@@ -713,26 +713,26 @@ Definition stable_sort {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
     match (n_value, l_value) with
     | (2, Datatypes.cons x1 (Datatypes.cons x2 tl)) =>
       let s_value :=
-        if RocqOfOCaml.Basics.Stdlib.gt (cmp x1 x2) 0 then
+        if Z.gtb (cmp x1 x2) 0 then
           Datatypes.cons x1 (Datatypes.cons x2 nil)
         else
           Datatypes.cons x2 (Datatypes.cons x1 nil) in
       (s_value, tl)
     | (3, Datatypes.cons x1 (Datatypes.cons x2 (Datatypes.cons x3 tl))) =>
       let s_value :=
-        if RocqOfOCaml.Basics.Stdlib.gt (cmp x1 x2) 0 then
-          if RocqOfOCaml.Basics.Stdlib.gt (cmp x2 x3) 0 then
+        if Z.gtb (cmp x1 x2) 0 then
+          if Z.gtb (cmp x2 x3) 0 then
             Datatypes.cons x1 (Datatypes.cons x2 (Datatypes.cons x3 nil))
           else
-            if RocqOfOCaml.Basics.Stdlib.gt (cmp x1 x3) 0 then
+            if Z.gtb (cmp x1 x3) 0 then
               Datatypes.cons x1 (Datatypes.cons x3 (Datatypes.cons x2 nil))
             else
               Datatypes.cons x3 (Datatypes.cons x1 (Datatypes.cons x2 nil))
         else
-          if RocqOfOCaml.Basics.Stdlib.gt (cmp x1 x3) 0 then
+          if Z.gtb (cmp x1 x3) 0 then
             Datatypes.cons x2 (Datatypes.cons x1 (Datatypes.cons x3 nil))
           else
-            if RocqOfOCaml.Basics.Stdlib.gt (cmp x2 x3) 0 then
+            if Z.gtb (cmp x2 x3) 0 then
               Datatypes.cons x2 (Datatypes.cons x3 (Datatypes.cons x1 nil))
             else
               Datatypes.cons x3 (Datatypes.cons x2 (Datatypes.cons x1 nil)) in
@@ -746,7 +746,7 @@ Definition stable_sort {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
     end
   for sort in
   let len := length l_value in
-  if RocqOfOCaml.Basics.Stdlib.lt len 2 then
+  if Z.ltb len 2 then
     l_value
   else
     fst (sort len l_value).
@@ -765,7 +765,7 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
       if equiv_decb c_value 0 then
         rev_merge t1 t2 (Datatypes.cons h1 accu)
       else
-        if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+        if Z.ltb c_value 0 then
           rev_merge t1 l2 (Datatypes.cons h1 accu)
         else
           rev_merge l1 t2 (Datatypes.cons h2 accu)
@@ -779,7 +779,7 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
       if equiv_decb c_value 0 then
         rev_merge_rev t1 t2 (Datatypes.cons h1 accu)
       else
-        if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+        if Z.gtb c_value 0 then
           rev_merge_rev t1 l2 (Datatypes.cons h1 accu)
         else
           rev_merge_rev l1 t2 (Datatypes.cons h2 accu)
@@ -793,7 +793,7 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
         if equiv_decb c_value 0 then
           Datatypes.cons x1 nil
         else
-          if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+          if Z.ltb c_value 0 then
             Datatypes.cons x1 (Datatypes.cons x2 nil)
           else
             Datatypes.cons x2 (Datatypes.cons x1 nil) in
@@ -806,24 +806,24 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
           if equiv_decb c_value 0 then
             Datatypes.cons x1 nil
           else
-            if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+            if Z.ltb c_value 0 then
               Datatypes.cons x1 (Datatypes.cons x3 nil)
             else
               Datatypes.cons x3 (Datatypes.cons x1 nil)
         else
-          if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+          if Z.ltb c_value 0 then
             let c_value := cmp x2 x3 in
             if equiv_decb c_value 0 then
               Datatypes.cons x1 (Datatypes.cons x2 nil)
             else
-              if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+              if Z.ltb c_value 0 then
                 Datatypes.cons x1 (Datatypes.cons x2 (Datatypes.cons x3 nil))
               else
                 let c_value := cmp x1 x3 in
                 if equiv_decb c_value 0 then
                   Datatypes.cons x1 (Datatypes.cons x2 nil)
                 else
-                  if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+                  if Z.ltb c_value 0 then
                     Datatypes.cons x1
                       (Datatypes.cons x3 (Datatypes.cons x2 nil))
                   else
@@ -834,14 +834,14 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
             if equiv_decb c_value 0 then
               Datatypes.cons x2 (Datatypes.cons x1 nil)
             else
-              if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+              if Z.ltb c_value 0 then
                 Datatypes.cons x2 (Datatypes.cons x1 (Datatypes.cons x3 nil))
               else
                 let c_value := cmp x2 x3 in
                 if equiv_decb c_value 0 then
                   Datatypes.cons x2 (Datatypes.cons x1 nil)
                 else
-                  if RocqOfOCaml.Basics.Stdlib.lt c_value 0 then
+                  if Z.ltb c_value 0 then
                     Datatypes.cons x2
                       (Datatypes.cons x3 (Datatypes.cons x1 nil))
                   else
@@ -863,7 +863,7 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
         if equiv_decb c_value 0 then
           Datatypes.cons x1 nil
         else
-          if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+          if Z.gtb c_value 0 then
             Datatypes.cons x1 (Datatypes.cons x2 nil)
           else
             Datatypes.cons x2 (Datatypes.cons x1 nil) in
@@ -876,24 +876,24 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
           if equiv_decb c_value 0 then
             Datatypes.cons x1 nil
           else
-            if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+            if Z.gtb c_value 0 then
               Datatypes.cons x1 (Datatypes.cons x3 nil)
             else
               Datatypes.cons x3 (Datatypes.cons x1 nil)
         else
-          if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+          if Z.gtb c_value 0 then
             let c_value := cmp x2 x3 in
             if equiv_decb c_value 0 then
               Datatypes.cons x1 (Datatypes.cons x2 nil)
             else
-              if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+              if Z.gtb c_value 0 then
                 Datatypes.cons x1 (Datatypes.cons x2 (Datatypes.cons x3 nil))
               else
                 let c_value := cmp x1 x3 in
                 if equiv_decb c_value 0 then
                   Datatypes.cons x1 (Datatypes.cons x2 nil)
                 else
-                  if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+                  if Z.gtb c_value 0 then
                     Datatypes.cons x1
                       (Datatypes.cons x3 (Datatypes.cons x2 nil))
                   else
@@ -904,14 +904,14 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
             if equiv_decb c_value 0 then
               Datatypes.cons x2 (Datatypes.cons x1 nil)
             else
-              if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+              if Z.gtb c_value 0 then
                 Datatypes.cons x2 (Datatypes.cons x1 (Datatypes.cons x3 nil))
               else
                 let c_value := cmp x2 x3 in
                 if equiv_decb c_value 0 then
                   Datatypes.cons x2 (Datatypes.cons x1 nil)
                 else
-                  if RocqOfOCaml.Basics.Stdlib.gt c_value 0 then
+                  if Z.gtb c_value 0 then
                     Datatypes.cons x2
                       (Datatypes.cons x3 (Datatypes.cons x1 nil))
                   else
@@ -927,7 +927,7 @@ Definition sort_uniq {A : Set} (cmp : A -> A -> int) (l_value : t A) : t A :=
     end
   for sort in
   let len := length l_value in
-  if RocqOfOCaml.Basics.Stdlib.lt len 2 then
+  if Z.ltb len 2 then
     l_value
   else
     fst (sort len l_value).
@@ -938,7 +938,7 @@ Fixpoint insert_sorted {A : Set}
   match values with
   | [] => [value]
   | head :: tail =>
-      if RocqOfOCaml.Basics.Stdlib.le (cmp value head) 0 then
+      if Z.leb (cmp value head) 0 then
         value :: values
       else
         head :: insert_sorted cmp value tail
@@ -997,12 +997,12 @@ Fixpoint compare_length_with {A : Set} (l_value : t A) (n_value : int)
     if equiv_decb n_value 0 then
       0
     else
-      if RocqOfOCaml.Basics.Stdlib.gt n_value 0 then
+      if Z.gtb n_value 0 then
         (-1)
       else
         1
   | Datatypes.cons _ l_value =>
-    if RocqOfOCaml.Basics.Stdlib.le n_value 0 then
+    if Z.leb n_value 0 then
       1
     else
       compare_length_with l_value (Z.sub n_value 1)

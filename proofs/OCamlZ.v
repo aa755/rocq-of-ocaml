@@ -116,14 +116,22 @@ Fixpoint powm_positive (base : Z) (exponent : positive) (modulus : Z) : Z :=
       Z.modulo (Z.mul base (Z.mul half half)) modulus
   end.
 
+(** Zarith's Euclidean remainder is nonnegative even for a negative divisor.
+    Exceptional inputs retain the existing typed fallback convention. *)
+Definition erem `{Unreachable Z} (value modulus : Z) : Z :=
+  if Z.eqb modulus 0 then unreachable
+  else Z.modulo value (Z.abs modulus).
+
 Definition powm `{Unreachable Z} (base exponent modulus : Z) : Z :=
+  let modulus := Z.abs modulus in
+  if Z.eqb modulus 0 then unreachable else
   match exponent with
   | Z0 => Z.modulo 1 modulus
   | Zpos exponent => powm_positive base exponent modulus
-  | Zneg _ =>
-      (* Negative exponents require a modular inverse.  Monad VM's EVM
-         arithmetic only calls [powm] with unsigned exponents. *)
-      unreachable
+  | Zneg exponent =>
+      let '(coefficient, _, gcd) := Znumtheory.extgcd base modulus in
+      if Z.eqb gcd 1 then powm_positive coefficient exponent modulus
+      else unreachable
   end.
 
 (** [extgcd] computes Bezout coefficients. Sealing the executable model

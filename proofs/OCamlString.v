@@ -626,6 +626,14 @@ Definition compare (left right : t) : int :=
   else
     1.
 
+(** Specializations of the polymorphic Stdlib comparisons for strings. *)
+Definition lt (left right : t) : bool := Z.ltb (compare left right) 0.
+Definition le (left right : t) : bool := Z.leb (compare left right) 0.
+Definition gt (left right : t) : bool := Z.gtb (compare left right) 0.
+Definition ge (left right : t) : bool := Z.geb (compare left right) 0.
+Definition min (left right : t) : t := if le left right then left else right.
+Definition max (left right : t) : t := if ge left right then left else right.
+
 Lemma chars_eqb_matches_string (left right : string) :
   chars_eqb (Strings.String.list_ascii_of_string left)
     (Strings.String.list_ascii_of_string right) =

@@ -495,3 +495,4 @@ cli_tests.print_summary
 exit(1) if tests.invalid? || negative_tests.invalid? || cli_tests.invalid?
 
 exit(1) unless system('ruby', 'tests/machine_integers/differential.rb')
+exit(1) unless system('ruby', 'tests/runtime/differential.rb')

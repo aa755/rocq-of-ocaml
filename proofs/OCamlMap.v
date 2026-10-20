@@ -438,12 +438,11 @@ Module Make.
     Definition to_list {a : Set} (map : t a) : list (key * a) :=
       bindings map.
 
-    Fixpoint of_list {a : Set} (bindings : list (key * a)) : t a :=
-      match bindings with
-      | [] => []
-      | (key_value, value) :: tail =>
-          add key_value value (of_list tail)
-      end.
+    (** OCaml inserts left to right: the last duplicate binding wins. *)
+    Definition of_list {a : Set} (bindings : list (key * a)) : t a :=
+      List.fold_left
+        (fun map binding => add (fst binding) (snd binding) map)
+        bindings [].
 
     Definition to_seq {a : Set} (map : t a) : OCamlSeq.t (key * a) :=
       OCamlSeq.of_list map.

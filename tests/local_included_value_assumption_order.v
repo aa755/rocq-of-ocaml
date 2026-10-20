@@ -18,19 +18,16 @@ Module Container.
     Value : VALUE (t := Value_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Impl.
     Definition impl `{_fargs : FArgs} : Set :=
       RocqOfOCaml.OCamlIarray.t Value.(VALUE.t).
-    
+
     Definition t `{_fargs : FArgs} : Set := impl.
-    
+
     Program Definition normalize `{_fargs : FArgs}
-      `{_rocq_assumption_0 :
-        RocqOfOCaml.Basics.Unreachable
-          (RocqOfOCaml.OCamlIarray.t Value.(VALUE.t))}
-      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable impl}
-      `{_rocq_assumption_2 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable impl}
+      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
       (values : impl) : impl :=
       let _rocq_measure (_rocq_state : int) : nat :=
         RocqOfOCaml.Basics.well_founded_measure
@@ -66,9 +63,9 @@ Module Container.
       else
         RocqOfOCaml.OCamlIarray.init (RocqOfOCaml.OCamlInt.add last 1)
           (fun (i_value : int) => RocqOfOCaml.OCamlIarray.get values i_value).
-    
+
     Admit Obligations.
-    
+
     Module Impl_signature.
       Record signature `{_fargs : FArgs} : Type := {
         impl := RocqOfOCaml.OCamlIarray.t Value.(VALUE.t);
@@ -76,16 +73,16 @@ Module Container.
         normalize :
           forall
             `{_rocq_assumption_0 :
-              RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
-            `{_rocq_assumption_1 :
               RocqOfOCaml.Basics.Unreachable
-                (RocqOfOCaml.OCamlIarray.t Value.(VALUE.t))}, impl -> t;
+                (RocqOfOCaml.OCamlIarray.t Value.(VALUE.t))}
+            `{_rocq_assumption_1 :
+              RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}, impl -> t;
       }.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _
       _.
     Arguments Impl_signature {_ _}.
-    
+
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature :=
       {|
@@ -93,20 +90,20 @@ Module Container.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-  
+
   (** Inclusion of the module [Impl] *)
   Definition impl `{_fargs : FArgs} := Impl.(Impl.Impl_signature.impl).
-  
+
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-  
+
   Definition normalize `{_fargs : FArgs}
-    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
-    `{_rocq_assumption_1 :
+    `{_rocq_assumption_0 :
       RocqOfOCaml.Basics.Unreachable (RocqOfOCaml.OCamlIarray.t Value.(VALUE.t))}
-    : impl -> Impl.(Impl.Impl_signature.t) :=
+    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)} :
+    impl -> Impl.(Impl.Impl_signature.t) :=
     Impl.(Impl.Impl_signature.normalize) (_rocq_assumption_0 :=
       _rocq_assumption_0) (_rocq_assumption_1 := _rocq_assumption_1).
-  
+
   Definition init `{_fargs : FArgs}
     `{_rocq_assumption_0 :
       RocqOfOCaml.Basics.Unreachable (RocqOfOCaml.OCamlIarray.t Value.(VALUE.t))}
@@ -114,10 +111,10 @@ Module Container.
     `{_rocq_assumption_2 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
     (length : int) (make : int -> Value.(VALUE.t))
     : Impl.(Impl.Impl_signature.impl) :=
-    (normalize (_rocq_assumption_0 := _rocq_assumption_2)
-      (_rocq_assumption_1 := _rocq_assumption_0))
+    (normalize (_rocq_assumption_0 := _rocq_assumption_0)
+      (_rocq_assumption_1 := _rocq_assumption_2))
       (RocqOfOCaml.OCamlIarray.init length make).
-  
+
   Module Container_result.
     Record signature `{_fargs : FArgs} : Type := {
       Impl : Container.Impl.Impl_signature;
@@ -125,10 +122,10 @@ Module Container.
       t := impl;
       normalize :
         forall
-          `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)}
-          `{_rocq_assumption_1 :
+          `{_rocq_assumption_0 :
             RocqOfOCaml.Basics.Unreachable
-              (RocqOfOCaml.OCamlIarray.t Value.(VALUE.t))},
+              (RocqOfOCaml.OCamlIarray.t Value.(VALUE.t))}
+          `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable Value.(VALUE.t)},
           RocqOfOCaml.OCamlIarray.t Value.(VALUE.t) ->
           RocqOfOCaml.OCamlIarray.t Value.(VALUE.t);
       init :
@@ -144,7 +141,7 @@ Module Container.
   Definition Container_result `{_fargs : FArgs} := @Container_result.signature _
     _.
   Arguments Container_result {_ _}.
-  
+
   (* Container *)
   Definition functor `{_fargs : FArgs} :@Container_result Value_t _fargs :=
     ((@Container_result.Build_signature Value_t _fargs Impl
@@ -156,7 +153,7 @@ Definition Container {Value_t : Set} (Value : VALUE (t := Value_t)) :=
 
 Module Fixed_string.
   Definition t : Set := string.
-  
+
   Definition init
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
     `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int}
@@ -168,7 +165,7 @@ Module Fixed_string.
         let '_ := false in
         (@RocqOfOCaml.Basics.unreachable int _) in
     RocqOfOCaml.OCamlString.init length make.
-  
+
   Module Fixed_string_signature.
     Record signature : Type := {
       t := string;
@@ -179,7 +176,7 @@ Module Fixed_string.
     }.
   End Fixed_string_signature.
   Definition Fixed_string_signature := Fixed_string_signature.signature.
-  
+
   (* Fixed_string *)
   Definition module :Fixed_string_signature :=
     {|
@@ -191,12 +188,12 @@ Definition Fixed_string := Fixed_string.module.
 Module Plain_include.
   (** Inclusion of the module [Fixed_string] *)
   Definition t := Fixed_string.(Fixed_string.Fixed_string_signature.t).
-  
+
   Definition init `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t}
     `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int} :=
     Fixed_string.(Fixed_string.Fixed_string_signature.init) (_rocq_assumption_0
       := _rocq_assumption_0) (_rocq_assumption_1 := _rocq_assumption_1).
-  
+
   Definition zeros
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
     `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int} : string :=

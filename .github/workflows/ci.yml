@@ -62,3 +62,11 @@ jobs:
           path: |
             _coverage
             _coverage-summary.txt
+      - name: Upload native and Gallina differential evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-differential-evidence
+          path: |
+            _build/runtime-differential
+            _build/machine-integer-differential

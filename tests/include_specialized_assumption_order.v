@@ -13,7 +13,7 @@ Module Fixed.
   Class FArgs := {
     Width : Fixed_Width_signature;
   }.
-  
+
   Definition width `{_fargs : FArgs}
     `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int} : int :=
     if true then
@@ -21,48 +21,47 @@ Module Fixed.
     else
       let '_ := false in
       (@RocqOfOCaml.Basics.unreachable int _).
-  
+
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := string.
-    
+
     Definition init `{_fargs : FArgs}
-      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
-      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int}
-      `{_rocq_assumption_2 : RocqOfOCaml.Basics.Unreachable t}
+      `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable t}
       (byte_i : int -> ascii) : t :=
       RocqOfOCaml.OCamlString.init
-        ((width (_rocq_assumption_0 := _rocq_assumption_1))) byte_i.
-    
+        ((width (_rocq_assumption_0 := _rocq_assumption_0))) byte_i.
+
     Module Impl_signature.
       Record signature `{_fargs : FArgs} : Type := {
         t := string;
         init :
-          forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
-            `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int},
+          forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+            `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable string},
             (int -> ascii) -> t;
       }.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_}.
-    
+
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature :=
       {|
-        Impl_signature.init _ _ := init
+        Impl_signature.init := @init _
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-  
+
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-  
+
   Definition init `{_fargs : FArgs}
-    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable t}
-    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int} :
+    `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+    `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable t} :
     (int -> ascii) -> Impl.(Impl.Impl_signature.t) :=
     Impl.(Impl.Impl_signature.init) (_rocq_assumption_0 := _rocq_assumption_0)
       (_rocq_assumption_1 := _rocq_assumption_1).
-  
+
   Module Fixed_result.
     Record signature `{_fargs : FArgs} : Type := {
       width :
@@ -70,14 +69,14 @@ Module Fixed.
       Impl : Fixed.Impl.Impl_signature;
       t := string;
       init :
-        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable string}
-          `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable int},
+        forall `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable int}
+          `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable string},
           (int -> ascii) -> string;
     }.
   End Fixed_result.
   Definition Fixed_result `{_fargs : FArgs} := @Fixed_result.signature _.
   Arguments Fixed_result {_}.
-  
+
   (* Fixed *)
   Definition functor `{_fargs : FArgs} :@Fixed_result _fargs :=
     ((@Fixed_result.Build_signature _fargs (@width _) Impl (@init _)) :

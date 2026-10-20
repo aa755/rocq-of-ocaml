@@ -120,6 +120,7 @@ let partial_operation_names =
     "Iarray.exists2";
     "String.make";
     "String.init";
+    "Bigstring.init";
     "String.get";
     "String.sub";
     "String.contains_from";
@@ -159,6 +160,7 @@ let partial_operation_names =
     "Z.extract";
     "Z.signed_extract";
     "Z.powm";
+    "Z.erem";
     "Z.of_string";
     "Int64.of_string";
     "Int.of_string";
@@ -482,7 +484,8 @@ let specialized_base_comparison (e : expression) :
         with _ -> argument
       in
       match Types.get_desc argument with
-      | Tconstr (path, _, _) when String.equal (Path.last path) "int" ->
+      | Tconstr (path, _, _)
+        when List.mem (Path.last path) [ "int"; "int32"; "int64"; "nativeint" ] ->
           let name =
             match target with
             | "lt" -> "ltb"
@@ -501,6 +504,8 @@ let specialized_base_comparison (e : expression) :
           Some (path, name)
       | Tconstr (path, _, _) when String.equal (Path.last path) "char" ->
           Some ([ "RocqOfOCaml"; "OCamlChar" ], target)
+      | Tconstr (path, _, _) when String.equal (Path.last path) "string" ->
+          Some ([ "RocqOfOCaml"; "OCamlString" ], target)
       | _ -> None)
   | Some _, Some ([], _) | Some _, None | None, _ -> None
 
@@ -5007,8 +5012,10 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
               in
               if not (is_partial_operation_path path) then return variable
               else
-                let* expanded_typ = Type.fully_expand_aliases e.exp_type in
-                let* typ, _, _ = Type.of_typ_expr false typ_vars expanded_typ in
+                (* The runtime accepts the public result type. Expanding its
+                   representation can leak unsupported implementation types
+                   (e.g. a Bigstring's underlying bigarray) into assumptions. *)
+                let* typ, _, _ = Type.of_typ_expr false typ_vars e.exp_type in
                 let required_typ = Type.arrow_result typ in
                 let* () =
                   warn
@@ -5652,7 +5659,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                 in
                 return
                   (RequiresAssumption
-                     (Unreachable, expanded_application_typ, apply))
+                     (Unreachable, application_typ, apply))
           | Texp_match (e, cases, [], _) ->
               let is_gadt_match =
                 Attribute.has_match_gadt attributes

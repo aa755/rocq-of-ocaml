@@ -19,6 +19,7 @@ install: [
 depends: [
   "angstrom"
   "bisect_ppx" {with-test}
+  "bigstring" {with-test}
   "cmdliner" {with-test & < "2.0"}
   "conf-ruby" {with-test}
   "csexp"

@@ -13,14 +13,14 @@ Module Make.
   Class FArgs := {
     Argument : Empty;
   }.
-  
+
   Module Impl.
     Definition t `{_fargs : FArgs} : Set := int.
-    
+
     Definition make `{_fargs : FArgs} {A : Set} (value : A) : A := value.
-    
+
     Definition default `{_fargs : FArgs} : option int := Some 0.
-    
+
     Module Impl_signature.
       Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
@@ -30,7 +30,7 @@ Module Make.
     End Impl_signature.
     Definition Impl_signature `{_fargs : FArgs} := @Impl_signature.signature _.
     Arguments Impl_signature {_ _}.
-    
+
     (* Impl *)
     Definition module `{_fargs : FArgs} :Impl_signature (t := _) :=
       {|
@@ -39,19 +39,19 @@ Module Make.
       |}.
   End Impl.
   Definition Impl `{_fargs : FArgs} := Impl.module.
-  
+
   (** Inclusion of the module [Impl] *)
   Definition t `{_fargs : FArgs} := Impl.(Impl.Impl_signature.t).
-  
+
   Definition make `{_fargs : FArgs} : int -> t :=
     Impl.(Impl.Impl_signature.make).
-  
+
   Definition default `{_fargs : FArgs} : option t :=
     Impl.(Impl.Impl_signature.default).
-  
+
   Definition identity `{_fargs : FArgs} (value : Impl.(Impl.Impl_signature.t))
     : Impl.(Impl.Impl_signature.t) := value.
-  
+
   Module Make_result.
     Record signature `{_fargs : FArgs} {Impl_t : Set} : Type := {
       Impl : Make.Impl.Impl_signature (t := Impl_t);
@@ -64,7 +64,7 @@ Module Make.
   End Make_result.
   Definition Make_result `{_fargs : FArgs} := @Make_result.signature _.
   Arguments Make_result {_ _}.
-  
+
   (* Make *)
   Definition functor `{_fargs : FArgs} :Make_result (Impl_t := _) :=
     {|
@@ -78,7 +78,7 @@ Definition Make (Argument : Empty) := @Make.functor (Make.Build_FArgs Argument).
 
 Module Empty_value.
   Definition token : unit := tt.
-  
+
   (* Empty_value *)
   Definition module :Empty :=
     {|
@@ -94,34 +94,31 @@ Definition Base : Make.Make_result (_fargs := Base_fargs) := (Make.functor
 
 Definition base_default
   `{_rocq_assumption_0 :
-    RocqOfOCaml.Basics.Unreachable Base.(Make.Make_result.t)}
-  `{_rocq_assumption_1 :
-    RocqOfOCaml.Basics.Unreachable
-      Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.t)} : Base.(Make.Make_result.t) :=
+    RocqOfOCaml.Basics.Unreachable Base.(Make.Make_result.t)} : Base.(Make.Make_result.t) :=
   RocqOfOCaml.OCamlOption.get Base.(Make.Make_result.default).
 
 Module Extended.
   (** Inclusion of the module [Base] *)
   Module Impl.
     Definition t := Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.t).
-    
+
     Definition make :=
       Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.make).
-    
+
     Definition default :=
       Base.(Make.Make_result.Impl).(Make.Impl.Impl_signature.default).
   End Impl.
-  
+
   Definition Impl := Base.(Make.Make_result.Impl).
-  
+
   Definition t := Base.(Make.Make_result.t).
-  
+
   Definition make := Base.(Make.Make_result.make).
-  
+
   Definition default := Base.(Make.Make_result.default).
-  
+
   Definition identity := Base.(Make.Make_result.identity).
-  
+
   Definition round_trip (value : int) : Base.(Make.Make_result.t) :=
     identity (make value).
 End Extended.

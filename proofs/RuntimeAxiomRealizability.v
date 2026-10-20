@@ -11,13 +11,12 @@ Local Open Scope Z_scope.
     realisability, not the behaviour of the native cryptographic, hashing,
     formatting, or physical-equality implementations. The actual bundle
     below checks these signatures against the translator's declarations.
-    The current 697-theorem census uses 18 axiom names; this bundle also
-    includes [Context.t] and the public-key length contract, needed by the
-    dependent secp256k1 signatures and the byte-read bounds proof. *)
+    The bundle also includes [Context.t] and the public-key length contract,
+    needed by the dependent secp256k1 signatures and the byte-read bounds
+    proof. [Bigstring.init] is executable and no longer an axiom. *)
 Record axiom_bundle : Type := {
   model_physical_equal : forall {A : Set}, A -> A -> bool;
   model_polymorphic_compare : forall {A : Set}, A -> A -> int;
-  model_bigstring_init : int -> (int -> ascii) -> Bigstring.t;
   model_keccak_256 : Digestif.S;
   model_rmd160 : Digestif.S;
   model_sha256 : Digestif.S;
@@ -52,7 +51,6 @@ Definition actual_bundle : axiom_bundle :=
   {|
     model_physical_equal := @Basics.Stdlib.physical_equal;
     model_polymorphic_compare := @Basics.Stdlib.polymorphic_compare;
-    model_bigstring_init := Bigstring.init;
     model_keccak_256 := Digestif.KECCAK_256;
     model_rmd160 := Digestif.RMD160;
     model_sha256 := Digestif.SHA256;
@@ -94,7 +92,6 @@ Definition closed_bundle : axiom_bundle :=
   {|
     model_physical_equal := fun _ _ _ => false;
     model_polymorphic_compare := fun _ _ _ => 0;
-    model_bigstring_init := fun _ _ => EmptyString;
     model_keccak_256 := digest_witness;
     model_rmd160 := digest_witness;
     model_sha256 := digest_witness;

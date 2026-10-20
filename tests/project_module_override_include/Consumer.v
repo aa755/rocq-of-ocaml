@@ -13,9 +13,6 @@ Definition reexported (x_value : RocqOfOCaml.ModuleOverrideModel.Impl.t)
 
 Definition fallback
   `{_rocq_assumption_0 : RocqOfOCaml.Basics.Unreachable TestProject.Provider.t}
-  `{_rocq_assumption_1 :
-    RocqOfOCaml.Basics.Unreachable
-      Provider.CounterBase.(Provider.Make.Make_result.Impl).(Provider.Make.Impl.Impl_signature.t)}
   (b_value : bool) : TestProject.Provider.t :=
   RocqOfOCaml.OCamlOption.get (TestProject.Provider.maybe_zero b_value).
 

@@ -207,7 +207,7 @@ let rules =
     ("Z.op_tildedollar", "RocqOfOCaml.OCamlZ.op_tildedollar");
     ("Z.div_rem", "Z.quotrem");
     ("Z.ediv_rem", "Z.div_eucl");
-    ("Z.erem", "Z.modulo");
+    ("Z.erem", "RocqOfOCaml.OCamlZ.erem");
     ("Z.of_int", "RocqOfOCaml.OCamlZ.of_int");
     ("Z.of_int32", "RocqOfOCaml.OCamlZ.of_int32");
     ("Z.of_int64", "RocqOfOCaml.OCamlZ.of_int64");

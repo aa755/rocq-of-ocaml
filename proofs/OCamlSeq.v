@@ -366,7 +366,7 @@ Fixpoint take_nat {A : Set} (count : nat) (values : t A) : t A :=
 
 Definition take {A : Set} `{Unreachable (t A)}
     (count : int) (values : t A) : t A :=
-  if RocqOfOCaml.Basics.Stdlib.lt count 0
+  if Z.ltb count 0
   then RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.take"
   else take_nat (Z.to_nat count) values.
 
@@ -379,7 +379,7 @@ Fixpoint drop_nat {A : Set} (count : nat) (values : t A) : t A :=
 
 Definition drop {A : Set} `{Unreachable (t A)}
     (count : int) (values : t A) : t A :=
-  if RocqOfOCaml.Basics.Stdlib.lt count 0
+  if Z.ltb count 0
   then RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.drop"
   else drop_nat (Z.to_nat count) values.
 
@@ -467,6 +467,6 @@ Fixpoint iterate_take_nat {A : Set}
 
 Definition iterate_take {A : Set} `{Unreachable (t A)}
     (count : int) (step : A -> A) (start : A) : t A :=
-  if RocqOfOCaml.Basics.Stdlib.lt count 0
+  if Z.ltb count 0
   then RocqOfOCaml.Basics.Stdlib.invalid_arg "Seq.take"
   else iterate_take_nat (Z.to_nat count) step start.
