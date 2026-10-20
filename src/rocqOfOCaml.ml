@@ -83,8 +83,13 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
     | Some output_file_name -> output_file_name
   in
   let generated_file_content = SmartPrint.to_string 80 2 document in
+  let rejected =
+    has_errors && context.configuration.forbid_polymorphic_comparison
+  in
   let success_message =
-    if has_errors then
+    if rejected then
+      "Translation rejected in strict comparison mode; no output written"
+    else if has_errors then
       Error.colorize "31" "❌" ^ " "
       ^ Printf.sprintf "File '%s' generated with some errors"
           generated_file_name
@@ -104,7 +109,9 @@ let of_ocaml (context : MonadEval.Context.t) (typedtree : Mtyper.typedtree)
                (Configuration.is_assumption_metadata_excluded
                   context.configuration qualified_name));
     error_message;
-    generated_file = Some (generated_file_name, generated_file_content);
+    generated_file =
+      (if rejected then None
+       else Some (generated_file_name, generated_file_content));
     has_errors;
     source_file_name;
     success_message;
@@ -115,7 +122,11 @@ let exit (context : MonadEval.Context.t) (output : Output.t) : unit =
   let is_blacklist =
     Configuration.is_filename_in_error_blacklist context.configuration
   in
-  if output.has_errors && not is_blacklist then exit 1 else exit 0
+  if
+    output.has_errors
+    && (context.configuration.forbid_polymorphic_comparison || not is_blacklist)
+  then exit 1
+  else exit 0
 
 (** The main function. *)
 let main () =
@@ -124,6 +135,7 @@ let main () =
     failwith "The compatibility runtime models 64-bit OCaml (63-bit int) only";
   let file_name = ref None in
   let json_mode = ref false in
+  let forbid_polymorphic_comparison = ref false in
   let configuration_file_name = ref None in
   let project_cmt_directory = ref None in
   let output_file_name = ref None in
@@ -132,6 +144,9 @@ let main () =
   let assumption_prefixes = ref [] in
   let options =
     [
+      ( "--forbid-polymorphic-comparison",
+        Arg.Set forbid_polymorphic_comparison,
+        "    reject unmodeled polymorphic comparisons and their runtime helpers" );
       ( "-config",
         Arg.String (fun value -> configuration_file_name := Some value),
         "file   the configuration file of rocq-of-ocaml" );
@@ -167,6 +182,12 @@ let main () =
 
       let configuration =
         Configuration.of_optional_file_name file_name !configuration_file_name
+      in
+      let configuration =
+        { configuration with
+          forbid_polymorphic_comparison =
+            configuration.forbid_polymorphic_comparison
+            || !forbid_polymorphic_comparison }
       in
       let external_assumption_specs =
         match !assumption_metadata_directory with

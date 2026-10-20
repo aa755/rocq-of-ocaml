@@ -42,6 +42,39 @@ An example is:
 ```
 The configuration entries are described as follows.
 
+## forbid_polymorphic_comparison
+
+Enable with `"forbid_polymorphic_comparison": true`, or pass
+`--forbid-polymorphic-comparison` on the command line. The default is false.
+The command-line flag cannot be disabled by the configuration file.
+
+This mode rejects references to the runtime's unmodeled polymorphic equality,
+ordering, and physical equality operations, including comparison-dependent
+list helpers (`mem`, `assoc`, `memq`, and their variants). Checks follow OCaml
+module aliases and inspect retained include fields. Source declarations of
+comparison primitives are rejected instead of emitted as abstract values.
+Diagnostics identify the enclosing definition, operation, and OCaml type.
+
+Concrete integer, character, and string ordering retains its executable
+specialization. Equality is accepted for the supported closed fragment of
+primitive types, tuples, lists, options, and arrays. Float equality is excluded:
+a mathematical equality decision procedure is not OCaml's NaN-aware primitive.
+An explicit comparator argument, such as the argument to `List.sort`, is allowed.
+Physical equality is rejected even at concrete types.
+
+Comparison errors cannot be suppressed by error blacklists. A rejected
+translation exits unsuccessfully and does not write or overwrite its output.
+Use `excluded_definitions` to remove unused comparison-dependent exports;
+references to removed definitions must still pass the subsequent Rocq build.
+The translator does not silently omit a used operation or insert a replacement
+axiom or `Unreachable` value.
+
+This is a check of known source primitives and compatibility implementations,
+not a proof about arbitrary imported Rocq code or user-configured replacements.
+Namespace aliases alone do not introduce a Gallina term; their value references
+are checked when translated. Independently check `Print Assumptions` on the
+compiled entry points, especially when using custom runtime mappings.
+
 ## alias_barrier_modules
 #### Example
 ```

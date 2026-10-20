@@ -4534,6 +4534,48 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
            (enclosing_path @ reference_path @ prefix @ [ name ])
     in
     let* env = get_env in
+    (* Includes can emit direct field references or a namespace alias, bypassing
+       expression translation. Inspect retained exports before either lowering. *)
+    let rec check_exports prefix source_path mod_type =
+      match (source_path, Mtype.scrape env mod_type) with
+      | Some source_path, Mty_signature signature ->
+          signature
+          |> Monad.List.iter (fun item ->
+              let ident = Types.signature_item_id item in
+              let name = Ident.name ident in
+              if
+                definition_is_excluded prefix name
+                || (prefix = [] && List.mem name exclude_list)
+              then return ()
+              else
+                let path = Path.Pdot (source_path, name) in
+                match item with
+                | Types.Sig_value (_, { val_type; val_kind; _ }, _) ->
+                    push_definition_path name
+                      (let* _ = MixedPath.of_path true path in
+                       match val_kind with
+                       | Val_prim primitive
+                         when Option.is_some
+                                (ComparisonPolicy.primitive_operation primitive) ->
+                           raise () Error.Category.ForbiddenComparison
+                             (Format.asprintf
+                                "Definition %s: re-exported comparison %s : %a \
+                                 has no specialized model. Exclude the unused \
+                                 export or provide an explicit comparator."
+                                (String.concat "."
+                                   (enclosing_path @ prefix @ [ name ]))
+                                (Path.name path) Printtyp.type_expr val_type)
+                       | _ -> return ())
+                | Types.Sig_module (_, _, { md_type; _ }, _, _) ->
+                    check_exports (prefix @ [ name ]) (Some path) md_type
+                | _ -> return ())
+      | _ -> return ()
+    in
+    let* () =
+      if configuration.forbid_polymorphic_comparison then
+        check_exports [] module_path mod_type
+      else return ()
+    in
     let has_configured_exclusion =
       match Mtype.scrape env mod_type with
       | Mty_signature signature ->
@@ -5544,7 +5586,7 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
                     error_message (Error "unhandled_module_type") NotSupported
                       ("This kind of signature (" ^ signature_kind
                      ^ ") is not handled."))
-            | Tstr_primitive { val_id; val_val = { val_type; _ }; _ } ->
+            | Tstr_primitive { val_id; val_val = { val_type; val_kind; _ }; _ } ->
                 let* name = Name.of_ident true val_id in
                 let* configuration = get_configuration in
                 let* enclosing_path = get_definition_path in
@@ -5553,6 +5595,22 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
                     (enclosing_path @ [ Name.to_string name ])
                 then return []
                 else
+                  let* () =
+                    match val_kind with
+                    | Val_prim primitive
+                      when configuration.forbid_polymorphic_comparison
+                           && Option.is_some
+                                (ComparisonPolicy.primitive_operation primitive) ->
+                        raise () Error.Category.ForbiddenComparison
+                          (Format.asprintf
+                             "Definition %s: external comparison primitive %s : \
+                              %a would introduce an abstract value. Use the \
+                              supported Stdlib operation at a concrete type."
+                             (String.concat "."
+                                (enclosing_path @ [ Name.to_string name ]))
+                             primitive.prim_name Printtyp.type_expr val_type)
+                    | _ -> return ()
+                  in
                   Type.of_typ_expr true Name.Map.empty val_type
                   >>= fun (typ, _, free_typ_vars) ->
                   return

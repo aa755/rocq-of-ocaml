@@ -353,7 +353,8 @@ module Command = struct
         let errors =
           let error_id = Error.Category.to_id category in
           let is_valid_error =
-            (not
+            category = Error.Category.ForbiddenComparison
+            || (not
                (Configuration.is_category_in_error_blacklist
                   context.configuration error_id))
             && not

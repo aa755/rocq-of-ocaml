@@ -511,7 +511,7 @@ let applied_path (is_value : bool) (path : Path.t) :
 
 (** The current environment must include the potential first-class module
     signature definition of the corresponding projection in the [path]. *)
-let of_path (is_value : bool) (path : Path.t) : t Monad.t =
+let of_path_unchecked (is_value : bool) (path : Path.t) : t Monad.t =
   let* direct_override =
     let static_path = PathName.static_path path in
     let* path_name = PathName.of_path_without_convert is_value static_path in
@@ -665,5 +665,50 @@ let to_string_no_modules (mixed_path : t) : string =
   | AppliedAccess (path, implicits, fields) ->
       to_string (AppliedAccess (path, implicits, fields))
   | PathName path_name -> PathName.to_string_base path_name
+
+let check_comparison (source : Path.t) (typ : Types.type_expr option)
+    (translated : t) : t Monad.t =
+  let* configuration = get_configuration in
+  if
+    configuration.forbid_polymorphic_comparison
+    && ComparisonPolicy.forbidden_runtime_path (to_string translated)
+  then
+    let* definition = get_definition_path in
+    let type_description =
+      match typ with
+      | None -> "<type unavailable>"
+      | Some typ -> Format.asprintf "%a" Printtyp.type_expr typ
+    in
+    raise translated Error.Category.ForbiddenComparison
+      (Printf.sprintf
+         "Definition %s: %s : %s resolves to %s, which depends on an unmodeled \
+          comparison. Use an explicit, modeled comparator or omit this unused \
+          export."
+         (String.concat "." definition) (Path.name source) type_description
+         (to_string translated))
+  else return translated
+
+let of_path (is_value : bool) (path : Path.t) : t Monad.t =
+  let* translated = of_path_unchecked is_value path in
+  if not is_value then return translated
+  else
+    let* env = get_env in
+    let typ =
+      try Some (Env.find_value path env).Types.val_type with Not_found -> None
+    in
+    let* checked = check_comparison path typ translated in
+    let* configuration = get_configuration in
+    if not configuration.forbid_polymorphic_comparison then return checked
+    else
+      let canonical =
+        try Env.normalize_value_path None env path with Not_found -> path
+      in
+      let* resolved =
+        PathName.of_path_without_convert ~module_aliases:false true
+          (PathName.static_path canonical)
+      in
+      let* resolved = PathName.convert resolved in
+      let* _ = check_comparison path typ (PathName resolved) in
+      return checked
 
 let to_coq (mixed_path : t) : SmartPrint.t = !^(to_string mixed_path)

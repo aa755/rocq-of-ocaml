@@ -150,9 +150,12 @@ let split_ident (is_value : bool) (ident : Ident.t) :
   | [] -> assert false
 
 (** Import an OCaml [Path.t]. *)
-let of_path_without_convert (is_value : bool) (path : Path.t) : t Monad.t =
+let of_path_without_convert ?(module_aliases = true) (is_value : bool)
+    (path : Path.t) : t Monad.t =
   let rec aux path : (Name.t list * Name.t) Monad.t =
-    let* module_alias = get_module_path_alias path in
+    let* module_alias =
+      if module_aliases then get_module_path_alias path else return None
+    in
     match module_alias with
     | Some alias -> aux alias
     | None -> (

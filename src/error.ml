@@ -4,6 +4,7 @@ open SmartPrint
 module Category = struct
   type t =
     | ExtensibleType
+    | ForbiddenComparison
     | Merlin
     | Module
     | NotSupported
@@ -13,6 +14,7 @@ module Category = struct
   let to_id (category : t) : string =
     match category with
     | ExtensibleType -> "extensible_type"
+    | ForbiddenComparison -> "forbidden_comparison"
     | Merlin -> "merlin"
     | Module -> "module"
     | NotSupported -> "not_supported"

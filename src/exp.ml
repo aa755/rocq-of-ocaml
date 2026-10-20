@@ -428,36 +428,48 @@ let rec open_ocaml_arrow_type (env : Env.t) (typ : Types.type_expr) (n : int) :
     supplies decision procedures. Other instantiations must retain the explicit
     [Stdlib.polymorphic_equal] boundary instead of leaving unresolved typeclass
     obligations in generated code. *)
-let rec has_rocq_eq_dec (env : Env.t) (typ : Types.type_expr) : bool =
+let rec has_rocq_eq_dec ?(strict = false) (env : Env.t)
+    (typ : Types.type_expr) : bool =
   let typ =
     try Ctype.full_expand ~may_forget_scope:false env typ with _ -> typ
   in
   match Types.get_desc typ with
-  | Tconstr (path, arguments, _) -> (
-      match Path.last path with
-      | "int" | "int32" | "int64" | "nativeint" | "float" | "bool" | "unit"
-      | "char" | "string" ->
-          true
-      | "list" | "option" | "array" | "iarray" ->
-          List.for_all (has_rocq_eq_dec env) arguments
-      | _ -> false)
+  | Tconstr (path, arguments, _) ->
+      List.exists (Path.same path)
+        [ Predef.path_int; Predef.path_int32; Predef.path_int64;
+          Predef.path_nativeint; Predef.path_bool; Predef.path_unit;
+          Predef.path_char; Predef.path_string ]
+      || (not strict && Path.same path Predef.path_float)
+      || (List.exists (Path.same path)
+            [ Predef.path_list; Predef.path_option; Predef.path_array;
+              Predef.path_iarray ]
+          && List.for_all (has_rocq_eq_dec ~strict env) arguments)
   | Ttuple elements ->
-      List.for_all (fun (_, element) -> has_rocq_eq_dec env element) elements
-  | Tlink typ | Tsubst (typ, _) | Tpoly (typ, _) -> has_rocq_eq_dec env typ
+      List.for_all
+        (fun (_, element) -> has_rocq_eq_dec ~strict env element) elements
+  | Tlink typ | Tsubst (typ, _) | Tpoly (typ, _) ->
+      has_rocq_eq_dec ~strict env typ
   | Tvar _ | Tunivar _ | Tarrow _ | Tobject _ | Tfield _ | Tnil | Tvariant _
   | Tpackage _ ->
       false
 
-let equality_argument_has_rocq_eq_dec (e : expression) : bool =
+let equality_argument_has_rocq_eq_dec ~(strict : bool) (e : expression) : bool =
   match open_ocaml_arrow_type e.exp_env e.exp_type 2 with
-  | Some (argument :: _, _) -> has_rocq_eq_dec e.exp_env argument
+  | Some (argument :: _, _) -> has_rocq_eq_dec ~strict e.exp_env argument
   | Some ([], _) | None -> false
 
 (** These Stdlib functions are polymorphic in OCaml. Specialize only when the
     occurrence type is a base type with an executable compatibility model. *)
-let specialized_base_comparison (e : expression) :
-    (string list * string) option =
-  let target =
+let comparison_operation (e : expression) : string option =
+  let primitive =
+    match e.exp_desc with
+    | Texp_ident (_, _, { Types.val_kind = Val_prim primitive; _ }) ->
+        ComparisonPolicy.primitive_operation primitive
+    | _ -> None
+  in
+  match primitive with
+  | Some _ -> primitive
+  | None ->
     match e.exp_desc with
     | Texp_ident (path, _, _) -> (
         match Path.name path with
@@ -476,6 +488,13 @@ let specialized_base_comparison (e : expression) :
         | "Stdlib.compare" | "Pervasives.compare" -> Some "compare"
         | _ -> None)
     | _ -> None
+
+let specialized_base_comparison (e : expression) :
+    (string list * string) option =
+  let target =
+    match comparison_operation e with
+    | Some ("equal" | "not_equal" | "physical_equal") -> None
+    | target -> target
   in
   match (target, open_ocaml_arrow_type e.exp_env e.exp_type 2) with
   | Some target, Some (argument :: _, _) -> (
@@ -485,7 +504,9 @@ let specialized_base_comparison (e : expression) :
       in
       match Types.get_desc argument with
       | Tconstr (path, _, _)
-        when List.mem (Path.last path) [ "int"; "int32"; "int64"; "nativeint" ] ->
+        when List.exists (Path.same path)
+               [ Predef.path_int; Predef.path_int32; Predef.path_int64;
+                 Predef.path_nativeint ] ->
           let name =
             match target with
             | "lt" -> "ltb"
@@ -502,9 +523,9 @@ let specialized_base_comparison (e : expression) :
             else [ "Z" ]
           in
           Some (path, name)
-      | Tconstr (path, _, _) when String.equal (Path.last path) "char" ->
+      | Tconstr (path, _, _) when Path.same path Predef.path_char ->
           Some ([ "RocqOfOCaml"; "OCamlChar" ], target)
-      | Tconstr (path, _, _) when String.equal (Path.last path) "string" ->
+      | Tconstr (path, _, _) when Path.same path Predef.path_string ->
           Some ([ "RocqOfOCaml"; "OCamlString" ], target)
       | _ -> None)
   | Some _, Some ([], _) | Some _, None | None, _ -> None
@@ -4924,14 +4945,26 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
           match e.exp_desc with
           | Texp_ident (path, _, description) ->
               let implicits = Attribute.get_implicits attributes in
+              let* configuration = get_configuration in
+              let strict = configuration.forbid_polymorphic_comparison in
               let* x =
                 match specialized_base_comparison e with
                 | Some target -> return (base_comparison_path target)
-                | None -> MixedPath.of_path true path
+                | None ->
+                    (match comparison_operation e with
+                    | Some "equal" ->
+                        return (base_comparison_path ([], "equiv_decb"))
+                    | Some "not_equal" ->
+                        return (base_comparison_path ([], "nequiv_decb"))
+                    | Some operation when strict ->
+                        return
+                          (base_comparison_path
+                             ([ "RocqOfOCaml"; "Basics"; "Stdlib" ], operation))
+                    | _ -> MixedPath.of_path true path)
               in
               let is_unsupported_equality =
                 String.equal (MixedPath.to_string x) "equiv_decb"
-                && not (equality_argument_has_rocq_eq_dec e)
+                && not (equality_argument_has_rocq_eq_dec ~strict e)
               in
               let* equality_override =
                 if not is_unsupported_equality then return None
@@ -4952,13 +4985,14 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                          "polymorphic_equal")
                 | None
                   when String.equal (MixedPath.to_string x) "nequiv_decb"
-                       && not (equality_argument_has_rocq_eq_dec e) ->
+                       && not (equality_argument_has_rocq_eq_dec ~strict e) ->
                     MixedPath.PathName
                       (PathName.__make
                          [ "RocqOfOCaml"; "Basics"; "Stdlib" ]
                          "polymorphic_not_equal")
                 | None -> x
               in
+              let* x = MixedPath.check_comparison path (Some e.exp_type) x in
               let variable = Variable (x, implicits) in
               let* configuration = get_configuration in
               let* origin = get_value_origin description.Types.val_uid in

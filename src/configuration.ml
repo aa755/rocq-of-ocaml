@@ -132,6 +132,7 @@ type t = {
   file_head_suffixes : Import.t list;
   first_class_module_path_blacklist : string list;
   first_class_module_signature_blacklist : string list;
+  forbid_polymorphic_comparison : bool;
   head_suffix : string;
   merge_returns : MergeRule.t list;
   merge_types : MergeRule.t list;
@@ -176,6 +177,7 @@ let default (file_name : string) : t =
     file_head_suffixes = [];
     first_class_module_path_blacklist = [];
     first_class_module_signature_blacklist = [];
+    forbid_polymorphic_comparison = false;
     head_suffix = "";
     merge_returns = [];
     merge_types = [];
@@ -671,6 +673,9 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
           | "constant_warning" ->
               let entry = get_bool "constant_warning" entry in
               { configuration with constant_warning = entry }
+          | "forbid_polymorphic_comparison" ->
+              let entry = get_bool "forbid_polymorphic_comparison" entry in
+              { configuration with forbid_polymorphic_comparison = entry }
           | "error_category_blacklist" ->
               let entry = get_string_list "error_category_blacklist" entry in
               { configuration with error_category_blacklist = entry }
