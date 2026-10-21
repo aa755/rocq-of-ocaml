@@ -93,7 +93,8 @@ let rec to_coq (need_parens : bool) (c : t) : SmartPrint.t =
   | WideInt n -> if n.[0] = '-' then parens !^n else !^n
   | Char c ->
       let s =
-        if Char.code c < 32 then Printf.sprintf "%03d" (Char.code c)
+        if Char.code c < 32 || Char.code c >= 127 then
+          Printf.sprintf "%03d" (Char.code c)
         else if c = '"' then "\"\""
         else String.make 1 c
       in
