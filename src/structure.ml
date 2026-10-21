@@ -5448,6 +5448,27 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
             | Tstr_value (is_rec, cases) ->
                 let* configuration = get_configuration in
                 let* enclosing_path = get_definition_path in
+                (* PPX generators use [let _ = generated_value] to suppress
+                   unused-value warnings. Do not retain such an alias after
+                   the user explicitly excluded its local target. Never
+                   drop an application or another evaluated expression. *)
+                let cases =
+                  cases
+                  |> List.filter (fun binding ->
+                         let is_unused =
+                           match binding.vb_pat.pat_desc with
+                           | Tpat_any -> true
+                           | Tpat_var (ident, _, _) -> Ident.name ident = "_"
+                           | _ -> false
+                         in
+                         match binding.vb_expr.exp_desc with
+                         | Texp_ident (Path.Pident ident, _, _) when is_unused ->
+                             not
+                               (Configuration.is_definition_excluded
+                                  configuration
+                                  (enclosing_path @ [ Ident.name ident ]))
+                         | _ -> true)
+                in
                 let source_names =
                   cases
                   |> List.concat_map (fun binding ->
@@ -5455,12 +5476,13 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
                   |> List.map Ident.name
                 in
                 if
-                  source_names <> []
-                  && List.for_all
-                       (fun name ->
-                         Configuration.is_definition_excluded configuration
-                           (enclosing_path @ [ name ]))
-                       source_names
+                  cases = []
+                  || (source_names <> []
+                     && List.for_all
+                          (fun name ->
+                            Configuration.is_definition_excluded configuration
+                              (enclosing_path @ [ name ]))
+                          source_names)
                 then return []
                 else
                   push_env

@@ -59,6 +59,7 @@ let escape_operator (s : string) : string =
 
 let reserved_names : string list =
   [
+    "_";
     "at";
     "error";
     "exists";
