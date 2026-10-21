@@ -494,9 +494,10 @@ cli_tests.print_summary
 
 exit(1) if tests.invalid? || negative_tests.invalid? || cli_tests.invalid?
 
-exit(1) unless system('rocq', 'c', '-R', 'tests', 'Tests', '-R', 'proofs',
-  'RocqOfOCaml', '-impredicative-set',
-  'tests/assertions/checked_domain_recursion.v')
+%w[checked_domain_recursion hidden_include].each do |name|
+  exit(1) unless system('rocq', 'c', '-R', 'tests', 'Tests', '-R', 'proofs',
+    'RocqOfOCaml', '-impredicative-set', "tests/assertions/#{name}.v")
+end
 
 exit(1) unless system('ruby', 'tests/machine_integers/differential.rb')
 exit(1) unless system('ruby', 'tests/runtime/differential.rb')

@@ -5629,28 +5629,13 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
             | Tstr_class_type _ ->
                 error_message (Error "class_type") NotSupported
                   "Structure item `class_type` not handled."
-            | Tstr_include { incl_attributes; incl_type; _ }
-              when has_raw_attribute "merlin.hide" incl_attributes ->
-                let* configuration = get_configuration in
-                let* enclosing_path = get_definition_path in
-                incl_type
-                |> Monad.List.filter_map (function
-                  | Types.Sig_value (ident, { Types.val_type; _ }, _)
-                    when not (String.equal (Ident.name ident) "_") ->
-                      let* name = Name.of_ident true ident in
-                      if
-                        Configuration.is_definition_excluded configuration
-                          (enclosing_path @ [ Name.to_string name ])
-                      then return None
-                      else
-                        let* typ, _, free_typ_vars =
-                          Type.of_typ_expr true Name.Map.empty val_type
-                        in
-                        return
-                          (Some
-                             (AbstractValue
-                                (name, List.map fst free_typ_vars, typ)))
-                  | _ -> return None)
+            | Tstr_include { incl_mod; _ }
+              when Option.is_some (ValueNames.included_structure incl_mod) ->
+                (* An anonymous structure is included into the current scope.
+                   Editor-only attributes such as [merlin.hide] must not
+                   replace its executable definitions with abstract values. *)
+                of_structure ~has_functor_parameters
+                  (Option.get (ValueNames.included_structure incl_mod))
             | Tstr_include
                 {
                   incl_attributes;

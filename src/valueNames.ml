@@ -12,7 +12,28 @@ let empty : t = Ident.Map.empty
 let find (ident : Ident.t) (names : t) : string option =
   Ident.Map.find_opt ident names
 
-let value_idents (structure : Typedtree.structure) : Ident.t list =
+(** A value-only signature cannot hide a type representation. PPX derivers
+    commonly constrain their anonymous includes to such signatures. Keep
+    other constrained modules on the ordinary module-translation path. *)
+let rec included_structure (expr : Typedtree.module_expr) =
+  match expr.mod_desc with
+  | Tmod_structure structure -> Some structure
+  | Tmod_constraint (body, Types.Mty_signature signature, _, _)
+    when List.for_all
+           (function Types.Sig_value _ -> true | _ -> false)
+           signature ->
+      (match included_structure body with
+       | Some structure
+         when List.for_all
+                (fun item ->
+                  match item.Typedtree.str_desc with
+                  | Tstr_value _ | Tstr_attribute _ -> true
+                  | _ -> false)
+                structure.str_items -> Some structure
+       | _ -> None)
+  | _ -> None
+
+let rec value_idents (structure : Typedtree.structure) : Ident.t list =
   structure.str_items
   |> List.concat_map (fun (item : Typedtree.structure_item) ->
          match item.str_desc with
@@ -21,9 +42,12 @@ let value_idents (structure : Typedtree.structure) : Ident.t list =
              |> List.concat_map (fun (binding : Typedtree.value_binding) ->
                     Typedtree.pat_bound_idents binding.vb_pat)
          | Tstr_primitive description -> [ description.val_id ]
+         | Tstr_include { incl_mod; _ } ->
+             Option.fold ~none:[] ~some:value_idents
+               (included_structure incl_mod)
          | _ -> [])
 
-let structure_type_names (structure : Typedtree.structure) : StringSet.t =
+let rec structure_type_names (structure : Typedtree.structure) : StringSet.t =
   structure.str_items
   |> List.fold_left
        (fun names (item : Typedtree.structure_item) ->
@@ -33,6 +57,11 @@ let structure_type_names (structure : Typedtree.structure) : StringSet.t =
                (fun names (declaration : Typedtree.type_declaration) ->
                  StringSet.add (Ident.name declaration.typ_id) names)
                names declarations
+         | Tstr_include { incl_mod; _ } ->
+             Option.fold ~none:names
+               ~some:(fun included ->
+                 StringSet.union names (structure_type_names included))
+               (included_structure incl_mod)
          | _ -> names)
        StringSet.empty
 
@@ -119,7 +148,7 @@ let add_declaration_scope (names : t) (idents : Ident.t list)
       let left = StringMap.find original !remaining in
       remaining := StringMap.add original (left - 1) !remaining;
       let collides_with_type = StringSet.mem original type_names in
-      if left <= 1 && not collides_with_type then names
+      if Ident.Map.mem ident names || (left <= 1 && not collides_with_type) then names
       else
         let renamed =
           if collides_with_type then fresh_value_name !occupied original 0
@@ -280,6 +309,32 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
         (fun self structure ->
           names := add_structure !names structure;
           default_iterator.structure self structure);
+      structure_item =
+        (fun self item ->
+          default_iterator.structure_item self item;
+          match item.str_desc with
+          | Tstr_include { incl_mod; incl_type; _ }
+            when Option.is_some (included_structure incl_mod) ->
+              let included = Option.get (included_structure incl_mod) in
+              (* Includes freshen exported identifiers. Keep references after
+                 the include consistent with the flattened declarations. *)
+              List.iter
+                (function
+                  | Types.Sig_value (exported, _, _) ->
+                      List.iter
+                        (function
+                          | Types.Sig_value (original, _, _)
+                            when String.equal (Ident.name original)
+                                   (Ident.name exported) ->
+                              Option.iter
+                                (fun renamed ->
+                                  names := Ident.Map.add exported renamed !names)
+                                (find original !names)
+                          | _ -> ())
+                        included.str_type
+                  | _ -> ())
+                incl_type
+          | _ -> ());
       signature =
         (fun self signature ->
           names := add_signature !names signature;

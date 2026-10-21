@@ -18,6 +18,7 @@ cases = {
   'poly_equal' => ['let test x y = x = y', false],
   'poly_not_equal' => ['let test x y = x <> y', false],
   'poly_compare' => ['let test x y = compare x y', false],
+  'hidden_poly_compare' => ['include struct let test x y = compare x y end [@@merlin.hide]', false],
   'poly_min' => ['let test x y = min x y', false],
   'physical_equal' => ['let test (x : int) y = x == y', false],
   'physical_not_equal' => ['let test (x : int) y = x != y', false],

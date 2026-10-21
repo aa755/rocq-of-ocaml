@@ -11,8 +11,39 @@ Module t.
 End t.
 Definition t := t.record.
 
-Parameter generated : int -> int.
+Definition generated (value : int) : int := RocqOfOCaml.OCamlInt.add value 1.
 
 Definition get (x_value : t) : int := x_value.(t.value).
 
 Definition generated_result : int := generated 41.
+
+Inductive tree : Set :=
+| Leaf : int -> tree
+| Node : list tree -> tree.
+
+Fixpoint equal (_left : tree) (_right : tree) : bool :=
+  match (_left, _right) with
+  | (Leaf x_value, Leaf y_value) => RocqOfOCaml.OCamlInt.equal x_value y_value
+  | (Node xs, Node ys) =>
+    let fix loop (xs : list tree) (ys : list tree) : bool :=
+      match (xs, ys) with
+      | ([], []) => true
+      | (Datatypes.cons x_value xs, Datatypes.cons y_value ys) =>
+        andb (equal x_value y_value) (loop xs ys)
+      | _ => false
+      end in
+    loop xs ys
+  | _ => false
+  end.
+
+Definition shadowed_shadow1 : int := 1.
+
+Definition previous : int := shadowed_shadow1.
+
+Definition shadowed : int := 2.
+
+Definition helper (x_value : int) : int := RocqOfOCaml.OCamlInt.add x_value 1.
+
+Definition constrained (x_value : int) : int := helper x_value.
+
+Definition constrained_result : int := constrained 41.
