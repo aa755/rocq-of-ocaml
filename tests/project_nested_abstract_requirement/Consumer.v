@@ -18,29 +18,29 @@ Module Wrapper.
     X : Wrapper_X_signature (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Definition Base_fargs `{_fargs : FArgs} :=
     TestProject.Provider.Outer.Build_FArgs
       ({|
         Provider.Outer_X_signature.initial := X.(Wrapper_X_signature.initial)
       |} : Provider.Outer_X_signature (t := X.(Wrapper_X_signature.t))).
-  
+
   Definition Base `{_fargs : FArgs} :
     Provider.Outer.Outer_result (_fargs := Base_fargs) :=
     (TestProject.Provider.Outer.functor (_fargs := (Base_fargs ))).
-  
+
   (** Inclusion of the module [Base] *)
   Module Memory.
     Definition t `{_fargs : FArgs} :=
       Base.(Provider.Outer.Outer_result.Memory).(Provider.Outer.Memory.Memory_signature.t).
-    
+
     Definition empty `{_fargs : FArgs} : t :=
       Base.(Provider.Outer.Outer_result.Memory).(Provider.Outer.Memory.Memory_signature.empty).
   End Memory.
-  
+
   Definition Memory `{_fargs : FArgs} :=
     (Base (_fargs := _fargs)).(Provider.Outer.Outer_result.Memory).
-  
+
   Module Run_C_signature.
     Record signature `{_fargs : FArgs} : Type := {
       state : Memory.t;
@@ -49,30 +49,30 @@ Module Wrapper.
   Definition Run_C_signature `{_fargs : FArgs} := @Run_C_signature.signature _
     _.
   Arguments Run_C_signature {_ _}.
-  
+
   Module Run.
     Class FArgs `{_fargs : FArgs} := {
       C : Run_C_signature;
     }.
     Arguments Build_FArgs {_ _}.
-    
+
     Definition Base_Run_include_fargs `{_fargs : FArgs} :=
       (Provider.Outer.Run.Build_FArgs (_fargs := Base_fargs))
         ({|
           Provider.Outer.Run_C_signature.state := C.(Run_C_signature.state)
         |} : Provider.Outer.Run_C_signature).
-    
+
     Definition Base_Run_include `{_fargs : FArgs} :
       Provider.Outer.Run.Run_result (_fargs := Base_Run_include_fargs) :=
       (Provider.Outer.Run.functor (_fargs := (Base_Run_include_fargs ))).
-    
+
     (** Inclusion of the module [Base_Run_include] *)
     Definition get `{_fargs : FArgs} :
       unit ->
       Base.(TestProject.Provider.Outer.Outer_result.Memory).(Provider.Outer.Memory.Memory_signature.t)
       :=
       (Base_Run_include (_fargs := _fargs)).(Provider.Outer.Run.Run_result.get).
-    
+
     Definition missing `{_fargs : FArgs}
       `{_rocq_assumption_0 :
         RocqOfOCaml.Basics.Unreachable
@@ -83,7 +83,7 @@ Module Wrapper.
       :=
       (Base_Run_include (_fargs := _fargs)).(Provider.Outer.Run.Run_result.missing)
         (_rocq_assumption_0 := _rocq_assumption_0).
-    
+
     Definition indirect `{_fargs : FArgs}
       `{_rocq_assumption_0 :
         RocqOfOCaml.Basics.Unreachable
@@ -91,7 +91,26 @@ Module Wrapper.
           -> int)} : unit -> int :=
       (Base_Run_include (_fargs := _fargs)).(Provider.Outer.Run.Run_result.indirect)
         (_rocq_assumption_0 := _rocq_assumption_0).
-    
+
+    Definition mixed `{_fargs : FArgs}
+      `{_rocq_assumption_0 :
+        RocqOfOCaml.Basics.Unreachable RocqOfOCaml.OCamlInt32.t}
+      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (Provider.M.t int)}
+      : unit -> Provider.M.t int * RocqOfOCaml.OCamlInt32.t :=
+      (Base_Run_include (_fargs := _fargs)).(Provider.Outer.Run.Run_result.mixed)
+        (_rocq_assumption_0 := _rocq_assumption_0) (_rocq_assumption_1 :=
+        _rocq_assumption_1).
+
+    Module Step.
+      Definition mixed `{_fargs : FArgs}
+        `{_rocq_assumption_0 :
+          RocqOfOCaml.Basics.Unreachable RocqOfOCaml.OCamlInt32.t}
+        `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (Provider.M.t int)} : unit
+        -> Provider.M.t int * RocqOfOCaml.OCamlInt32.t :=
+        (mixed (_rocq_assumption_0 := _rocq_assumption_0)
+          (_rocq_assumption_1 := _rocq_assumption_1)).
+    End Step.
+
     Module Run_result.
       Record signature `{_fargs : FArgs} : Type := {
         get :
@@ -110,19 +129,34 @@ Module Wrapper.
               RocqOfOCaml.Basics.Unreachable
                 ((Provider.Outer.Memory (_fargs := Base_fargs)).(Provider.Outer.Memory.Memory_signature.t)
                 -> int)}, unit -> int;
+        mixed :
+          forall
+            `{_rocq_assumption_0 :
+              RocqOfOCaml.Basics.Unreachable RocqOfOCaml.OCamlInt32.t}
+            `{_rocq_assumption_1 :
+              RocqOfOCaml.Basics.Unreachable (Provider.M.t int)},
+            unit -> Provider.M.t int * RocqOfOCaml.OCamlInt32.t;
+        Step_mixed :
+          forall
+            `{_rocq_assumption_0 :
+              RocqOfOCaml.Basics.Unreachable (Provider.M.t int)}
+            `{_rocq_assumption_1 :
+              RocqOfOCaml.Basics.Unreachable RocqOfOCaml.OCamlInt32.t},
+            unit -> Provider.M.t int * RocqOfOCaml.OCamlInt32.t;
       }.
     End Run_result.
     Definition Run_result `{_fargs : FArgs} := @Run_result.signature _ _ _.
     Arguments Run_result {_ _ _}.
-    
+
     (* Run *)
     Definition functor `{_fargs : FArgs} :@Run_result _ _ _fargs :=
       ((@Run_result.Build_signature _ _ _fargs get (fun _ => missing)
-        (fun _ => indirect)) : @Run_result _ _ _fargs).
+        (fun _ => indirect) (fun _ _ => mixed) (fun _ _ => Step.mixed)) :
+        @Run_result _ _ _fargs).
   End Run.
   Definition Run `{_fargs : FArgs} (C : Run_C_signature) :=
     @Run.functor _ _ (Run.Build_FArgs C).
-  
+
   Module Wrapper_result.
     Record signature `{_fargs : FArgs} {Base_Memory_t : Set} : Type := {
       Base :
@@ -132,13 +166,13 @@ Module Wrapper.
       Memory :
         Provider.Outer.Memory.Memory_signature (_fargs := Base_fargs)
           (t := Base_Memory_t);
-      
+
       Base_Memory_t := Base_Memory_t;
     }.
   End Wrapper_result.
   Definition Wrapper_result `{_fargs : FArgs} := @Wrapper_result.signature _ _.
   Arguments Wrapper_result {_ _ _}.
-  
+
   (* Wrapper *)
   Definition functor `{_fargs : FArgs} :Wrapper_result (Base_Memory_t := _) :=
     {|

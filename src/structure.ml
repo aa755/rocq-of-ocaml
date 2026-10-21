@@ -3888,7 +3888,7 @@ let propagate_assumption_calls
         (fun (path, spec) -> (path, spec.Exp.requirements))
         external_specs
   in
-  let exact_source_requirements context path =
+  let exact_source_requirements ~unbound context path =
     let source = MixedPath.to_string path in
     let contextual source = String.concat "." (context @ [ source ]) in
     let enclosing_result source =
@@ -3904,7 +3904,18 @@ let propagate_assumption_calls
           if String.contains name '.' then [ name; contextual name ]
           (* An include alias is a local definition. Its result-record field
              can have a separately ordered telescope, so it is only a fallback. *)
-          else contextual name :: enclosing_result name @ [ name ]
+          else
+            let rec enclosing_values scope =
+              let candidate = String.concat "." (scope @ [ name ]) in
+              let remaining =
+                match List.rev scope with
+                | [] -> []
+                | _ :: parent -> enclosing_values (List.rev parent)
+              in
+              if List.mem candidate unbound then remaining
+              else candidate :: remaining
+            in
+            enclosing_values context @ enclosing_result name
       | MixedPath.Access (root, fields)
       | MixedPath.AppliedAccess (root, _, fields) -> (
           match List.rev fields with
@@ -3960,11 +3971,11 @@ let propagate_assumption_calls
         source_head_path head
     | _ -> None
   in
-  let order_source_requirements context head requirements =
+  let order_source_requirements ~unbound context head requirements =
     match source_head_path head with
     | None -> requirements
     | Some path -> (
-        match exact_source_requirements context path with
+        match exact_source_requirements ~unbound context path with
         | None -> requirements
         | Some target_requirements ->
             reorder_assumption_requirements_like target_requirements
@@ -3973,12 +3984,23 @@ let propagate_assumption_calls
   in
   let rec materialize_definition_calls context = function
     | Value value ->
+        (* A nonrecursive [let f = f] refers to the enclosing binding, not
+           to the definition whose body we are currently printing. *)
+        let unbound =
+          if value.Value.definition.Exp.Definition.is_rec then []
+          else
+            value.Value.definition.Exp.Definition.cases
+            |> List.map (fun (header, _) ->
+                String.concat "."
+                  (context @ [ Name.to_string header.Exp.Header.name ]))
+        in
         Value
           {
             value with
             Value.definition =
               Exp.materialize_definition_source_call_assumptions
-                ~order_source_requirements:(order_source_requirements context)
+                ~order_source_requirements:
+                  (order_source_requirements ~unbound context)
                 value.Value.definition;
           }
     | Module (name, parameters, nested, expression) ->

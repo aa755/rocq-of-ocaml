@@ -2,6 +2,15 @@
 Require Import RocqOfOCaml.RocqOfOCaml.
 Require Import RocqOfOCaml.Settings.
 
+Module M.
+  Inductive t (a : Set) : Set :=
+  | Present : a -> t a
+  | Missing : t a.
+
+  Arguments Present {_}.
+  Arguments Missing {_}.
+End M.
+
 Module Outer_X_signature.
   Record signature {t : Set} : Type := {
     t := t;
@@ -16,12 +25,12 @@ Module Outer.
     X : Outer_X_signature (t := X_t);
   }.
   Arguments Build_FArgs {_}.
-  
+
   Module Memory.
     Definition t `{_fargs : FArgs} : Set := list X.(Outer_X_signature.t).
-    
+
     Definition empty `{_fargs : FArgs} : t := nil.
-    
+
     Module Memory_signature.
       Record signature `{_fargs : FArgs} {t : Set} : Type := {
         t := t;
@@ -31,7 +40,7 @@ Module Outer.
     Definition Memory_signature `{_fargs : FArgs} := @Memory_signature.signature
       _ _.
     Arguments Memory_signature {_ _ _}.
-    
+
     (* Memory *)
     Definition module `{_fargs : FArgs} :Memory_signature (t := _) :=
       {|
@@ -39,7 +48,7 @@ Module Outer.
       |}.
   End Memory.
   Definition Memory `{_fargs : FArgs} := Memory.module.
-  
+
   Module Run_C_signature.
     Record signature `{_fargs : FArgs} : Type := {
       state : Memory.(Memory.Memory_signature.t);
@@ -48,18 +57,18 @@ Module Outer.
   Definition Run_C_signature `{_fargs : FArgs} := @Run_C_signature.signature _
     _.
   Arguments Run_C_signature {_ _}.
-  
+
   Module Run.
     Class FArgs `{_fargs : FArgs} := {
       C : Run_C_signature;
     }.
     Arguments Build_FArgs {_ _}.
-    
+
     Definition get `{_fargs : FArgs} (function_parameter : unit)
       : Memory.(Memory.Memory_signature.t) :=
       let '_ := function_parameter in
       (C (FArgs := _fargs)).(Run_C_signature.state).
-    
+
     Definition missing `{_fargs : FArgs}
       `{_rocq_assumption_0 :
         RocqOfOCaml.Basics.Unreachable Memory.(Memory.Memory_signature.t)}
@@ -67,7 +76,7 @@ Module Outer.
       let '_ := function_parameter in
       let '_ := false in
       (@RocqOfOCaml.Basics.unreachable Memory.(Memory.Memory_signature.t) _).
-    
+
     Definition indirect `{_fargs : FArgs}
       `{_rocq_assumption_0 :
         RocqOfOCaml.Basics.Unreachable
@@ -78,7 +87,18 @@ Module Outer.
       (@RocqOfOCaml.Basics.unreachable
         (Memory.(Memory.Memory_signature.t) -> int) _))
         (C (FArgs := _fargs)).(Run_C_signature.state).
-    
+
+    Definition mixed `{_fargs : FArgs}
+      `{_rocq_assumption_0 :
+        RocqOfOCaml.Basics.Unreachable RocqOfOCaml.OCamlInt32.t}
+      `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (M.t int)}
+      (function_parameter : unit) : M.t int * RocqOfOCaml.OCamlInt32.t :=
+      let '_ := function_parameter in
+      ((let '_ := false in
+      (@RocqOfOCaml.Basics.unreachable (M.t int) _)),
+        (let '_ := false in
+        (@RocqOfOCaml.Basics.unreachable RocqOfOCaml.OCamlInt32.t _))).
+
     Module Run_result.
       Record signature `{_fargs : FArgs} : Type := {
         get : unit -> Memory.(Memory.Memory_signature.t);
@@ -92,29 +112,35 @@ Module Outer.
             `{_rocq_assumption_0 :
               RocqOfOCaml.Basics.Unreachable
                 (Memory.(Memory.Memory_signature.t) -> int)}, unit -> int;
+        mixed :
+          forall
+            `{_rocq_assumption_0 :
+              RocqOfOCaml.Basics.Unreachable RocqOfOCaml.OCamlInt32.t}
+            `{_rocq_assumption_1 : RocqOfOCaml.Basics.Unreachable (M.t int)},
+            unit -> M.t int * RocqOfOCaml.OCamlInt32.t;
       }.
     End Run_result.
     Definition Run_result `{_fargs : FArgs} := @Run_result.signature _ _ _.
     Arguments Run_result {_ _ _}.
-    
+
     (* Run *)
     Definition functor `{_fargs : FArgs} :@Run_result _ _ _fargs :=
       ((@Run_result.Build_signature _ _ _fargs get (fun _ => missing)
-        (fun _ => indirect)) : @Run_result _ _ _fargs).
+        (fun _ => indirect) (fun _ _ => mixed)) : @Run_result _ _ _fargs).
   End Run.
   Definition Run `{_fargs : FArgs} (C : Run_C_signature) :=
     @Run.functor _ _ (Run.Build_FArgs C).
-  
+
   Module Outer_result.
     Record signature `{_fargs : FArgs} {Memory_t : Set} : Type := {
       Memory : Outer.Memory.Memory_signature (t := Memory_t);
-      
+
       Memory_t := Memory_t;
     }.
   End Outer_result.
   Definition Outer_result `{_fargs : FArgs} := @Outer_result.signature _ _.
   Arguments Outer_result {_ _ _}.
-  
+
   (* Outer *)
   Definition functor `{_fargs : FArgs} :Outer_result (Memory_t := _) :=
     {|
