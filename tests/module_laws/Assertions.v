@@ -14,3 +14,8 @@ Definition cross_file_result : int := Client.run 12%Z.
 Example cross_file_result_is_zero : cross_file_result = 0%Z.
 Proof. vm_compute. reflexivity. Qed.
 Print Assumptions cross_file_result.
+
+Example direct_result_is_zero : Client.direct 12%Z = 0%Z.
+Proof. vm_compute. reflexivity. Qed.
+Example local_direct_result_is_zero : Client.local_direct 12%Z = 0%Z.
+Proof. vm_compute. reflexivity. Qed.

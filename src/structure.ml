@@ -4303,7 +4303,10 @@ let qualify_result_field_signature (env : Env.t) (result_signature : Path.t)
   let head_is_resolvable =
     match Env.find_module (Path.Pident head) env with
     | _ -> true
-    | exception Not_found -> false
+    | exception Not_found -> (
+        match Env.find_modtype (Path.Pident head) env with
+        | _ -> true
+        | exception Not_found -> false)
   in
   if Ident.global head || Ident.is_predef head || head_is_resolvable then
     field_signature
@@ -5085,7 +5088,7 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
                               let* nested_kind =
                                 let* field_signature =
                                   get_result_module_field signature_path
-                                    source_name
+                                    (String.concat "_" (prefix @ [ source_name ]))
                                 in
                                 match field_signature with
                                 | Some field_signature ->
@@ -5104,8 +5107,12 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
                                         signature_path nested_signature_path
                                     in
                                     let* field =
+                                      let* flattened_name =
+                                        Name.of_strings false
+                                          (prefix @ [ source_name ])
+                                      in
                                       PathName.of_path_and_name_with_convert
-                                        signature_path name
+                                        signature_path flattened_name
                                     in
                                     let record_fields =
                                       record_fields @ [ field ]
@@ -6589,7 +6596,8 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
                 | [] -> assert false
               in
               ContextAssumption
-                ( Name.of_string_raw (Printf.sprintf "_rocq_law_%d" index),
+                ( Name.of_string_raw
+                    (Printf.sprintf "_rocq_projection_assumption_%d" index),
                   (Exp.Law, Type.Apply (MixedPath.PathName path, arguments)) ))
         in
         return
