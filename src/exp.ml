@@ -781,8 +781,22 @@ module ModuleTypValues = struct
                       return (access @ [ module_name ])
                 in
                 let* is_first_class =
-                  IsFirstClassModule.is_module_typ_first_class md_type
-                    (Some (Path.Pident ident))
+                  let* classification =
+                    IsFirstClassModule.is_module_typ_first_class md_type
+                      (Some (Path.Pident ident))
+                  in
+                  match (classification, md_type) with
+                  | IsFirstClassModule.Not_found _, Mty_alias target
+                    when prefix = [] ->
+                      let* signature = MixedPath.get_signature_path target in
+                      (match signature with
+                      | Some path
+                        when not
+                               (String.ends_with ~suffix:"_result"
+                                  (Path.last path)) ->
+                          return (IsFirstClassModule.Found path)
+                      | _ -> return classification)
+                  | _ -> return classification
                 in
                 let is_synthetic_parameter_alias =
                   match (md_type, is_first_class) with
@@ -7198,13 +7212,19 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
           match (root_functor_path functor_expr, functor_type) with
           | ( Some functor_path,
               Mty_functor (Named (parameter_ident, parameter_type), _) ) ->
+              let* applied_child = get_applied_functor_child functor_path in
+              let formal_functor_path =
+                match applied_child with
+                | Some (source, _) -> source
+                | None -> functor_path
+              in
               let* env = get_env in
               let* hinted_parameter_signature =
                 let parameter_index =
                   applied_functor_argument_count functor_expr
                 in
                 let* parameter_types =
-                  get_functor_parameter_types functor_path
+                  get_functor_parameter_types formal_functor_path
                 in
                 return
                   (Option.bind parameter_types (fun parameter_types ->
@@ -7221,9 +7241,30 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                      module that needs a synthesized signature and cast. *)
                   return None
               | _ ->
+                  let* exact_signature =
+                    match applied_child with
+                    | None -> return None
+                    | Some _ ->
+                        get_anonymous_functor_parameter formal_functor_path
+                          (Name.string_of_optional_ident parameter_ident)
+                  in
                   let* named_signature =
-                    IsFirstClassModule.is_module_typ_first_class parameter_type
-                      None
+                    let* classification =
+                      IsFirstClassModule.is_module_typ_first_class
+                        parameter_type None
+                    in
+                    let is_declared =
+                      match classification with
+                      | Found path ->
+                          (match Env.find_modtype path env with
+                          | _ -> true
+                          | exception Not_found -> false)
+                      | Not_found _ -> false
+                    in
+                    match (is_declared, exact_signature) with
+                    | false, Some signature ->
+                        return (IsFirstClassModule.Found signature)
+                    | _ -> return classification
                   in
                   begin match named_signature with
                   | Found signature_path -> return (Some signature_path)

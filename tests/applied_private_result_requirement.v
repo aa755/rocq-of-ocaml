@@ -178,9 +178,7 @@ Module Include.
   Module Include_result.
     Record signature `{_fargs : FArgs} : Type := {
       Applied : Make.Make_result (_fargs := Applied_fargs);
-      Impl_impl := list Value.(VALUE.t);
-      Impl_t := list Value.(VALUE.t);
-      Impl_of_impl : Impl_impl -> list Value.(VALUE.t);
+      Impl : Make.Impl.Impl_signature (_fargs := Applied_fargs);
       impl := list Value.(VALUE.t);
       t := list Value.(VALUE.t);
       of_impl : list Value.(VALUE.t) -> list Value.(VALUE.t);
@@ -198,9 +196,8 @@ Module Include.
   
   (* Include *)
   Definition functor `{_fargs : FArgs} :@Include_result Value_t _fargs :=
-    ((@Include_result.Build_signature Value_t _fargs Applied Impl.of_impl
-      of_impl (fun _ => impossible) expose identity) :
-      @Include_result Value_t _fargs).
+    ((@Include_result.Build_signature Value_t _fargs Applied Impl of_impl
+      (fun _ => impossible) expose identity) : @Include_result Value_t _fargs).
 End Include.
 Definition Include {Value_t : Set} (Value : VALUE (t := Value_t)) :=
   @Include.functor Value_t (Include.Build_FArgs Value).

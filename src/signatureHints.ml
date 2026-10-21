@@ -1043,6 +1043,57 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
              | ordering -> ordering)
          | ordering -> ordering)
   in
+  let result_module_fields =
+    (* Includes preserve aliases to fields of earlier functor applications.
+       Carry their record signatures into the containing result as well. *)
+    let aliases =
+      !module_types
+      |> List.concat_map (fun (result, module_type, _) ->
+             match module_type with
+             | Types.Mty_signature signature
+               when String.ends_with ~suffix:"_result" (Path.last result) ->
+                 signature
+                 |> List.filter_map (function
+                      | Types.Sig_module
+                          (ident, _, { Types.md_type = Mty_alias target; _ }, _, _) ->
+                          Some (result, Ident.name ident, target)
+                      | _ -> None)
+             | _ -> [])
+    in
+    let rec resolve fields visited path =
+      if List.exists (Path.same path) visited then None
+      else
+        let visited = path :: visited in
+        match List.find_opt (fun (candidate, _) -> Path.same candidate path)
+                !module_annotations with
+        | Some (_, signature) -> Some signature
+        | None ->
+            match List.find_opt (fun (candidate, _) -> Path.same candidate path)
+                    !module_aliases with
+            | Some (_, target) -> resolve fields visited target
+            | None ->
+                match path with
+                | Path.Pdot (parent, field) ->
+                    Option.bind (resolve fields visited parent) (fun signature ->
+                        fields |> List.find_map (fun (candidate, name, result) ->
+                            if Path.same candidate signature && String.equal name field
+                            then Some result else None))
+                | _ -> None
+    in
+    let rec propagate fields =
+      let additions = aliases |> List.filter_map (fun (result, name, target) ->
+          if List.exists (fun (candidate, field, _) ->
+                 Path.same candidate result && String.equal field name) fields
+          then None
+          else Option.bind (resolve fields [] target) (fun signature ->
+                 if String.ends_with ~suffix:"_result" (Path.last signature)
+                 then None else Some (result, name, signature))) in
+      match additions with
+      | [] -> fields
+      | _ -> propagate (additions @ fields)
+    in
+    propagate result_module_fields
+  in
   let result_namespace_includes =
     !nested_namespace_includes
     |> List.filter_map
@@ -1099,6 +1150,7 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
                 |> List.exists (fun (anonymous_path, _, _) ->
                        Path.same signature_path anonymous_path)))
   in
+  let raw_anonymous_functor_parameters = !anonymous_functor_parameters in
   let anonymous_functor_parameters =
     let canonical_signatures = ref [] in
     List.rev !anonymous_functor_parameters
@@ -1154,6 +1206,33 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
   let retained_anonymous_signatures =
     !anonymous_module_signatures
     @ (anonymous_functor_parameters |> List.map (fun (_, _, path) -> path))
+  in
+  let canonical_anonymous_functor_parameters =
+    let qualify_signature signature =
+      match signature with
+      | Path.Pident signature_ident ->
+          raw_anonymous_functor_parameters
+          |> List.find_map (fun (owner, _, _, candidate) ->
+                 if not (Path.same candidate signature) then None
+                 else
+                   !direct_functor_children
+                   |> List.find_map (fun (_, _, source, canonical) ->
+                          if not (Path.same source owner) then None
+                          else
+                            match canonical with
+                            | Path.Pdot (parent, _) ->
+                                Some (Path.Pdot (parent, Ident.name signature_ident))
+                            | _ -> None))
+          |> Option.value ~default:signature
+      | _ -> signature
+    in
+    !direct_functor_children
+    |> List.concat_map (fun (_, _, source, canonical) ->
+           anonymous_functor_parameters
+           |> List.filter_map (fun (owner, parameter, signature) ->
+                  if Path.same owner source then
+                    Some (canonical, parameter, qualify_signature signature)
+                  else None))
   in
   let anonymous_signatures =
     !anonymous_signatures
@@ -1221,7 +1300,7 @@ let of_typedtree (typedtree : Merlin_kernel.Mtyper.typedtree) : t =
     module_types = List.rev !module_types;
     anonymous_signatures = List.rev anonymous_signatures;
     anonymous_functor_parameters =
-      anonymous_functor_parameters;
+      canonical_anonymous_functor_parameters @ anonymous_functor_parameters;
     functor_parameter_types =
       List.rev
         (aliased_functor_parameter_types

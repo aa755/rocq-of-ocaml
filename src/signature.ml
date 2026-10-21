@@ -1379,6 +1379,19 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
               IsFirstClassModule.is_module_typ_first_class md_type
                 (Some module_path)
         in
+        let* is_first_class =
+          match (is_first_class, md_type) with
+          | IsFirstClassModule.Not_found _, Mty_alias target
+            when prefix = [] ->
+              let* signature = MixedPath.get_signature_path target in
+              (match signature with
+              | Some path
+                when not
+                       (String.ends_with ~suffix:"_result" (Path.last path)) ->
+                  return (IsFirstClassModule.Found path)
+              | _ -> return is_first_class)
+          | _ -> return is_first_class
+        in
         match is_first_class with
         | Found signature_path ->
             let* signature_path_name, applied_record_params =
@@ -1425,7 +1438,46 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
                       ( Name.of_string_raw "_fargs",
                         Some (Type.Apply (MixedPath.PathName fargs_path, [])) );
                     ]
-              | Some _ | None -> return applied_record_params
+              | Some _ | None -> (
+                  match md_type with
+                  | Mty_alias (Path.Pdot (parent, field)) -> (
+                      let* parent_signature =
+                        MixedPath.get_signature_path parent
+                      in
+                      let* inherited_signature =
+                        match parent_signature with
+                        | Some signature
+                          when String.ends_with ~suffix:"_result"
+                                 (Path.last signature) ->
+                            get_result_module_field signature field
+                        | _ -> return None
+                      in
+                      match inherited_signature with
+                      | Some inherited
+                        when Path.same inherited signature_path
+                             && (match parent_signature with
+                                 | Some (Path.Pdot (owner, _)) ->
+                                     String.starts_with
+                                       ~prefix:(Path.name owner ^ ".")
+                                       (Path.name inherited)
+                                 | _ -> false) ->
+                          let* parent =
+                            PathName.of_path_with_convert false parent
+                          in
+                          let fargs =
+                            {
+                              parent with
+                              PathName.base =
+                                Name.of_string_raw
+                                  (Name.to_string parent.base ^ "_fargs");
+                            }
+                          in
+                          return
+                            (( Name.of_string_raw "_fargs",
+                               Some (Type.Apply (MixedPath.PathName fargs, [])) )
+                            :: applied_record_params)
+                      | _ -> return applied_record_params)
+                  | _ -> return applied_record_params)
             in
             let* constructor_aliases =
               let* env = get_env in

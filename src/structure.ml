@@ -5793,16 +5793,15 @@ let rec of_structure ?(has_functor_parameters = false) (structure : structure) :
 and of_module ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
     (functor_parameters : functor_parameters) (module_expr : module_expr)
     (has_plain_module_attribute : bool) : t Monad.t =
+  let rec final_structure (module_expr : module_expr) =
+    match module_expr.mod_desc with
+    | Tmod_structure structure -> Some structure
+    | Tmod_functor (_, body) | Tmod_constraint (body, _, _, _) ->
+        final_structure body
+    | Tmod_ident _ | Tmod_apply _ | Tmod_apply_unit _ | Tmod_unpack _
+    | Tmod_typed_hole -> None
+  in
   let include_aliases : (Path.t * Path.t) list Monad.t =
-    let rec final_structure (module_expr : module_expr) =
-      match module_expr.mod_desc with
-      | Tmod_structure structure -> Some structure
-      | Tmod_functor (_, body) | Tmod_constraint (body, _, _, _) ->
-          final_structure body
-      | Tmod_ident _ | Tmod_apply _ | Tmod_apply_unit _ | Tmod_unpack _
-      | Tmod_typed_hole ->
-          None
-    in
     match final_structure module_expr with
     | None -> return []
     | Some structure ->
@@ -5890,9 +5889,11 @@ and of_module ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
                     | None -> synthetic_path
                   in
                   let result_env =
-                    match module_expr.mod_desc with
-                    | Tmod_structure structure -> structure.str_final_env
-                    | _ -> module_expr.mod_env
+                    (* Implicit constraints may wrap the structure. Its aliases
+                       still refer to the final environment inside that body. *)
+                    match final_structure module_expr with
+                    | Some structure -> structure.str_final_env
+                    | None -> module_expr.mod_env
                   in
                   let result_location =
                     {
