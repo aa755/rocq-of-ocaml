@@ -19,3 +19,12 @@ end
 
 module Inline = Consumer.Inline (WithTag)
 let inline n = Inline.run n
+
+module State = struct
+  type state = int
+  let step = Provider.Reset.step
+  let gas n = n
+end
+
+module InlineState = Consumer.InlineState (State)
+let inline_state n = InlineState.run n

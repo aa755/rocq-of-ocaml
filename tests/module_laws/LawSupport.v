@@ -8,6 +8,14 @@ Definition decreases (s : Provider.STEP) : Prop :=
 Definition step_decreases (step : Z -> Z) : Prop :=
   forall n, (0 < n)%Z -> (Z.to_nat (step n) < Z.to_nat n)%nat.
 
+Definition state_resets {State : Type}
+    (step : State -> State) (gas : State -> Z) : Prop :=
+  forall s, gas (step s) = 0%Z.
+
+#[global] Instance reset_state_law :
+    Law (state_resets (Provider.STEP.step Provider.Reset) (fun n => n)).
+Proof. constructor. unfold state_resets. intros s. reflexivity. Qed.
+
 #[global] Instance reset_law : Law (decreases Provider.Reset).
 Proof.
   constructor. intros n Hn. cbn.

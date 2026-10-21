@@ -16,3 +16,11 @@ module Inline (S : sig
 end) = struct
   let rec run n = if n > 0 then run (S.step n) else n
 end
+
+module InlineState (S : sig
+  type state
+  val step : state -> state
+  val gas : state -> int
+end) = struct
+  let run s = S.step s
+end

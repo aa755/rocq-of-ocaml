@@ -1142,7 +1142,13 @@ let local_module_names definitions =
         Option.fold ~none:names
           ~some:(fun (fargs_name, _) -> Name.Set.add fargs_name names)
           application_fargs
-    | Module (name, _, _, _) | ModuleSynonym (name, _, _)
+    | Module (name, (_, _, parameter_signatures), _, _) ->
+        (* Anonymous parameter signatures are emitted before the functor,
+           so their projections belong to this enclosing namespace. *)
+        List.fold_left
+          (fun names signature -> Name.Set.add signature.name names)
+          (Name.Set.add name names) parameter_signatures
+    | ModuleSynonym (name, _, _)
     | Signature (name, _) ->
         Name.Set.add name names
     | Documentation (_, nested) -> List.fold_left collect names nested

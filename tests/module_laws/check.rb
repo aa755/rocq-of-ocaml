@@ -35,7 +35,7 @@ Dir.mktmpdir('rocq-module-laws') do |dir|
   output = compile.call('Assertions')
   abort "unexpected proof assumptions:\n#{output}" if output.include?('Axioms:')
   reports = output.scan(/Closed under the global context|Set is impredicative/)
-  abort 'missing assumption checks' unless reports.length == 4
+  abort 'missing assumption checks' unless reports.length == 5
 
   config = JSON.parse(File.read(File.join(dir, 'Consumer.json')))
   config['module_laws'][0][3] = ['Missing']

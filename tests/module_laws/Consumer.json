@@ -4,7 +4,8 @@
   "module_laws": [
     ["*", "Run", "LawSupport.decreases", ["S"]],
     ["*", "Run", "LawSupport.step_decreases", ["S.step"]],
-    ["*", "Inline", "LawSupport.step_decreases", ["S.step"]]
+    ["*", "Inline", "LawSupport.step_decreases", ["S.step"]],
+    ["*", "InlineState", "LawSupport.state_resets", ["S.step", "S.gas"]]
   ],
   "recursion_strategies": [["*", "Run.run", "well_founded"], ["*", "Inline.run", "well_founded"]],
   "termination_certificates": [["*", "Run.run", "Z.to_nat _rocq_state", "LawSupport.solve_decrease"],

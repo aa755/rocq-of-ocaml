@@ -7786,11 +7786,36 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
                           | None -> []
                           | Some target ->
                               let signature_paths =
+                                let rec functor_path = function
+                                  | Variable (MixedPath.PathName path, _) ->
+                                      Some path
+                                  | Apply (head, _) | SourceApply (head, _, _)
+                                  | TypAnnotation (head, _) -> functor_path head
+                                  | _ -> None
+                                in
+                                let exported_anonymous_path =
+                                  (* A named import alias may qualify the
+                                     functor differently from its signature
+                                     hint. Use its known declaration namespace
+                                     for synthesized associated-type fields. *)
+                                  match functor_path e1 with
+                                  | Some path
+                                    when Name.to_string signature.PathName.base
+                                         = Name.to_string path.PathName.base
+                                           ^ "_" ^ Name.to_string formal_name
+                                           ^ "_signature" ->
+                                      [
+                                        path.PathName.path
+                                        @ [ signature.PathName.base ];
+                                      ]
+                                  | _ -> []
+                                in
                                 [
                                   signature.PathName.path
                                   @ [ signature.PathName.base ];
                                   [ signature.PathName.base ];
                                 ]
+                                @ exported_anonymous_path
                                 |> List.sort_uniq compare
                               in
                               signature_paths
