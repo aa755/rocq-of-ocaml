@@ -1142,7 +1142,8 @@ let local_module_names definitions =
         Option.fold ~none:names
           ~some:(fun (fargs_name, _) -> Name.Set.add fargs_name names)
           application_fargs
-    | Module (name, _, _, _) | ModuleSynonym (name, _, _) ->
+    | Module (name, _, _, _) | ModuleSynonym (name, _, _)
+    | Signature (name, _) ->
         Name.Set.add name names
     | Documentation (_, nested) -> List.fold_left collect names nested
     | ErrorMessage (_, Documentation (_, nested)) ->

@@ -9,3 +9,10 @@ end
 
 module Concrete = Forward (Provider.Reset)
 let result = Concrete.run 12
+
+module Inline (S : sig
+  val step : int -> int
+  val tag : unit
+end) = struct
+  let rec run n = if n > 0 then run (S.step n) else n
+end

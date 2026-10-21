@@ -4,6 +4,11 @@ Definition concrete_result : int := result_value.
 Example concrete_result_is_zero : concrete_result = 0%Z.
 Proof. vm_compute. reflexivity. Qed.
 
+Definition inline_result : int := Client.inline 12%Z.
+Example inline_result_is_zero : inline_result = 0%Z.
+Proof. vm_compute. reflexivity. Qed.
+Print Assumptions inline_result.
+
 Fail Definition unjustified_loop : Run.FArgs :=
   Run.Build_FArgs Provider.Identity.
 Fail Definition fabricated_law : Law False := ltac:(typeclasses eauto).

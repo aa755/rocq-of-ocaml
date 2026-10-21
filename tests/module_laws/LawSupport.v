@@ -34,3 +34,15 @@ Ltac solve_decrease :=
         apply Z.gtb_lt in H; exact H
       end
   end.
+
+Ltac solve_step_decrease :=
+  repeat match goal with x := _ |- _ => subst x end;
+  unfold ltof; cbn beta iota zeta;
+  match goal with
+  | |- (Z.to_nat (?step ?n) < Z.to_nat ?n)%nat =>
+      let instance := constr:(_ : Law (step_decreases step)) in
+      apply (@law _ instance);
+      match goal with H : Z.gtb _ _ = true |- _ =>
+        apply Z.gtb_lt in H; exact H
+      end
+  end.

@@ -11,3 +11,11 @@ end
 
 module LocalDirect = Consumer.Run (Local)
 let local_direct n = LocalDirect.run n
+
+module WithTag = struct
+  let step = Provider.Reset.step
+  let tag = ()
+end
+
+module Inline = Consumer.Inline (WithTag)
+let inline n = Inline.run n

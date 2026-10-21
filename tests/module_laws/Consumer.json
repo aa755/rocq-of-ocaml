@@ -3,8 +3,10 @@
   "file_head_suffixes": [["*", "Require Import LawSupport."]],
   "module_laws": [
     ["*", "Run", "LawSupport.decreases", ["S"]],
-    ["*", "Run", "LawSupport.step_decreases", ["S.step"]]
+    ["*", "Run", "LawSupport.step_decreases", ["S.step"]],
+    ["*", "Inline", "LawSupport.step_decreases", ["S.step"]]
   ],
-  "recursion_strategies": [["*", "Run.run", "well_founded"]],
-  "termination_certificates": [["*", "Run.run", "Z.to_nat _rocq_state", "LawSupport.solve_decrease"]]
+  "recursion_strategies": [["*", "Run.run", "well_founded"], ["*", "Inline.run", "well_founded"]],
+  "termination_certificates": [["*", "Run.run", "Z.to_nat _rocq_state", "LawSupport.solve_decrease"],
+    ["*", "Inline.run", "Z.to_nat _rocq_state", "LawSupport.solve_step_decrease"]]
 }
