@@ -795,6 +795,35 @@ measure and tactic. Recursive calls must be fully applied. Certified mutual
 well-founded groups use a sum-tagged dispatcher state; the configured measure
 and call-site tactic must handle every member of the recursive group.
 
+## module_laws
+
+```json
+"module_laws": [
+  ["lib/algebra.ml", "Quotient", "AlgebraProof.euclidean_laws",
+    ["D.op_eq", "D.zero", "D.degree", "D.div_rem"]]
+]
+```
+
+Each entry names a source-path suffix, an exact qualified functor name,
+a Rocq predicate, and its arguments. An argument is a functor parameter or
+one field of a parameter with a named signature. Field names are the generated
+Rocq names. Import the predicate with `file_head_suffixes`; it must return
+`Prop`. Keeping it generic over operations avoids importing the generated
+algorithm into its own termination support.
+
+The generated functor argument record gains an explicit `Law (predicate args)`
+proof field. `Law` has no default instance or axiom. Termination tactics may use
+its `law` projection. Requirements propagate through callers, nested functor
+applications, and cross-file assumption metadata. Concrete applications must
+provide a proof or retain the requirement as an explicit parameter; accepting
+a parameter is not a proof that the concrete law holds.
+
+This adds no source operation, runtime test, or fallback. It does not infer
+algebraic laws or prove them automatically. `tests/module_laws` demonstrates a
+terminating instance, a forwarding functor, a cross-file caller, and rejection
+of a nondecreasing instance. Regenerate metadata with the same translator:
+older metadata formats are rejected.
+
 ## without_guard_checking
 #### Example
 ```

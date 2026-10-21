@@ -118,6 +118,15 @@ module VariantMapping = struct
   type t = { source : string; target : string }
 end
 
+module ModuleLaw = struct
+  type t = {
+    source : string;
+    definition : string;
+    predicate : string;
+    parameters : string list;
+  }
+end
+
 type t = {
   alias_barrier_modules : string list;
   assumption_metadata_exclusions : DefinitionExclusion.t list;
@@ -142,6 +151,7 @@ type t = {
   monadic_returns : Operator.t list;
   monadic_return_lets : MonadicOperators.t list;
   module_overrides : ModuleOverride.t list;
+  module_laws : ModuleLaw.t list;
   normalize_direct_monomorphic_function_roots : string list;
   normalize_included_roots : string list;
   operator_infix : Operator.t list;
@@ -187,6 +197,7 @@ let default (file_name : string) : t =
     monadic_returns = [];
     monadic_return_lets = [];
     module_overrides = [];
+    module_laws = [];
     normalize_direct_monomorphic_function_roots = [];
     normalize_included_roots = [];
     operator_infix = [];
@@ -360,6 +371,12 @@ let get_termination_certificate (configuration : t)
          && filename_matches configuration.file_name source)
   |> Option.map (fun { TerminationCertificate.measure; tactic; checked_domain; _ } ->
       (measure, tactic, checked_domain))
+
+let get_module_laws (configuration : t) (definition_path : string list) =
+  let definition = String.concat "." definition_path in
+  configuration.module_laws
+  |> List.filter (fun { ModuleLaw.source; definition = configured; _ } ->
+      configured = definition && filename_matches configuration.file_name source)
 
 let definition_matches (configured : string) (definition_path : string list) :
     bool =
@@ -916,6 +933,38 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                     { RecursionStrategy.source; definition; kind; arity })
               in
               { configuration with recursion_strategies = entry }
+          | "module_laws" ->
+              let error_message =
+                "Expected module_laws entries [source, qualified functor name, \
+                 Rocq predicate path, [functor parameter names]]"
+              in
+              let entries =
+                match entry with
+                | `List entries -> entries
+                | _ -> failwith error_message
+              in
+              let module_laws =
+                entries
+                |> List.map (function
+                  | `List
+                      [
+                        `String source;
+                        `String definition;
+                        `String predicate;
+                        `List parameters;
+                      ] ->
+                      if definition = "" || predicate = "" then
+                        failwith error_message;
+                      let parameters =
+                        parameters
+                        |> List.map (function
+                          | `String name when name <> "" -> name
+                          | _ -> failwith error_message)
+                      in
+                      { ModuleLaw.source; definition; predicate; parameters }
+                  | _ -> failwith error_message)
+              in
+              { configuration with module_laws }
           | "termination_certificates" ->
               let entry =
                 let error_message =

@@ -96,7 +96,7 @@ type dependent_pattern_match = {
   args : Type.t list;
 }
 
-type assumption_kind = Unreachable | Unimplemented | ModuleContext
+type assumption_kind = Unreachable | Unimplemented | Law | ModuleContext
 type assumption_requirement = assumption_kind * Type.t
 
 let partial_operation_names =
@@ -2109,6 +2109,19 @@ let rec assumption_term_of_expression (expression : t) : Type.t option =
             (assumption_term_of_expression body))
   | _ -> None
 
+let specialize_module_argument source target typ =
+  match source with
+  | Type.Apply (MixedPath.PathName { PathName.path = []; base }, []) ->
+      if not (Type.references_mixed_path_root base typ) then typ
+      else (
+        match target with
+        | Type.Apply (path, []) -> Type.subst_mixed_path_root base path typ
+        | _ -> Type.Let (base, target, typ))
+  | _ ->
+      Type.specialize_matched_type ~relaxed_constructors:true
+        ~preserve_pattern_constructor:(fun _ -> false) source target typ
+      |> Option.value ~default:typ
+
 (** Specialize generated type paths that escape through a local binding of an
     applied functor. Call-requirement propagation runs after module coercion, so
     this must happen while collecting the final requirements rather than only
@@ -2138,10 +2151,7 @@ let specialize_assumption_for_application ?local_result (value : t)
     | SourceApply (_, _, source_type) ->
         List.fold_left
           (fun result (source, target) ->
-            Type.specialize_matched_type ~relaxed_constructors:true
-              ~preserve_pattern_constructor:(fun _ -> false)
-              source target result
-            |> Option.value ~default:result)
+            specialize_module_argument source target result)
           result source_type.module_substitutions
     | _ -> result
   in
@@ -2473,10 +2483,7 @@ let assumption_specializers ?external_fargs (expression : t) :
           List.fold_left
             (fun typ (source, target) ->
               let target = externalize_module_substitution source target in
-              Type.specialize_matched_type ~relaxed_constructors:true
-                ~preserve_pattern_constructor:(fun _ -> false)
-                source target typ
-              |> Option.value ~default:typ)
+              specialize_module_argument source target typ)
             typ source_type.module_substitutions
         in
         module_specializer
@@ -2530,11 +2537,12 @@ let assumption_requirements (expression : t) : assumption_requirement list =
 let assumption_class_type ((kind, typ) : assumption_requirement) : Type.t =
   match kind with
   | ModuleContext -> typ
-  | Unreachable | Unimplemented ->
+  | Unreachable | Unimplemented | Law ->
       let class_name =
         match kind with
         | Unreachable -> "Unreachable"
         | Unimplemented -> "Unimplemented"
+        | Law -> "Law"
         | ModuleContext -> assert false
       in
       let class_path =
@@ -2563,6 +2571,7 @@ let rec assumption_requirement_of_class_type (typ : Type.t) :
       match Name.to_string base with
       | "Unreachable" -> Some (Unreachable, result_typ)
       | "Unimplemented" -> Some (Unimplemented, result_typ)
+      | "Law" -> Some (Law, result_typ)
       | _ -> None)
   | Type.Apply (MixedPath.PathName { PathName.base; _ }, [])
     when String.equal (Name.to_string base) "FArgs" ->
@@ -2585,11 +2594,12 @@ let materialize_scoped_assumptions
   let specialize kind provider argument =
     match kind with
     | ModuleContext -> Apply (provider, [ Some argument ])
-    | Unreachable | Unimplemented ->
+    | Unreachable | Unimplemented | Law ->
         let helper =
           match kind with
           | Unreachable -> "specialize_unreachable"
           | Unimplemented -> "specialize_unimplemented"
+          | Law -> "specialize_law"
           | ModuleContext -> assert false
         in
         Apply
@@ -4151,10 +4161,7 @@ let propagate_call_assumptions
         let required_typ =
           List.fold_left
             (fun required_typ (source, target) ->
-              Type.specialize_matched_type ~relaxed_constructors:true
-                ~preserve_pattern_constructor:(fun _ -> false)
-                source target required_typ
-              |> Option.value ~default:required_typ)
+              specialize_module_argument source target required_typ)
             required_typ module_substitutions
         in
         let required_typ =
@@ -5317,7 +5324,7 @@ let rec of_expression (typ_vars : Name.t Name.Map.t) (e : expression) :
                     warn
                       "an explicitly unimplemented OCaml operation is \
                        represented by an Unimplemented result"
-                | ModuleContext -> assert false
+                | Law | ModuleContext -> assert false
               in
               return (Assumption (kind, typ, arguments))
           | Texp_apply ({ exp_desc = Texp_ident (path, _, _); _ }, e_xs)
@@ -7735,6 +7742,29 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
             | _, _ ->
                 return []
           in
+          (* Proof requirements can depend on the module value itself, not just
+             its associated types. Preserve that substitution at application
+             sites so a concrete caller never retains an unbound formal. *)
+          let* module_value_substitutions =
+            match (e1_mod_type, es) with
+            | Mty_functor (Named (Some formal_ident, _), _), [ Some argument ]
+              ->
+                let* formal_name = Name.of_ident false formal_ident in
+                let rec without_annotation = function
+                  | TypAnnotation (value, _) -> without_annotation value
+                  | value -> value
+                in
+                return
+                  (match
+                     assumption_term_of_expression (without_annotation argument)
+                   with
+                  | Some value ->
+                      [
+                        (Type.Apply (MixedPath.of_name formal_name, []), value);
+                      ]
+                  | None -> [])
+            | _ -> return []
+          in
           let inherited_module_substitutions =
             match e1 with
             | SourceApply (_, _, source_type) ->
@@ -7743,6 +7773,7 @@ and of_module_expr ?expected_signature_path (typ_vars : Name.t Name.Map.t)
           in
           let module_substitutions =
             inherited_module_substitutions @ current_module_substitutions
+            @ module_value_substitutions
           in
           let module_application_type =
             let placeholder = Type.Error "module_application" in
@@ -9315,8 +9346,9 @@ let to_coq_assumed_value (kind : assumption_kind) (typ : Type.t) : SmartPrint.t
     match kind with
     | Unreachable -> "@RocqOfOCaml.Basics.unreachable"
     | Unimplemented -> "@RocqOfOCaml.Basics.unimplemented"
-    | ModuleContext ->
-        failwith "a module context cannot be rendered as an assumed value"
+    | Law | ModuleContext ->
+        failwith
+          "a proof or module context cannot be rendered as an assumed value"
   in
   parens
     (nest

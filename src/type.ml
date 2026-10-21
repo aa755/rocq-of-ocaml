@@ -1437,6 +1437,8 @@ let subst_mixed_path_root (source : Name.t) (target : MixedPath.t) (typ : t) : t
           MixedPath.AppliedAccess (root, arguments, target_fields @ fields)
     in
     match path with
+    | MixedPath.PathName { path = []; base } when Name.equal base source ->
+        target
     | MixedPath.PathName root -> (
         match replace_path_name root with
         | Some root -> MixedPath.PathName root

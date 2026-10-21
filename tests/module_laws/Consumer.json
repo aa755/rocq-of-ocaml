@@ -1,0 +1,10 @@
+{
+  "require": [["*", "Provider"]],
+  "file_head_suffixes": [["*", "Require Import LawSupport."]],
+  "module_laws": [
+    ["*", "Run", "LawSupport.decreases", ["S"]],
+    ["*", "Run", "LawSupport.step_decreases", ["S.step"]]
+  ],
+  "recursion_strategies": [["*", "Run.run", "well_founded"]],
+  "termination_certificates": [["*", "Run.run", "Z.to_nat _rocq_state", "LawSupport.solve_decrease"]]
+}

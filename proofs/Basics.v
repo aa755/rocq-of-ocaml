@@ -93,6 +93,12 @@ Class Unimplemented (T : Type) := {
   unimplemented : T;
 }.
 
+(** A proof dependency, never an arbitrary executable value. Concrete module
+    applications must supply a proof of [P]; no default instance is provided. *)
+Class Law (P : Prop) : Prop := {
+  law : P;
+}.
+
 Arguments unreachable {T} {_}.
 Arguments unimplemented {T} {_}.
 
@@ -110,6 +116,10 @@ Definition specialize_unreachable {A : Type} {T : A -> Type}
 Definition specialize_unimplemented {A : Type} {T : A -> Type}
     (instance : Unimplemented (forall x, T x)) (x : A) : Unimplemented (T x) :=
   {| unimplemented := @unimplemented (forall x, T x) instance x |}.
+
+Definition specialize_law {A : Type} {P : A -> Prop}
+    (instance : Law (forall x, P x)) (x : A) : Law (P x) :=
+  {| law := @law (forall x, P x) instance x |}.
 
 (** Keep a section variable as an explicit parameter of a generated
     definition even when Rocq can erase every computational use of it. *)

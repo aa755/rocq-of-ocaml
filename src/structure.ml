@@ -6498,7 +6498,80 @@ and of_module_expr ?binding_path ?(has_enclosing_fargs = false) (name : Name.t)
               return (Some (e, module_typ))
           | None -> return None
         in
-        return (Module (name, functor_parameters, structure, e))
+        let* configuration = get_configuration in
+        let* definition_path = get_definition_path in
+        let laws =
+          Configuration.get_module_laws configuration definition_path
+        in
+        let _, parameters, _ = functor_parameters in
+        let law_definitions =
+          laws
+          |> List.mapi (fun index law ->
+              let arguments =
+                law.Configuration.ModuleLaw.parameters
+                |> List.map (fun parameter ->
+                    let root, field =
+                      match String.split_on_char '.' parameter with
+                      | [ root ] -> (root, None)
+                      | [ root; field ] -> (root, Some field)
+                      | _ ->
+                          failwith
+                            "module_laws: expected a parameter or \
+                             parameter.field"
+                    in
+                    match
+                      List.find_opt
+                        (fun (name, _) -> Name.to_string name = root)
+                        parameters
+                    with
+                    | Some (name, typ) ->
+                        let path =
+                          match (field, typ) with
+                          | None, _ -> MixedPath.of_name name
+                          | Some field, Type.Signature (signature, _) ->
+                              MixedPath.Access
+                                ( PathName.of_name [] name,
+                                  [
+                                    {
+                                      PathName.path =
+                                        signature.path @ [ signature.base ];
+                                      base = Name.of_string_raw field;
+                                    };
+                                  ] )
+                          | Some _, _ ->
+                              failwith
+                                "module_laws: projected parameter must have a \
+                                 named signature"
+                        in
+                        (Type.Apply (path, []), false)
+                    | None ->
+                        failwith
+                          ("module_laws: unknown functor parameter " ^ root
+                         ^ " in "
+                          ^ String.concat "." definition_path))
+              in
+              if parameters = [] then
+                failwith "module_laws requires a functor, not a plain module";
+              let path =
+                match
+                  List.rev
+                    (String.split_on_char '.'
+                       law.Configuration.ModuleLaw.predicate)
+                with
+                | base :: reversed_path ->
+                    {
+                      PathName.path =
+                        List.map Name.of_string_raw (List.rev reversed_path);
+                      base = Name.of_string_raw base;
+                    }
+                | [] -> assert false
+              in
+              ContextAssumption
+                ( Name.of_string_raw (Printf.sprintf "_rocq_law_%d" index),
+                  (Exp.Law, Type.Apply (MixedPath.PathName path, arguments)) ))
+        in
+        return
+          (Module (name, functor_parameters, law_definitions @ structure, e))
       in
       set_env source_structure.str_final_env (translate_structure ())
   | Tmod_ident (path, _) -> (
@@ -9016,6 +9089,7 @@ let rec to_coq ?(normalize_included_roots = [])
                              | Some (Exp.ModuleContext, _) | None ->
                                  false
                              | Some (Exp.Unreachable, _)
+                             | Some (Exp.Law, _)
                              | Some (Exp.Unimplemented, _) ->
                                  true)
                          |> List.length
