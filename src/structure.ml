@@ -7565,6 +7565,7 @@ let rec to_coq ?(normalize_included_roots = [])
     ?(available_assumption_providers = []) ?type_requirement_context
     ?direct_value_requirement_context ?signature_requirement_context
     ?module_result_signature_context ?flattened_namespace_context
+    ?(applied_functor_context = [])
     ?module_requirement_context (fargs : FArgs.t) (defs : t list) : SmartPrint.t
     =
   let rec take count values =
@@ -7664,6 +7665,21 @@ let rec to_coq ?(normalize_included_roots = [])
     |> List.filter_map (function
       | ModuleExpression (_, _, Some (fargs_name, _), _) -> Some fargs_name
       | _ -> None)
+  in
+  let applied_functor_context =
+    let local =
+      defs
+      |> List.filter_map (function
+        | ModuleExpression
+            (_, Some typ, (Some (helper, _) as application_fargs), expression)
+          when module_expression_requirements application_fargs expression = [] ->
+            Option.map
+              (fun signature ->
+                (signature.PathName.path, helper))
+              (result_signature typ)
+        | _ -> None)
+    in
+    local @ applied_functor_context
   in
   let local_module_expression_names =
     let from_definitions =
@@ -8558,10 +8574,49 @@ let rec to_coq ?(normalize_included_roots = [])
                    typ)
            typ
     in
+    let instantiate_applied_functor path =
+      let root, applications, fields =
+        match path with
+        | MixedPath.PathName root -> (root, [], [])
+        | MixedPath.Access (root, fields) -> (root, [], fields)
+        | MixedPath.AppliedAccess (root, applications, fields) ->
+            (root, applications, fields)
+      in
+      let rec is_prefix prefix path =
+        match (prefix, path) with
+        | [], _ -> true
+        | x :: xs, y :: ys when Name.equal x y -> is_prefix xs ys
+        | _ -> false
+      in
+      let candidates =
+        applied_functor_context
+        |> List.filter (fun (owner, _) ->
+            owner <> [] && is_prefix owner root.PathName.path)
+        |> List.sort (fun (left, _) (right, _) ->
+            Int.compare (List.length right) (List.length left))
+      in
+      match candidates with
+      | (owner, helper) :: rest
+        when not (List.exists (fun (label, _) -> label = "_fargs") applications)
+             && not
+                  (List.exists
+                     (fun (other, other_helper) ->
+                       List.length other = List.length owner
+                       && not (Name.equal helper other_helper))
+                     rest) ->
+          (* Imported proof argument types can mention a functor's internal
+             types without mentioning them in the function's result. Retain
+             the known application package; result-type matching cannot
+             recover it. Ambiguous applications must remain unresolved. *)
+          MixedPath.AppliedAccess
+            (root, applications @ [ ("_fargs", Name.to_string helper) ], fields)
+      | _ -> path
+    in
     Type.project_mixed_paths
       (fun path ->
         let materialized =
           path
+          |> instantiate_applied_functor
           |> materialize_external_type_path_applications named_requirements
           |> materialize_generated_type_path_applications named_requirements
           |> materialize_module_path_applications
@@ -9295,6 +9350,7 @@ let rec to_coq ?(normalize_included_roots = [])
                             module_result_signatures)
                        ~flattened_namespace_context:flattened_namespace_fields
                        ~module_requirement_context:module_requirements
+                       ~applied_functor_context
                        inner_fargs defs
                   ^^
                   match e with

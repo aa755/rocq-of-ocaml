@@ -459,6 +459,7 @@ tests = Tests.new(test_files + [
   ProjectResultModuleFieldTest.new('tests/project_partial_value_origins'),
   ProjectResultModuleFieldTest.new('tests/project_named_result_field'),
   ProjectResultModuleFieldTest.new('tests/project_included_proof_arguments'),
+  ProjectResultModuleFieldTest.new('tests/project_nested_abstract_requirement'),
   ProjectResultModuleFieldTest.new(
     'tests/project_included_result_order', ['TestProject.Provider']
   ),

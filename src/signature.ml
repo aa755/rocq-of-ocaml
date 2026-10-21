@@ -1452,11 +1452,15 @@ let rec items_of_types_signature ?(abstract_functor_applications = false)
                             get_result_module_field signature field
                         | _ -> return None
                       in
+                      let* env = get_env in
                       match inherited_signature with
                       | Some inherited
                         when Path.same inherited signature_path
                              && (match parent_signature with
                                  | Some (Path.Pdot (owner, _)) ->
+                                     let owner =
+                                       Env.normalize_module_path None env owner
+                                     in
                                      String.starts_with
                                        ~prefix:(Path.name owner ^ ".")
                                        (Path.name inherited)
