@@ -9,6 +9,12 @@ let rules =
     ("Stdlib.Option.*", "RocqOfOCaml.OCamlOption");
     ("Stdlib._Set", "RocqOfOCaml.OCamlSet");
     ("Stdlib._Set.*", "RocqOfOCaml.OCamlSet");
+    (* [ppx_deriving_runtime] includes Stdlib; inferred module-type paths
+       may therefore use its aliases even outside generated PPX code. *)
+    ("Ppx_deriving_runtime._Set", "RocqOfOCaml.OCamlSet");
+    ("Ppx_deriving_runtime._Set.*", "RocqOfOCaml.OCamlSet");
+    ("Ppx_deriving_runtime.Map", "RocqOfOCaml.OCamlMap");
+    ("Ppx_deriving_runtime.Map.*", "RocqOfOCaml.OCamlMap");
     ("Stdlib.List", "RocqOfOCaml.OCamlList");
     ("Stdlib.List.*", "RocqOfOCaml.OCamlList");
     ("Stdlib.Seq", "RocqOfOCaml.OCamlSeq");

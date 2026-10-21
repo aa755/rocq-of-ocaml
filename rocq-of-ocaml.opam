@@ -27,6 +27,7 @@ depends: [
   "merlin-lib"
   "ocaml" {>= "5.4" & < "5.7"}
   "ocamlfind" {>= "1.5.2"}
+  "ppx_deriving" {with-test}
   "result"
   "rocq-core" {>= "9.0" & < "9.1"}
   "rocq-prover" {>= "9.0" & < "9.1"}
