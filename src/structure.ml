@@ -3896,7 +3896,9 @@ let propagate_assumption_calls
       | MixedPath.PathName name ->
           let name = PathName.to_string name in
           if String.contains name '.' then [ name; contextual name ]
-          else enclosing_result name @ [ contextual name; name ]
+          (* An include alias is a local definition. Its result-record field
+             can have a separately ordered telescope, so it is only a fallback. *)
+          else contextual name :: enclosing_result name @ [ name ]
       | MixedPath.Access (root, fields)
       | MixedPath.AppliedAccess (root, _, fields) -> (
           match List.rev fields with
