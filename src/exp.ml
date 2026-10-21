@@ -6631,6 +6631,27 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
     (is_rec : Asttypes.rec_flag) (cases : value_binding list) :
     t option Definition.t Monad.t =
   let is_rec = Recursivity.of_rec_flag is_rec in
+  let has_recursive_reference =
+    let bound =
+      List.concat_map
+        (fun binding -> Typedtree.pat_bound_idents binding.vb_pat)
+        cases
+    in
+    let found = ref false in
+    let iterator =
+      { Tast_iterator.default_iterator with
+        expr =
+          (fun self expression ->
+            (match expression.exp_desc with
+            | Texp_ident (Path.Pident ident, _, _) ->
+                if List.exists (Ident.same ident) bound then found := true
+            | _ -> ());
+            Tast_iterator.default_iterator.expr self expression) }
+    in
+    if is_rec then
+      List.iter (fun binding -> iterator.expr iterator binding.vb_expr) cases;
+    !found
+  in
   let is_simple_binding_pattern (pattern : value general_pattern) : bool =
     match pattern.pat_desc with
     | Tpat_any | Tpat_var _ | Tpat_alias ({ pat_desc = Tpat_any; _ }, _, _, _, _)
@@ -7028,6 +7049,17 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
     | strategy, _ -> strategy
   in
   let* term_environment = get_term_environment in
+  (* Generated equality functions often say [rec] but only their local
+     list worker recurses. Leading let-bindings hide their lambda arguments
+     from Rocq's Fixpoint elaborator; a nonrecursive Definition needs none.
+     Preserve genuine recursion and explicitly selected recursion schemes. *)
+  let is_rec =
+    match (recursion_strategy, cases) with
+    | Definition.Structural, [ ({ Header.args = []; structs = []; _ }, _) ]
+      when not has_recursive_reference ->
+        false
+    | _ -> is_rec
+  in
   return
     {
       Definition.is_rec;
