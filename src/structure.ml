@@ -157,7 +157,7 @@ module Value = struct
            ^^ indent
                 (destruct_state
                    (recursive_alias ^^ recursive_alias_separator
-                  ^^ Exp.to_coq false body))))
+                  ^^ Exp.Definition.checked_body details (Exp.to_coq false body)))))
     in
     let motive =
       parens (!^"fun" ^^ !^"_" ^^ !^"=>" ^^ Type.to_coq None None typ)
@@ -185,6 +185,10 @@ module Value = struct
       a sum of the functions' argument tuples. *)
   let render_well_founded_mutual (details : Exp.Definition.well_founded_details)
       (fargs : FArgs.t) (cases : (Exp.Header.t * Exp.t) list) : SmartPrint.t =
+    (match details.Exp.Definition.certificate with
+    | Some { Exp.Definition.checked_domain = Some _; _ } ->
+        failwith "checked-domain certificates require a single recursive definition"
+    | _ -> ());
     if
       List.exists
         (fun ({ Exp.Header.typ_vars; is_notation; _ }, _) ->

@@ -107,6 +107,22 @@ Rocq measure and a named call-site tactic for a `well_founded` definition;
 successfully checked certificates remove both the abstract measure and
 `Admit Obligations` from the generated definition.
 
+A certificate normally has four strings: source path, qualified definition
+name, measure, and tactic. An explicit six-string form additionally supplies
+a boolean domain expression and an out-of-domain result. The generated
+function checks that domain before executing each recursive body; its
+termination tactic receives `_rocq_domain_eq` proving that the check passed.
+The domain may refer to `_rocq_state` and the function arguments, just like
+the measure. This form supports single top-level and local recursive
+definitions, not mutually recursive groups.
+
+This option changes the target's behavior outside the domain. It is **not**
+an automatic semantics-preservation argument: use it only with an explicit
+representation boundary and justify that the source executions being
+modeled remain inside it. The translator warns whenever it is used. The
+fallback is an ordinary typed term, not an admitted inhabitant. See
+`tests/checked_domain_recursion.json` for a small example.
+
 To map a partial computation between monads through an action lift,
 declare that operation explicitly:
 

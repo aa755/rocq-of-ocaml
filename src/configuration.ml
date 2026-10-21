@@ -110,6 +110,7 @@ module TerminationCertificate = struct
     definition : string;
     measure : string;
     tactic : string;
+    checked_domain : (string * string) option;
   }
 end
 
@@ -350,15 +351,15 @@ let get_partial_state_observer (configuration : t)
          else None)
 
 let get_termination_certificate (configuration : t)
-    (definition_path : string list) : (string * string) option =
+    (definition_path : string list) : (string * string * (string * string) option) option =
   let definition = String.concat "." definition_path in
   configuration.termination_certificates
   |> List.find_opt
        (fun { TerminationCertificate.source; definition = configured; _ } ->
          configured = definition
          && filename_matches configuration.file_name source)
-  |> Option.map (fun { TerminationCertificate.measure; tactic; _ } ->
-      (measure, tactic))
+  |> Option.map (fun { TerminationCertificate.measure; tactic; checked_domain; _ } ->
+      (measure, tactic, checked_domain))
 
 let definition_matches (configured : string) (definition_path : string list) :
     bool =
@@ -920,7 +921,8 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                 let error_message =
                   "Expected termination_certificates entries to contain a \
                    source, qualified definition, Rocq measure expression, and \
-                   Rocq tactic"
+                   Rocq tactic, optionally followed by a boolean domain and \
+                   an explicit out-of-domain result"
                 in
                 let entries =
                   match entry with
@@ -943,7 +945,16 @@ let of_json (file_name : string) (json : Yojson.Basic.t) : t =
                         definition;
                         measure;
                         tactic;
+                        checked_domain = None;
                       }
+                  | `List
+                      [ `String source; `String definition; `String measure;
+                        `String tactic; `String domain; `String fallback ] ->
+                      if definition = "" || measure = "" || tactic = ""
+                         || domain = "" || fallback = "" then
+                        failwith error_message;
+                      { TerminationCertificate.source; definition; measure;
+                        tactic; checked_domain = Some (domain, fallback) }
                   | _ -> failwith error_message)
               in
               { configuration with termination_certificates = entry }

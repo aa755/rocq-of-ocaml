@@ -32,12 +32,29 @@ module Header = struct
 end
 
 module Definition = struct
-  type termination_certificate = { measure : string; tactic : string }
+  type termination_certificate = {
+    measure : string;
+    tactic : string;
+    checked_domain : (string * string) option;
+  }
 
   type well_founded_details = {
     definition_name : string;
     certificate : termination_certificate option;
   }
+
+  let checked_body details body =
+    match details.certificate with
+    | Some { checked_domain = Some (domain, fallback); _ } ->
+        nest
+          (!^"let _rocq_domain :=" ^^ parens !^domain ^^ !^"in" ^^ newline
+           ^^ !^"match _rocq_domain as _rocq_domain_value return"
+           ^^ !^"(_rocq_domain = _rocq_domain_value -> _) with" ^^ newline
+           ^^ !^"| true => fun _rocq_domain_eq =>" ^^ newline
+           ^^ indent body ^^ newline
+           ^^ !^"| false => fun _ =>" ^^ parens !^fallback ^^ newline
+           ^^ !^"end eq_refl")
+    | _ -> body
 
   type partial_recursion =
     | MayDiverge
@@ -6711,11 +6728,16 @@ and import_let_fun (typ_vars : Name.t Name.Map.t) (_at_top_level : bool)
                Configuration.get_termination_certificate configuration
                  (enclosing_definition_path
                  @ Option.to_list (source_binding_name case.vb_pat))
-               |> Option.map (fun (measure, tactic) ->
-                   { Definition.measure; tactic })
+               |> Option.map (fun (measure, tactic, checked_domain) ->
+                   { Definition.measure; tactic; checked_domain })
              in
              let* () =
                match certificate with
+               | Some { Definition.checked_domain = Some _; _ } ->
+                   warn
+                     "This definition has an explicit checked-domain boundary. \
+                      Its configured fallback is not a translation of the source \
+                      outside that domain; justify that source inputs stay inside it."
                | Some _ -> return ()
                | None ->
                    warn
@@ -10136,7 +10158,8 @@ and to_coq_well_founded_let (paren : bool)
             (nest
                (!^"fun" ^^ Name.to_coq state_name ^^ Name.to_coq recurse_name
               ^^ !^"=>" ^^ newline
-               ^^ indent (destruct_state (to_coq false body))))
+               ^^ indent (destruct_state
+                    (Definition.checked_body details (to_coq false body)))))
         in
         let body_definition =
           !^"let" ^^ Name.to_coq body_name ^^ !^":"

@@ -1,0 +1,23 @@
+{
+  "file_head_suffixes": [
+    ["tests/checked_domain_recursion.ml", "From Stdlib Require Import Lia."]
+  ],
+  "recursion_strategies": [
+    ["tests/checked_domain_recursion.ml", "length", "well_founded"],
+    ["tests/checked_domain_recursion.ml", "local_length.loop", "well_founded"]
+  ],
+  "termination_certificates": [
+    [
+      "tests/checked_domain_recursion.ml", "length",
+      "Datatypes.length _rocq_state",
+      "let H := fresh in pose proof _rocq_domain_eq as H; unfold ltof; unfold _rocq_measure; cbn beta iota zeta in *; destruct _rocq_state; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia",
+      "Nat.leb (Datatypes.length _rocq_state) 2", "99"
+    ],
+    [
+      "tests/checked_domain_recursion.ml", "local_length.loop",
+      "Datatypes.length _rocq_state",
+      "let H := fresh in pose proof _rocq_domain_eq as H; unfold ltof; unfold _rocq_measure; cbn beta iota zeta in *; destruct _rocq_state; cbn in _rocq_match_eq; try discriminate; inversion _rocq_match_eq; subst; cbn; lia",
+      "Nat.leb (Datatypes.length _rocq_state) 2", "99"
+    ]
+  ]
+}
