@@ -8,7 +8,10 @@
 - Translator: `d3afb526`.
 
 Fresh translation, all sidecar proofs, assumption audits, and predicative kernel
-checking passed on 2026-10-21. **This version still has arithmetic-translation
+checking passed on 2026-10-21, including an independent reproduction in a fresh
+Ubuntu 24.04 ARM64 Docker container with no reused build artifacts or cache.
+All 42 generated files and 72 sidecar files built without additional fixes.
+**This version still has arithmetic-translation
 bugs and proof-driven OCaml changes absent from main.** See
 [Problems in This Version](#problems-in-this-version).
 
@@ -79,6 +82,7 @@ Prerequisites: initialized opam, C/make tools, Python 3, Ruby, jq, and ripgrep.
 git clone --branch cmcl/exp-rocq-baseline \
   https://github.com/category-labs/monad-execution-specs.git monad-rocq
 cd monad-rocq
+git switch --detach 6cee08bc04d90a8b133f893d98110baa35bae2d5
 mkdir -p .rocq-tools
 git clone https://github.com/aa755/rocq-of-ocaml.git .rocq-tools/rocq-of-ocaml
 git -C .rocq-tools/rocq-of-ocaml switch --detach d3afb526
@@ -95,6 +99,10 @@ DUNE_CACHE=disabled sh rocq/check-translation.sh
 Generation writes ignored `rocq/generated/next/`; the check builds those files
 and `proofs/rocq/` in a fresh directory using the pinned, predicative runtime.
 These commands reproduce section 1, **not** the unfinished target in section 2.
+
+The fresh Docker run took about 6 minutes for the toolchain, 38m38s for
+translation, and 7m10s for the build, audits, and kernel checks. Sampled
+translator memory exceeded 10 GiB; the minimum RAM requirement was not tested.
 
 ## Architecture and Knobs
 
