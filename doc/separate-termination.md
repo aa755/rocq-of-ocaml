@@ -116,3 +116,33 @@ admits obligations or updates the handwritten file.
 Keep a passing version in Git. During a port,
 `git show BASE:tests/separate_termination/Count_internal.v` shows the old body;
 a worktree at `BASE` provides a compilable old proof beside the new one.
+
+## Remaining Work
+
+1. **Bring the implementation up to date.** Port it onto the latest ordinary
+   translator, retaining the arithmetic and module fixes. Keep this mode opt-in
+   while its coverage is incomplete.
+2. **Support local recursion, modules, and functors.** Make captured variables
+   explicit parameters of local one-step bodies. Preserve module/type contexts
+   and propagate termination-proof parameters through callers and public
+   wrappers, including dependencies on earlier definitions in the same file.
+3. **Support mutual recursion.** Represent a recursive group with a tagged call
+   state and one joint termination certificate; expose the original functions
+   through wrappers. Do not require users to split the OCaml source into files.
+4. **Complete the proof interface.** Generate monotonicity proofs for supported
+   bodies, or explicit obligations, so unfolding and proof-independence lemmas
+   are available. Generic functor laws must remain explicit proof parameters;
+   concrete applications must discharge them, not receive assumed instances.
+5. **Reuse the project proofs.** Adapt existing measures and lemmas into
+   handwritten `X_termproofs.v` files, rather than rediscovering them. Target
+   public main after comparison removal and possibly the RLP PR described in
+   [WIP.md](../WIP.md), without runtime progress checks or proof-driven OCaml
+   refactors. Corrected arithmetic still requires repairing affected arguments.
+6. **Validate end to end.** Build the runtime and generated project predicatively,
+   with no new admissions or disabled kernel checks. Add local/mutual/functor
+   regressions, retranslation/proof-reuse tests, and native behavior comparisons;
+   then run the full proof build and assumption audit on the target source.
+
+Later, replace the constructive-search implementation if execution performance
+requires it, proving agreement with the current combinator. This optimization
+is separate from making the proof architecture work.
