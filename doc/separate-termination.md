@@ -130,6 +130,10 @@ Possible next steps are:
    explicit parameters of local one-step bodies. Module/type contexts and
    termination-proof parameters would then flow through callers and wrappers,
    including dependencies on earlier definitions in the same file.
+   Another option is to simplify the OCaml source by replacing unnecessary
+   functors with concrete modules or explicit function parameters, reducing
+   translation and proof complexity. This could be an optional upstream
+   simplification, rather than a prerequisite for translating main.
 3. **Mutual recursion.** A tagged call state and one joint termination
    certificate could represent a recursive group, with wrappers exposing the
    original functions. This would preserve the OCaml source layout.
