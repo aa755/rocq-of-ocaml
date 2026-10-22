@@ -579,23 +579,17 @@ recursion into an unchecked Gallina `Fixpoint`.
 The underscore spelling `[@rocq_partial]` is also accepted.
 
 ## rocq_struct
-For recursive definitions, we can force the name of the parameter on which we do structural recursion using the attribute `[@rocq_struct "name"]`. This has the same effect as the `{struct name}` keyword in Rocq. For example, we translate:
+The attribute `[@rocq_struct "name"]` selects the structurally decreasing
+argument, producing `{struct name}` in Rocq. The guard checker still verifies
+the recursive calls. For example:
 ```ocaml
-let[@rocq_struct "accumulator"] rec length l accumulator =
-  match l with
-  | [] -> accumulator
-  | _ :: l -> length l (accumulator + 1)
+let[@rocq_struct "xs"] rec rev_append xs acc =
+  match xs with
+  | [] -> acc
+  | x :: rest -> rev_append rest (x :: acc)
 ```
-to:
-```rocq
-Fixpoint length {A : Set} (l : list A) (accumulator : Z) {struct accumulator}
-  : Z :=
-  match l with
-  | [] => accumulator
-  | cons _ l => length l (Z.add accumulator 1)
-  end.
-```
-which is invalid in Rocq as the decreasing argument is `l`.
+Here `rest` is a subterm of `xs`; selecting `acc` instead would be rejected.
+Nonstructural recursion needs a different argument, as described below.
 
 ## rocq.wf
 
@@ -608,21 +602,15 @@ let[@rocq.wf] rec gcd left right =
   if right = 0 then left else gcd right (left mod right)
 ```
 
-The current implementation emits an abstract `nat`-valued measure and admitted
-decrease obligations. For example, the generated definition has the shape:
+The measure and decrease proofs can be supplied through
+[`termination_certificates`](configuration#termination_certificates). That
+configuration names a natural-number measure and a proof tactic, imported from
+a handwritten Rocq file. The tactic runs at each recursive call, where the
+arguments and branch hypotheses are available; Rocq checks the resulting proof.
 
-```rocq
-Parameter _rocq_measure_gcd : Z -> Z -> nat.
-
-Program Definition gcd (left right : Z) : Z :=
-  @Fix _ (ltof _ _rocq_measure_gcd) (well_founded_ltof _ _rocq_measure_gcd)
-    (fun _ => Z) (fun state recurse => ...) (left, right).
-Admit Obligations.
-```
-
-This is an explicit temporary trust boundary. The generated measure and every
-admitted obligation must be replaced before relying on the definition in a
-sound development. The translator emits a source-located warning for it.
+Without a certificate, the current implementation emits an abstract measure
+and admitted decrease obligations, with a source-located warning. Such output
+still requires termination proofs; the attribute alone does not supply them.
 
 Top-level, local, and mutually recursive definitions are supported. A mutual
 group is encoded through a tagged sum of its call states. The attribute cannot

@@ -42,23 +42,24 @@ Then from the point of view of `b.ml`, `A.M` is of signature `A.S` and there are
 A solution for this issue is to open the abstraction in `a.mli` by using the signature `S_internal` instead of `S`. A general solution on the side of `rocq-of-ocaml` would be to translate the `.mli` to `.v` files doing the plumbing from `S` to `S_internal`. We have not done that yet, because of lack of time and because we believe that having `.v` files to do plumbing can also have a cost for the proofs.
 
 ## Fixpoint struct annotations
-In Rocq, fixpoints (recursive functions) must be structurally decreasing on one of the arguments to make sure that the function always terminates. When structural termination is not obvious, we can disable this check with the configuration option [without_guard_checking](configuration#without_guard_checking). However, Rocq still requires to consider one of the parameters as the decreasing one, even if this is not structurally the case. A decreasing parameter is still required to know how far to unfold recursive definitions while doing proofs.
-
-The way to specify the decreasing parameter is to use the attribute [rocq_struct](attributes#rocq_struct). For example we annotate the operator `-->` as follows:
+Rocq checks that recursive calls in an ordinary `Fixpoint` use a structurally
+smaller argument. The attribute [rocq_struct](attributes#rocq_struct) selects
+that argument when inference needs help. For example:
 ```ocaml
-let[@rocq_struct "i"] rec ( --> ) i j =
-  (* [i; i+1; ...; j] *)
-  if Compare.Int.(i > j) then [] else i :: (succ i --> j)
+let[@rocq_struct "xs"] rec rev_append xs acc =
+  match xs with
+  | [] -> acc
+  | x :: rest -> rev_append rest (x :: acc)
 ```
-Here `i` is decreasing when we consider the natural order on `-i`. This generates the following Rocq code:
-```rocq
-Fixpoint op_minusminusgt (i : int) (j : int) {struct i} : list int :=
-  if i >i j then
-    nil
-  else
-    cons i (op_minusminusgt (Pervasives.succ i) j).
-```
-The annotation `{struct i}` specifies in Rocq that the decreasing parameter is `i`.
+The generated `{struct xs}` is checked: `rest` is a subterm of `xs`, even
+though `acc` grows. The annotation does not prove nonstructural recursion.
+
+For a total function needing a different termination argument,
+[`recursion_strategies`](configuration#recursion_strategies) selects
+`well_founded`, and
+[`termination_certificates`](configuration#termination_certificates) supplies
+a measure and a proof of decrease. A possibly diverging function can instead
+use `partial`, which represents its execution with `Delay` or `Resumption`.
 
 ## Ignored functions
 Sometimes definitions are too complex to translate to Rocq, but we still want to go on with the rest of the files. A solution is to add the [rocq_axiom_with_reason](attributes#rocq_axiom_with_reason) to ignore a definition and replace it with an axiom of the same type.

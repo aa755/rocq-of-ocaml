@@ -9,7 +9,8 @@ implementation and fixtures are **only on the experiment branch**.
 The current mechanism inserts a tactic inside a generated recursive definition.
 That is awkward when the termination proof needs to import the generated body:
 the imports would form a cycle. This experiment separates the body, proof, and
-public function, without requiring an OCaml source refactor.
+public function, without requiring an OCaml source refactor. The measure
+function does not have to be specified in the translator's JSON configuration.
 
 **Prototype only:** flat, monomorphic, first-order functions with one to three
 arguments. Local/mutual recursion, modules, functors, recursive higher-order

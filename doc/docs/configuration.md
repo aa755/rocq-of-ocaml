@@ -34,9 +34,6 @@ An example is:
     ["Dir", "Context.Dir"],
     ["Key", "Context.Key"],
     ["Hex", "MBytes.Hex"]
-  ],
-  "without_positivity_checking": [
-    "src/proto_alpha/lib_protocol/storage_description.ml"
   ]
 }
 ```
@@ -754,8 +751,16 @@ An optional fourth integer selects the argument position at which a configured
 partial higher-order operation receives its callback.
 
 #### Explanation
-`well_founded` emits an abstract ranking function and explicit decrease
-obligations. `partial` changes the result to `Delay.t` or monadic
+The default is an ordinary `Fixpoint`: Rocq checks that recursive calls use
+structurally smaller arguments. `well_founded` instead uses a natural-number
+measure of the arguments, with a proof that every recursive call decreases it.
+The measure and proof tactic come from
+[`termination_certificates`](#termination_certificates), as shown below.
+Without a certificate, this strategy currently emits an abstract measure and
+admitted decrease obligations, with a warning; that output is not a completed
+termination proof.
+
+`partial` changes the result to `Delay.t` or monadic
 `Resumption.t` and propagates that result through callers. `convergent` keeps a
 non-recursive caller's source result type and currently emits an explicit
 convergence obligation.
@@ -767,14 +772,22 @@ avoids unstable source line numbers and disambiguates repeated names such as
 ## termination_certificates
 #### Example
 ```json
-"termination_certificates": [
-  [
-    "lib/parser.ml",
-    "Parser.loop",
-    "ParserProof.loop_rank _rocq_state",
-    "ParserProof.solve_loop_decrease"
+{
+  "file_head_suffixes": [
+    ["lib/parser.ml", "Require Import ParserProof."]
+  ],
+  "recursion_strategies": [
+    ["lib/parser.ml", "Parser.loop", "well_founded"]
+  ],
+  "termination_certificates": [
+    [
+      "lib/parser.ml",
+      "Parser.loop",
+      "ParserProof.loop_rank _rocq_state",
+      "ParserProof.solve_loop_decrease"
+    ]
   ]
-]
+}
 ```
 
 #### Value
@@ -782,6 +795,12 @@ A list of quadruples containing a source-path suffix, an exact dot-separated
 definition name, a Rocq expression of type `nat`, and a Rocq tactic.
 
 #### Explanation
+This example selects `loop` inside a source module named `Parser` in
+`lib/parser.ml`; a top-level `loop` in that file would be named simply `loop`.
+`ParserProof.v` is handwritten: it defines the natural-number measure
+`loop_rank` and the tactic `solve_loop_decrease`, which applies its lemmas.
+The import makes both available before the generated definitions.
+
 A certificate completes a definition classified as `well_founded`. The
 measure expression is emitted as the body of the generated `_rocq_measure`;
 it may refer to the generated `_rocq_state` and to variables captured by a
@@ -790,9 +809,10 @@ recursive call and must prove that the next state has a smaller measure.
 
 When a certificate is present, the generated definition contains neither an
 abstract measure nor `Admit Obligations`. Rocq checks every decrease proof.
-Use `head_suffix` or `file_head_suffixes` to import the module defining the
-measure and tactic. Recursive calls must be fully applied. Certified mutual
-well-founded groups use a sum-tagged dispatcher state; the configured measure
+`head_suffix` imports support for all translated files; `file_head_suffixes`
+limits an import to matching source paths, as above. Recursive calls must be
+fully applied. Certified mutual well-founded groups use a sum-tagged dispatcher
+state; the configured measure
 and call-site tactic must handle every member of the recursive group.
 
 ## module_laws
@@ -825,119 +845,14 @@ of a nondecreasing instance. Regenerate metadata with the same translator:
 older metadata formats are rejected.
 
 ## without_guard_checking
-#### Example
-```
-"without_guard_checking": [
-  "src/proto_alpha/lib_protocol/apply.ml",
-  "src/proto_alpha/lib_protocol/misc.ml",
-  "src/proto_alpha/lib_protocol/raw_context.ml",
-  "src/proto_alpha/lib_protocol/script_interpreter.ml",
-  "src/proto_alpha/lib_protocol/storage_description.ml"
-]
-```
 
-#### Value
-A list of filenames on which to disable termination checks by Rocq.
-
-#### Explanation
-This option turns off the flag `Guard Checking`:
-```rocq
-Unset Guard Checking.
-```
-Thus it is possible to write fixpoints which are not syntactically terminating. To help the evaluation tactics to terminate in the proofs, we can combine this setting with the [rocq_struct](http://localhost:3000/rocq-of-ocaml/docs/attributes#rocq_struct) attribute.
-
-For example, the following OCaml code:
-```ocaml
-(* let split_at (c : char) (s : string) : (string * string) option = ... *)
-
-let rec split_all (c : char) (s : string) : string list =
-  match split_at c s with
-  | None -> [s]
-  | Some (s1, s2) -> s1 :: split_all c s2
-```
-generates:
-```rocq
-Fixpoint split_all (c : ascii) (s : string) : list string :=
-  match split_at c s with
-  | None => [ s ]
-  | Some (s1, s2) => cons s1 (split_all c s2)
-  end.
-```
-which is not accepted by Rocq with the error:
-```
-Error: Cannot guess decreasing argument of fix.
-```
-despite the fact that we know that `split_at` should always return a smaller string. By disabling the guard checking, we can force Rocq to accept this example of code. We automatically add a `struct` annotation on the first fixpoint argument so that Rocq accepts the definition:
-```rocq
-Fixpoint split_all (c : ascii) (s : string) {struct c} : list string :=
-  match split_at c s with
-  | None => [ s ]
-  | Some (s1, s2) => cons s1 (split_all c s2)
-  end.
-```
-However, we must be cautious as a `struct` annotation may break the symbolic evaluation of `split_all` since `c` never changes in recursive calls. For example:
-```rocq
-Parameter P : ascii -> string -> list string -> Prop.
-
-Lemma split_all_property (c : ascii) (s : string) : P c s (split_all c s).
-  destruct c; simpl.
-```
-produces:
-```
-Error: Stack overflow.
-```
-because `split_all` is infinitely unfolded. With the `rocq_struct` attribute we can force the `struct` annotation to be on the argument `s`:
-```ocaml
-let rec split_all (c : char) (s : string) : string list =
-  match split_at c s with
-  | None -> [s]
-  | Some (s1, s2) -> s1 :: split_all c s2
-[@@rocq_struct "s"]
-```
-produces:
-```rocq
-Fixpoint split_all (c : ascii) (s : string) {struct s} : list string :=
-  match split_at c s with
-  | None => [ s ]
-  | Some (s1, s2) => cons s1 (split_all c s2)
-  end.
-```
-Then, neither:
-```rocq
-destruct c; simpl.
-```
-nor:
-```rocq
-destruct s; simpl.
-```
-breaks. For more information about the reduction strategies in Rocq proofs, you can start with the documentation of the [simpl tactic](https://rocq-prover.org/doc/v9.0/refman/proof-engine/tactics.html).
+This legacy option remains implemented, but bypasses Rocq's termination checks
+and can invalidate logical consistency. Checked alternatives are described in
+[`recursion_strategies`](#recursion_strategies) and
+[`termination_certificates`](#termination_certificates).
 
 ## without_positivity_checking
-#### Example
-```
-"without_positivity_checking": [
-  "src/proto_alpha/lib_protocol/storage_description.ml"
-]
-```
 
-#### Value
-A list of filenames on which to disable the positivity checking.
-
-#### Explanation
-This option turns off the flag `Positivity Checking`:
-```rocq
-Unset Positivity Checking.
-```
-This allows to define types which would not respect the strict positivity condition:
-```ocaml
-type t = L of (t -> t)
-```
-generates:
-```rocq
-Inductive t : Set :=
-| L : (t -> t) -> t.
-```
-which without this setting gives this error in Rocq:
-```
-Error: Non strictly positive occurrence of "t" in "(t -> t) -> t".
-```
+This legacy option remains implemented, but bypasses Rocq's strict-positivity
+checks and can invalidate logical consistency. A rejected datatype needs a
+representation accepted by those checks, not a bypass.

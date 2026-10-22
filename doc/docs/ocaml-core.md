@@ -126,12 +126,12 @@ Definition get_answer_code (function_parameter : answer) : Z :=
 ```
 
 ## Recursive definitions
-In Rocq all functions must be proven terminating. We disable the termination checks for now by using the [TypingFlags plugin](https://github.com/SimonBoulier/TypingFlags) (this feature should be included in the upcoming Rocq 8.11 release). At the start of every generated files, `rocq-of-ocaml` unset the termination flag:
-```rocq
-Require Import TypingFlags.Loader.
-Unset Guard Checking.
-```
-Unsetting the termination also remove the strict positivity checks for the definition of inductive types. We will probably add an option to re-activate the termination check when possible.
+Ordinary recursive functions become `Fixpoint`s with Rocq's structural checks
+enabled. A total function needing a nonstructural argument can use
+[`well_founded`](configuration#recursion_strategies), together with a
+[measure and decrease proofs](configuration#termination_certificates).
+Possibly diverging functions can use `partial`, which represents execution
+with `Delay` or `Resumption` and propagates that result type through callers.
 
 ## Monadic notations
 The OCaml language provides a way to define [monadic operators](https://caml.inria.fr/pub/docs/manual-ocaml/bindingops.html) so that we can define programs such as:

@@ -43,7 +43,12 @@ We can import to Rocq the OCaml programs which are either purely functional or w
 
 We compile OCaml projects by pluging into [Merlin](https://github.com/ocaml/merlin). This means that if you are using Merlin then you can run `rocq-of-ocaml` with no additional configurations.
 
-We do not do special treatments for the termination of fixpoints. We disable termination checks using the Rocq's flag [Guard Checking](https://rocq-prover.org/doc/v9.0/refman/proof-engine/vernacular-commands.html). We erase the type parameters for the [GADTs](https://caml.inria.fr/pub/docs/manual-ocaml/manual033.html). This makes sure that the type definitions are accepted, but can make the pattern matchings incomplete. In this case we offer the possibility to introduce dynamic casts guided by annotations in the OCaml code. We did not find a way to nicely represent GADTs in Rocq yet. We think that this is hard because the dependent pattern matching works well on type indicies which are values, but does not with types.
+Recursive functions use checked structural recursion by default. For
+nonstructural recursion, the [configuration](configuration#recursion_strategies)
+can select a natural-number measure with checked decrease proofs, or an
+explicit partial computation when evaluation may diverge.
+
+We erase the type parameters for the [GADTs](https://caml.inria.fr/pub/docs/manual-ocaml/manual033.html). This makes sure that the type definitions are accepted, but can make the pattern matchings incomplete. In this case we offer the possibility to introduce dynamic casts guided by annotations in the OCaml code. We did not find a way to nicely represent GADTs in Rocq yet. We think that this is hard because the dependent pattern matching works well on type indicies which are values, but does not with types.
 
 We support modules, module types, functors and first-class modules. We generate either Rocq modules or polymorphic records depending on the case. We generate axioms for `.mli` files to help formalizations, but importing `.mli` files should not be necessary for a project to compile in Rocq.
 

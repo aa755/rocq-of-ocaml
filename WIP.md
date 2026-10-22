@@ -12,7 +12,8 @@ bugs and proof-driven OCaml changes absent from main.** See
 
 ## 2. Corrected Translator and Target
 
-`aa755/machine-integer-semantics` (code at `8470aaec`) fixes machine-integer
+[`aa755/machine-integer-semantics`](https://github.com/aa755/rocq-of-ocaml/tree/aa755/machine-integer-semantics)
+(code at `8470aaec`) fixes machine-integer
 wrapping, shifts, narrowing, and several runtime replacements. These corrections
 break termination arguments that relied on the old arithmetic. Translator tests
 pass, but **a complete project translation with the repaired proofs does not**.
@@ -64,13 +65,13 @@ these problems; the old termination proofs cannot simply be reused unchanged.
 These checks hand decrease facts to small proof tactics instead of deriving
 them from the original operations. Some introduce additional failure paths;
 they are not all cosmetic refactors.
+These make the OCaml harder to understand and should ideally be dropped.
 
-## Building the Version That Passes
+## Building this Version That Passes
 
 The source branch is currently local; these clone commands will work once it
-is published. The latest translator changes and separate-proof experiment are
-also unpushed. Prerequisites: initialized opam, C/make tools, Python 3, Ruby,
-jq, and ripgrep.
+is published. The separate-proof experiment is also still local.
+Prerequisites: initialized opam, C/make tools, Python 3, Ruby, jq, and ripgrep.
 
 ```sh
 git clone --branch cmcl/exp-rocq-baseline \
@@ -107,24 +108,24 @@ types and requirements. `assumptionMetadata.ml` propagates those requirements.
 Translator `proofs/` implements primitives; project `rocq/support/` contains
 intentional replacements. Their behavior needs auditing independently.
 
-Settings live in `rocq/config/translation.json`, with selections by file suffix
-and qualified **definition name**, rather than line number:
+The settings below describe code revision `8470aaec` on
+[`aa755/machine-integer-semantics`](https://github.com/aa755/rocq-of-ocaml/tree/aa755/machine-integer-semantics).
+They live in the project's `rocq/config/translation.json`, with selections by
+file suffix and qualified **definition name**, rather than line number:
 
 | Knob | Purpose |
 | --- | --- |
-| `recursion_strategies` | `well_founded` for nonstructural total recursion; `partial` for genuine divergence, propagating `Delay`/`Resumption` through callers. Ordinary structural recursion needs no certificate. |
-| `termination_certificates` | A `nat` measure over `_rocq_state` plus a decrease-proof tactic. Arguments are tupled; mutual recursion uses tagged states. |
+| `recursion_strategies` | `well_founded` selects recursion justified by a decreasing natural-number measure; `partial` represents possibly diverging computations using `Delay`/`Resumption`, including in callers. The default is structurally recursive `Fixpoint`, checked by Rocq. |
+| `termination_certificates` | Supplies that measure over the recursive arguments (`_rocq_state`) and a tactic proving it decreases at each call. Arguments are tupled; mutual recursion uses tagged states. |
 | `file_head_suffixes` | Imports of sidecars containing measures, lemmas, and tactics. |
 | `module_overrides`, renamings | Gallina implementation substitutions, e.g. `Numeric.Uint` with `UintN`. |
 | `excluded_definitions` | Omission of unused declarations; excluding reachable behavior would change the scope. |
-| `module_laws` (new branch) | Explicit proof parameters for generic functor operations, discharged by concrete instances. |
-| Certificate domain/fallback (new branch) | Optional representable-domain check and outside result, with preservation/decrease proofs inside. |
-| `forbid_polymorphic_comparison` (new branch) | Rejection of unmodeled comparison operations. |
+| `module_laws` | Explicit proof parameters for generic functor operations, discharged by concrete instances. |
+| Certificate domain/fallback | Optional representable-domain check and outside result, with preservation/decrease proofs inside. |
+| `forbid_polymorphic_comparison` | Rejection of unmodeled comparison operations. |
 
-`well_founded` alone is not a proof: a certificate is still required.
-The intended result has no new admissions or guard-check bypasses. Syntax is
-documented in `src/configuration.ml` and `doc/docs/configuration.md`; the latter
-still contains obsolete advice about disabling guard checking.
+The [configuration reference](doc/docs/configuration.md#termination_certificates)
+shows how the strategy, measure, proof tactic, and imports fit together.
 
 Sidecar proof files are a useful home for reusable lemmas. The configured tactic
 applies them inside the generated definition, where local variables and branch facts
