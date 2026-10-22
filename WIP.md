@@ -2,7 +2,9 @@
 
 ## 1. Version That Builds
 
-- OCaml: `monad-execution-specs`, branch `cmcl/exp-rocq-baseline`, commit `6cee08b`.
+- OCaml: `monad-execution-specs`, branch
+  [`cmcl/exp-rocq-baseline`](https://github.com/category-labs/monad-execution-specs/tree/cmcl/exp-rocq-baseline),
+  commit `6cee08b`.
 - Translator: `d3afb526`.
 
 Fresh translation, all sidecar proofs, assumption audits, and predicative kernel
@@ -69,8 +71,8 @@ These make the OCaml harder to understand and should ideally be dropped.
 
 ## Building this Version That Passes
 
-The source branch is currently local; these clone commands will work once it
-is published. The separate-proof experiment is also still local.
+The source branch and pinned translator are published. The separate-proof
+experiment is still local and is not needed for this build.
 Prerequisites: initialized opam, C/make tools, Python 3, Ruby, jq, and ripgrep.
 
 ```sh
