@@ -21,12 +21,12 @@ integrated into the full project and lacks later ordinary-branch fixes.
 | File | Maintained by | Contents |
 | --- | --- | --- |
 | `X_internal.v` | Translator | One-step bodies; section parameters for termination proofs; total functions using `mu1`, `mu2`, or `mu3`. |
-| `X_termproofs.v` | User | Proofs importing `X_internal.v` and existing proof libraries. Measures belong here, not in JSON. |
+| `X_termproofs.v` | User | Proofs importing `X_internal.v` and existing proof libraries, with measures defined here rather than in JSON. |
 | `X.v` | Translator | Public wrappers that supply the proved termination arguments. |
 
-Select nonstructural functions using `[@rocq.wf]` or `recursion_strategies`.
-Do not supply their old `termination_certificates` entries in this mode; the
-translator rejects that combination.
+Nonstructural functions can be selected using `[@rocq.wf]` or
+`recursion_strategies`. This mode rejects accompanying
+`termination_certificates` entries, since the proofs now live separately.
 
 A missing proof file gets a template ending in `Abort`, not `Admitted`.
 The public wrappers cannot compile until the required theorems exist.
@@ -77,13 +77,15 @@ Unfolding and independence from the termination proof additionally require
 `Monotone1`: completing more recursive calls cannot change an existing answer.
 The examples prove it; the translator does not yet generate that proof.
 Constructive search is a reference implementation, not an efficient extracted
-runtime. Opaque certificates can obstruct reduction; use the proved equations.
+runtime. Opaque certificates can obstruct reduction; the proved equations offer
+an alternative way to reason about results.
 
 ## Build and Check
 
-Use a checkout of `aa755/separate-termination-proofs`. Set `SWITCH` to the
-name or absolute path of an existing switch with the repository dependencies
-(OCaml 5.4.0 and Rocq 9.0.1 were used). From its repository root:
+The following commands run from the root of a checkout of
+`aa755/separate-termination-proofs`, with `SWITCH` containing the name or
+absolute path of an existing switch with the repository dependencies
+(OCaml 5.4.0 and Rocq 9.0.1 were used):
 
 ```sh
 opam exec --switch="$SWITCH" -- dune build -p rocq-of-ocaml
@@ -108,41 +110,44 @@ translator preserves OCaml semantics; other runtime abstractions still apply.
 
 ## Updating Proofs
 
-Regenerate, then recompile the handwritten proof against the new body.
-Unchanged definitions reuse the old proof; changed definitions require it to
-check again. Add proofs for new functions yourself; generation never silently
-admits obligations or updates the handwritten file.
+A typical update would regenerate the bodies and recompile the handwritten
+proofs against them. Unchanged definitions reuse the old proof; changed
+definitions require it to check again. New functions need corresponding proofs;
+generation never silently admits obligations or updates the handwritten file.
 
-Keep a passing version in Git. During a port,
+A passing Git revision provides a useful comparison point. During a port,
 `git show BASE:tests/separate_termination/Count_internal.v` shows the old body;
 a worktree at `BASE` provides a compilable old proof beside the new one.
 
 ## Remaining Work
 
-1. **Bring the implementation up to date.** Port it onto the latest ordinary
-   translator, retaining the arithmetic and module fixes. Keep this mode opt-in
-   while its coverage is incomplete.
-2. **Support local recursion, modules, and functors.** Make captured variables
-   explicit parameters of local one-step bodies. Preserve module/type contexts
-   and propagate termination-proof parameters through callers and public
-   wrappers, including dependencies on earlier definitions in the same file.
-3. **Support mutual recursion.** Represent a recursive group with a tagged call
-   state and one joint termination certificate; expose the original functions
-   through wrappers. Do not require users to split the OCaml source into files.
-4. **Complete the proof interface.** Generate monotonicity proofs for supported
-   bodies, or explicit obligations, so unfolding and proof-independence lemmas
-   are available. Generic functor laws must remain explicit proof parameters;
-   concrete applications must discharge them, not receive assumed instances.
-5. **Reuse the project proofs.** Adapt existing measures and lemmas into
-   handwritten `X_termproofs.v` files, rather than rediscovering them. Target
-   public main after comparison removal and possibly the RLP PR described in
-   [WIP.md](../WIP.md), without runtime progress checks or proof-driven OCaml
-   refactors. Corrected arithmetic still requires repairing affected arguments.
-6. **Validate end to end.** Build the runtime and generated project predicatively,
-   with no new admissions or disabled kernel checks. Add local/mutual/functor
-   regressions, retranslation/proof-reuse tests, and native behavior comparisons;
-   then run the full proof build and assumption audit on the target source.
+Possible next steps are:
 
-Later, replace the constructive-search implementation if execution performance
-requires it, proving agreement with the current combinator. This optimization
-is separate from making the proof architecture work.
+1. **Updating the implementation.** A port onto the latest ordinary translator
+   would retain the arithmetic and module fixes. This mode could remain opt-in
+   while its coverage is incomplete.
+2. **Local recursion, modules, and functors.** Captured variables could become
+   explicit parameters of local one-step bodies. Module/type contexts and
+   termination-proof parameters would then flow through callers and wrappers,
+   including dependencies on earlier definitions in the same file.
+3. **Mutual recursion.** A tagged call state and one joint termination
+   certificate could represent a recursive group, with wrappers exposing the
+   original functions. This would preserve the OCaml source layout.
+4. **The proof interface.** Generated monotonicity proofs, or explicit
+   obligations, would make unfolding and proof-independence lemmas available.
+   Generic functor laws could remain explicit proof parameters, discharged by
+   concrete applications rather than supplied as assumed instances.
+5. **Reusing project proofs.** Existing measures and lemmas could be adapted
+   into handwritten `X_termproofs.v` files. The target remains public main after
+   comparison removal and possibly the RLP PR described in [WIP.md](../WIP.md),
+   without runtime progress checks or proof-driven OCaml refactors. Corrected
+   arithmetic still requires repairing affected arguments.
+6. **End-to-end validation.** A useful completion check would build the runtime
+   and generated project predicatively, with no new admissions or disabled
+   kernel checks. Local/mutual/functor regressions, proof-reuse tests, native
+   comparisons, and the full proof build and assumption audit would cover the
+   new behavior on the target source.
+
+If execution performance becomes important, a later optimization could replace
+constructive search, with a proof of agreement with the current combinator.
+That is separate from making the proof architecture work.

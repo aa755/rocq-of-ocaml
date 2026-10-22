@@ -8,8 +8,7 @@
 Fresh translation, all sidecar proofs, assumption audits, and predicative kernel
 checking passed on 2026-10-21. **This version still has arithmetic-translation
 bugs and proof-driven OCaml changes absent from main.** See
-[Problems in This Version](#problems-in-this-version). A successful build does
-not establish equivalence to OCaml or axiom-freedom.
+[Problems in This Version](#problems-in-this-version).
 
 ## 2. Corrected Translator and Target
 
@@ -25,10 +24,11 @@ merge. PR #70 is branch `aa755/rlp-result`, based on Ryan's PR.
 Main does not contain the proof-driven changes listed below; they are not
 prerequisites for this work.
 
-Reuse the existing proofs, repair their arithmetic arguments, and establish
-progress without adding runtime progress checks to OCaml. Some translator/proof
-integration remains unfinished, including generic termination laws and their
-concrete instances. The final check must regenerate and build from that source.
+A useful next step would be to reuse the existing proofs, repair their arithmetic
+arguments, and establish progress without adding runtime checks to OCaml. Some
+translator/proof integration remains unfinished, including generic termination
+laws and their concrete instances. Fresh generation and a full build from that
+source would establish whether the integration is complete.
 
 ## 3. Separate-Proof Experiment
 
@@ -56,19 +56,19 @@ these problems; the old termination proofs cannot simply be reused unchanged.
 
 | Source | Changes made to ease proofs |
 | --- | --- |
-| `rlp.ml` | Check that list payloads and remainders shrink before recursion; raise `invalid_arg` otherwise. |
-| `mpt.ml` | Add key-depth/child-index checks; expose a local recursive worker; replace a finite `Seq` traversal with a list traversal. |
-| `ec/algebra.ml` | Check remainder/polynomial degree decreases before recursing; raise `invalid_arg` otherwise; hoist a loop bound. |
-| `vm.ml` | Check gas decreases on every continuing iteration; reject some host gas results; hoist bounds and opcode selection; replace an assertion with an explicit failure. |
+| `rlp.ml` | Added checks that list payloads and remainders shrink before recursion, raising `invalid_arg` otherwise. |
+| `mpt.ml` | Added key-depth/child-index checks, exposed a local recursive worker, and replaced a finite `Seq` traversal with a list traversal. |
+| `ec/algebra.ml` | Added checks for decreasing remainder/polynomial degree, raising `invalid_arg` otherwise, and hoisted a loop bound. |
+| `vm.ml` | Added per-iteration gas-decrease checks and host gas checks, hoisted bounds and opcode selection, and replaced an assertion with an explicit failure. |
 
 These checks hand decrease facts to small proof tactics instead of deriving
 them from the original operations. Some introduce additional failure paths;
 they are not all cosmetic refactors.
 
-## Build the Version That Passes
+## Building the Version That Passes
 
-The source branch is currently local; publish it before using these clone
-commands. The latest translator changes and separate-proof experiment are
+The source branch is currently local; these clone commands will work once it
+is published. The latest translator changes and separate-proof experiment are
 also unpushed. Prerequisites: initialized opam, C/make tools, Python 3, Ruby,
 jq, and ripgrep.
 
@@ -107,27 +107,27 @@ types and requirements. `assumptionMetadata.ml` propagates those requirements.
 Translator `proofs/` implements primitives; project `rocq/support/` contains
 intentional replacements. Their behavior needs auditing independently.
 
-Configure `rocq/config/translation.json`, selecting by file suffix and qualified
-**definition name**, not line number:
+Settings live in `rocq/config/translation.json`, with selections by file suffix
+and qualified **definition name**, rather than line number:
 
 | Knob | Purpose |
 | --- | --- |
 | `recursion_strategies` | `well_founded` for nonstructural total recursion; `partial` for genuine divergence, propagating `Delay`/`Resumption` through callers. Ordinary structural recursion needs no certificate. |
 | `termination_certificates` | A `nat` measure over `_rocq_state` plus a decrease-proof tactic. Arguments are tupled; mutual recursion uses tagged states. |
-| `file_head_suffixes` | Import the sidecar containing the measure, lemmas, and tactic. |
-| `module_overrides`, renamings | Substitute Gallina implementations, e.g. `Numeric.Uint` with `UintN`. |
-| `excluded_definitions` | Omit unused declarations, not reachable behavior. |
-| `module_laws` (new branch) | Explicit proof parameters for generic functor operations; concrete instances must prove them. |
-| Certificate domain/fallback (new branch) | Optionally check the representable domain, specify the outside result, and prove preservation/decrease inside. |
-| `forbid_polymorphic_comparison` (new branch) | Reject unmodeled comparison operations. |
+| `file_head_suffixes` | Imports of sidecars containing measures, lemmas, and tactics. |
+| `module_overrides`, renamings | Gallina implementation substitutions, e.g. `Numeric.Uint` with `UintN`. |
+| `excluded_definitions` | Omission of unused declarations; excluding reachable behavior would change the scope. |
+| `module_laws` (new branch) | Explicit proof parameters for generic functor operations, discharged by concrete instances. |
+| Certificate domain/fallback (new branch) | Optional representable-domain check and outside result, with preservation/decrease proofs inside. |
+| `forbid_polymorphic_comparison` (new branch) | Rejection of unmodeled comparison operations. |
 
-`well_founded` alone is not a proof: provide its certificate and reject
-remaining admissions. Never use guard-check bypasses. See
-`src/configuration.ml` and `doc/docs/configuration.md` for syntax; the latter
+`well_founded` alone is not a proof: a certificate is still required.
+The intended result has no new admissions or guard-check bypasses. Syntax is
+documented in `src/configuration.ml` and `doc/docs/configuration.md`; the latter
 still contains obsolete advice about disabling guard checking.
 
-Keep reusable lemmas in sidecar proof files. The configured tactic applies
-them inside the generated definition, where local variables and branch facts
+Sidecar proof files are a useful home for reusable lemmas. The configured tactic
+applies them inside the generated definition, where local variables and branch facts
 are available. A sidecar imported by `X.v` cannot itself import `X.v`; this is
 the dependency problem addressed by the separate-proof experiment.
 Retranslation preserves handwritten proofs but requires them to be rechecked.
