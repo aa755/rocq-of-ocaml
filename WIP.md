@@ -2,28 +2,37 @@
 
 ## Which Branches
 
+**Development target:** `monad-execution-specs` branch `aa755/rlp-result`
+(`3dfcf34`), our RLP PR on top of Ryan's comparison PR, then public `main`
+once merged. The translator must work on that source, without requiring the
+additional OCaml refactors from the integration experiment. There is **no
+passing full build of this target with the corrected translator yet**.
+
 | Purpose | OCaml project | Translator |
 | --- | --- | --- |
-| Guarded baseline | [monad-execution-specs](https://github.com/category-labs/monad-execution-specs), `cmcl/exp-rocq-baseline` | This repository, `d3afb526` |
-| Continue integration | [monad-execution-specs](https://github.com/category-labs/monad-execution-specs), `cmcl/exp-main-translator-integration`, `10ab3956` | `aa755/machine-integer-semantics`, `8470aaec` |
+| Development target (not yet passing) | [monad-execution-specs](https://github.com/category-labs/monad-execution-specs), `aa755/rlp-result`, `3dfcf34` | `aa755/machine-integer-semantics`, code at `8470aaec` |
+| Historical guarded reproduction | `cmcl/exp-rocq-baseline` | This repository, `d3afb526` |
+| Unfinished proof/reference experiment, not a prerequisite | `cmcl/exp-main-translator-integration`, `10ab3956` | `aa755/machine-integer-semantics`, code at `8470aaec` |
 | Separate-proof experiment | Not integrated | `aa755/separate-termination-proofs`, `f9019945` |
 
 The baseline branch starts at public source commit `a5a25f9` and carries the
 OCaml changes, sidecar proofs, support library, and build configuration for the
 known-building snapshot. It retains the earlier RLP/MPT, algebra, and VM progress
 guards; it is **not current public main or a proposal to merge those guards**.
-The integration pair targets newer public main without those guards, but its
-full build is unfinished. Keep each source/translator pair together.
+The integration experiment adds RLP/MPT refactors and a VM step/loop split on
+top of `aa755/rlp-result`. Its proofs and translator fixes are reusable work,
+not a requirement to merge those source changes. Its full build is unfinished.
 
 Verified on 2026-10-21: fresh baseline generation matched all 42 recorded hashes;
 the complete proof build, assumption audits, and predicative kernel check passed.
 
-**Publication status:** the project branches, separate-proof branch, and ordinary
+**Publication status:** the two `cmcl/exp-*` project branches, separate-proof branch, and ordinary
 translator continuation beyond public tip `38225cb9` are currently local. The
 clone commands below require those branches to be published.
 
-## Translate and Build
+## Reproduce the Historical Build
 
+These commands reproduce the guarded baseline only, not the development target.
 After publication, from an empty directory:
 
 ```sh
@@ -54,16 +63,15 @@ generated files, support modules, and proofs by imports. Logs are retained in
 the printed `.rocq-tools/translation-check.*` directory. Do not substitute
 the legacy impredicative runtime build.
 
-For the integration pair, use its `rocq/scripts/generate-rocq.sh` while iterating;
-`rocq/check-integration.sh` performs fresh generation, proof compilation, and
-kernel checking. Set the same two environment variables and a new
-`INTEGRATION_BUILD` directory. It needs Dune 3.24.2 (`ROCQ_DUNE` can select it),
-not the baseline's 3.23.0. Keep translator/typed artifacts on OCaml 5.4.0;
-public native packaging specifies 5.5.1, whose `.cmt` files are incompatible.
+The experiment's `rocq/check-integration.sh` is reference build infrastructure,
+not a passing recipe for `aa755/rlp-result`. Its proof/configuration support
+must be adapted to the target without carrying over its `lib/` refactors.
+It uses Dune 3.24.2 (`ROCQ_DUNE` selects it) and OCaml 5.4.0; the public source's
+native packaging specifies OCaml 5.5.1, whose `.cmt` files are incompatible.
 
 ## Architecture and Knobs
 
-The project script builds OCaml typed artifacts, orders compilation units,
+In the baseline and experiment, the project script builds typed artifacts, orders compilation units,
 and invokes the translator with dependency metadata. The translator uses
 Merlin's typed tree, emits Gallina, and records cross-file requirements;
 **Rocq checks the proofs afterward**, not during translation.
@@ -124,11 +132,12 @@ Thus proofs are maintained separately, but their applications are checked there.
 
 - **Avoid import cycles:** a sidecar imported by `X.v` cannot import `X.v`.
   Parameterize reusable lemmas over types and operations.
-- **When generated definitions are essential:** split nonrecursive OCaml steps
-  from the loop, giving `Step.v -> StepTermination.v -> Loop.v`. For functors,
-  require explicit laws, then prove them for concrete instances. Reuse the existing
-  progress proofs; the integration branch's `Vm_step`/`Vm_loop` split follows
-  this direction, but its final law plumbing is unfinished.
+- **When generated definitions are essential:** solve the import dependency
+  in translation/proof scaffolding, not by requiring OCaml source refactors.
+  The experiment's `Vm_step`/`Vm_loop` split illustrates the dependency but is
+  not the target source layout. Reuse its progress lemmas; adapting their
+  application to the original layout is still open. Generic functor laws
+  remain explicit proof parameters, with proofs required for concrete instances.
 - **Retranslation:** generated files are replaced; sidecars are preserved.
   Rocq rechecks certificates. Update lemmas/adapters when code changes; compare
   against the last passing commit in another worktree. Do not hand-edit the
@@ -136,10 +145,14 @@ Thus proofs are maintained separately, but their applications are checked there.
 
 ## Next Work
 
-On the ordinary integration pair: fix the `Vm.execute` law referring to locally
-bound `tx_context`; complete polynomial division/concrete Euclidean laws and
-host-gas contracts; then run the full gate. Its `rocq/BACKLOG.org` records the
-remaining work. Build success is not semantic equivalence or axiom-freedom.
+Make the ordinary translator and sidecar proofs work on `aa755/rlp-result`,
+then `main`, without depending on the experimental source refactors. Reuse the
+existing RLP/MPT and gas-progress proofs, adapting their integration rather than
+rewriting the target OCaml. Complete polynomial division/concrete Euclidean
+laws and host-gas contracts, then run fresh generation, the full proof build,
+and assumption/kernel audits on that exact source. The experiment's backlog
+is evidence about prior attempts, not proof that this target builds.
+Build success is not semantic equivalence or axiom-freedom.
 
 The optional separate-proof branch emits `X_internal.v`, preserves
 `X_termproofs.v`, and generates wrappers in `X.v`. Its constructive
